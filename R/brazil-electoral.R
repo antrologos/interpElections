@@ -246,6 +246,27 @@ br_prepare_electoral <- function(
   if (!is.null(cargo)) {
     cargo <- .br_resolve_cargo(cargo)
   }
+
+  # --- Check processed data cache ---
+  # Only use cache when no user-provided file paths are given
+  user_files <- !is.null(perfil_path) || !is.null(comparecimento_path) ||
+                !is.null(votacao_path) || !is.null(geocode_path)
+  electoral_cache_name <- NULL
+  if (isTRUE(cache) && !user_files) {
+    electoral_cache_name <- .electoral_cache_key(
+      code_muni_ibge, year, cargo, turno, what, candidates, parties
+    )
+    if (!isTRUE(force)) {
+      cached_result <- .load_from_cache(
+        electoral_cache_name, .cache_subdirs()$electoral
+      )
+      if (!is.null(cached_result)) {
+        if (verbose) message("Using cached electoral data for ",
+                             code_muni_ibge, " (", year, ")")
+        return(cached_result)
+      }
+    }
+  }
   multi_cargo <- !is.null(cargo) && length(cargo) > 1
 
   code_muni_ibge <- as.character(code_muni_ibge)
@@ -270,7 +291,7 @@ br_prepare_electoral <- function(
       }
     } else {
       zip_path <- .interpElections_download(
-        url = url_perfil, filename = zip_name, subdir = "tse",
+        url = url_perfil, filename = zip_name, subdir = .cache_subdirs()$profile,
         cache = cache, force = force, verbose = verbose
       )
     }
@@ -786,7 +807,41 @@ br_prepare_electoral <- function(
     ) |>
     dplyr::filter(!is.na(.data$lat), !is.na(.data$long))
 
+  # Cache processed result for future re-use
+  if (!is.null(electoral_cache_name)) {
+    tryCatch(
+      .save_to_cache(result, electoral_cache_name,
+                     .cache_subdirs()$electoral),
+      error = function(e) {
+        if (verbose) {
+          warning("Failed to cache electoral data: ",
+                  conditionMessage(e), call. = FALSE)
+        }
+      }
+    )
+    if (verbose) message("  Cached processed electoral data for future use")
+  }
+
   result
+}
+
+
+# --- Internal: processed data cache key ---
+
+#' @noRd
+.electoral_cache_key <- function(code_muni_ibge, year, cargo, turno,
+                                  what, candidates, parties) {
+  key_parts <- list(
+    muni       = as.character(code_muni_ibge),
+    year       = as.integer(year),
+    cargo      = sort(as.integer(cargo %||% 0L)),
+    turno      = as.integer(turno),
+    what       = sort(what),
+    candidates = sort(as.character(candidates %||% "")),
+    parties    = sort(toupper(as.character(parties %||% "")))
+  )
+  hash <- substr(.digest_simple(key_parts), 1, 16)
+  sprintf("electoral_%s_%d_%s.rds", code_muni_ibge, year, hash)
 }
 
 
@@ -870,7 +925,7 @@ br_prepare_electoral <- function(
       .interpElections_download(
         url = hidalgo_url,
         filename = "geocoded_polling_stations.csv.gz",
-        subdir = "hidalgo",
+        subdir = .cache_subdirs()$hidalgo,
         cache = cache, force = force, verbose = verbose
       ),
       error = function(e) {

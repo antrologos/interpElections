@@ -24,6 +24,7 @@ is \code{NULL}, resets to the default OS-appropriate location.
 
 Other cache: 
 \code{\link{get_interpElections_cache_dir}()},
-\code{\link{interpElections_cache}()}
+\code{\link{interpElections_cache}()},
+\code{\link{interpElections_cache_clean}()}
 }
 \concept{cache}

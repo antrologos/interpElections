@@ -61,7 +61,7 @@ br_prepare_tracts <- function(
 
   # Download census tract shapefiles (with persistent cache)
   cache_name <- sprintf("tracts_%s_%d.rds", code_muni, year)
-  shape <- .load_from_cache(cache_name, "geobr_tracts")
+  shape <- .load_from_cache(cache_name, .cache_subdirs()$tracts)
 
   if (is.null(shape)) {
     if (verbose) message("Downloading census tract geometries for ", code_muni, "...")
@@ -79,7 +79,7 @@ br_prepare_tracts <- function(
     )
     # Cache the raw geobr result before any transformations
     tryCatch(
-      .save_to_cache(shape, cache_name, "geobr_tracts"),
+      .save_to_cache(shape, cache_name, .cache_subdirs()$tracts),
       error = function(e) {
         if (verbose) {
           warning("Failed to cache tract geometries: ",

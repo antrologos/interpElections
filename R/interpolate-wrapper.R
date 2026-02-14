@@ -197,7 +197,7 @@ interpolate_election <- function(
     )
     tt_hash <- substr(.digest_simple(cache_input), 1, 16)
     tt_cache_name <- sprintf("tt_%s.rds", tt_hash)
-    cached_tt <- .load_from_cache(tt_cache_name, "travel_times")
+    cached_tt <- .load_from_cache(tt_cache_name, .cache_subdirs()$travel_times)
 
     # Validate cache: check dimensions AND that stored IDs match exactly
     tt_cache_valid <- !is.null(cached_tt) &&
@@ -227,7 +227,13 @@ interpolate_election <- function(
 
       expanded_area <- .expand_bbox(tracts_sf, electoral_sf,
                                     buffer_km = osm_buffer_km)
-      r5r_dir <- file.path(get_interpElections_cache_dir(), "r5r_networks")
+      # Each municipality bbox gets its own isolated r5r directory
+      bb <- sf::st_bbox(sf::st_transform(expanded_area, 4326))
+      bbox_str <- sprintf("%.4f_%.4f_%.4f_%.4f",
+                          bb["xmin"], bb["ymin"], bb["xmax"], bb["ymax"])
+      bbox_hash <- substr(.digest_simple(bbox_str), 1, 12)
+      r5r_dir <- file.path(get_interpElections_cache_dir(),
+                           .cache_subdirs()$r5r, bbox_hash)
       if (!dir.exists(r5r_dir)) dir.create(r5r_dir, recursive = TRUE)
       dl_args <- .extract_args(dots, download_r5r_data)
       r5r_data <- do.call(download_r5r_data, c(
@@ -269,7 +275,7 @@ interpolate_election <- function(
       attr(time_matrix, "point_ids") <- point_ids
       tryCatch(
         .save_to_cache(time_matrix, tt_cache_name,
-                       "travel_times"),
+                       .cache_subdirs()$travel_times),
         error = function(e) {
           if (verbose) {
             warning("Failed to cache travel time matrix: ",

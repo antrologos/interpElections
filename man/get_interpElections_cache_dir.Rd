@@ -20,6 +20,7 @@ A custom path can be set with \code{\link[=set_interpElections_cache_dir]{set_in
 
 Other cache: 
 \code{\link{interpElections_cache}()},
+\code{\link{interpElections_cache_clean}()},
 \code{\link{set_interpElections_cache_dir}()}
 }
 \concept{cache}

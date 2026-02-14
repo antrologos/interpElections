@@ -107,7 +107,7 @@ br_download_votes <- function(
   } else {
     if (verbose) message(sprintf("Candidate votes (%s %d)...", uf, year))
     zip_path <- .interpElections_download(
-      url = url, filename = zip_name, subdir = "tse",
+      url = url, filename = zip_name, subdir = .cache_subdirs()$votes,
       cache = cache, force = force, verbose = verbose
     )
   }
@@ -282,7 +282,7 @@ br_download_turnout <- function(
   } else {
     if (verbose) message(sprintf("Turnout data (%d, nationwide)...", year))
     zip_path <- .interpElections_download(
-      url = url, filename = zip_name, subdir = "tse",
+      url = url, filename = zip_name, subdir = .cache_subdirs()$turnout,
       cache = cache, force = force, verbose = verbose
     )
   }
@@ -483,7 +483,7 @@ br_download_geocode <- function(
     if (verbose) message(sprintf("Polling station locations (%d)...", year))
     zip_path <- tryCatch(
       .interpElections_download(
-        url = url, filename = zip_name, subdir = "tse",
+        url = url, filename = zip_name, subdir = .cache_subdirs()$geocode,
         cache = cache, force = force, verbose = verbose
       ),
       error = function(e) {

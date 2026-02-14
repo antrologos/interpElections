@@ -1,3 +1,28 @@
+# --- Cache subdirectory structure ---
+
+#' @noRd
+.cache_subdirs <- function() {
+  list(
+    votes        = file.path("downloads", "votes"),
+    turnout      = file.path("downloads", "turnout"),
+    geocode      = file.path("downloads", "geocode"),
+    profile      = file.path("downloads", "profile"),
+    hidalgo      = file.path("downloads", "hidalgo"),
+    osm          = file.path("downloads", "osm"),
+    electoral    = file.path("processed", "electoral"),
+    tracts       = file.path("processed", "tracts"),
+    r5r          = file.path("networks", "r5r"),
+    travel_times = "travel_times",
+    bin          = "bin"
+  )
+}
+
+# Legacy subdirectory names (pre-v0.2.0)
+.legacy_subdirs <- function() {
+  c("tse", "hidalgo", "osm_extracts", "r5r_networks", "geobr_tracts", "computed")
+}
+
+
 # --- Cache directory management ---
 
 #' Get the interpElections cache directory
@@ -71,13 +96,18 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 
 #' Manage the interpElections download cache
 #'
-#' Lists or deletes cached files. Use `delete_file = "all"` to clear
-#' the entire cache.
+#' Lists or deletes cached files. By default shows a per-category size
+#' breakdown. Use `details = TRUE` to see individual files.
+#' Use `delete_file = "all"` to clear the entire cache.
 #'
-#' @param list_files Logical. If TRUE (default), prints and returns
-#'   cached file paths.
+#' @param list_files Logical. If TRUE (default), prints a per-category
+#'   summary and returns cached file paths.
 #' @param delete_file Character or NULL. A pattern to match files for
-#'   deletion (uses `grepl()`), or `"all"` to delete the entire cache.
+#'   deletion (matched against relative paths via `grepl()`), or
+#'   `"all"` to delete the entire cache. For targeted deletion by
+#'   category, see [interpElections_cache_clean()].
+#' @param details Logical. If TRUE, also prints individual filenames
+#'   within each category. Default: FALSE.
 #' @param verbose Logical. Print messages. Default: TRUE.
 #'
 #' @return Invisibly returns a character vector of cached file paths
@@ -85,22 +115,28 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 #'
 #' @examples
 #' \dontrun{
-#' # List all cached files
+#' # Per-category summary
 #' interpElections_cache()
 #'
-#' # Delete all TSE files
-#' interpElections_cache(delete_file = "tse")
+#' # Detailed listing (every file)
+#' interpElections_cache(details = TRUE)
+#'
+#' # Delete files matching a pattern
+#' interpElections_cache(delete_file = "2020")
 #'
 #' # Delete everything
 #' interpElections_cache(delete_file = "all")
 #' }
 #'
 #' @family cache
-#' @seealso [get_interpElections_cache_dir()], [set_interpElections_cache_dir()]
+#' @seealso [get_interpElections_cache_dir()],
+#'   [set_interpElections_cache_dir()],
+#'   [interpElections_cache_clean()]
 #' @export
 interpElections_cache <- function(
     list_files  = TRUE,
     delete_file = NULL,
+    details     = FALSE,
     verbose     = TRUE
 ) {
   cache_dir <- get_interpElections_cache_dir()
@@ -119,10 +155,40 @@ interpElections_cache <- function(
       cache_prefix <- normalizePath(cache_dir, winslash = "/")
       file_paths <- normalizePath(files, winslash = "/")
       rel <- substring(file_paths, nchar(cache_prefix) + 2L)
-      total_mb <- sum(file.size(files), na.rm = TRUE) / 1e6
+      sizes <- file.size(files)
+      total_mb <- sum(sizes, na.rm = TRUE) / 1e6
+
       message(sprintf("interpElections cache (%s):", cache_dir))
-      message(sprintf("  Total size: %.1f MB (%d files)", total_mb, length(files)))
-      for (f in rel) message("  ", f)
+      message(sprintf("  Total: %.1f MB (%d files)\n",
+                       total_mb, length(files)))
+
+      # Group by top 2 directory levels
+      dir_parts <- strsplit(rel, "/")
+      category <- vapply(dir_parts, function(p) {
+        paste(utils::head(p, min(length(p) - 1L, 2L)), collapse = "/")
+      }, character(1))
+      # Files at root level
+      category[category == ""] <- "."
+
+      for (cat in sort(unique(category))) {
+        mask <- category == cat
+        cat_mb <- sum(sizes[mask], na.rm = TRUE) / 1e6
+        cat_n <- sum(mask)
+        label <- if (cat == ".") "(root)" else paste0(cat, "/")
+        message(sprintf("  %-32s %8.1f MB  (%d file%s)",
+                        label, cat_mb, cat_n,
+                        if (cat_n == 1) "" else "s"))
+        if (details) {
+          for (f in rel[mask]) {
+            f_mb <- sizes[which(rel == f)[1]] / 1e6
+            message(sprintf("    %-50s %8.1f MB",
+                            basename(f), f_mb))
+          }
+        }
+      }
+
+      # Detect legacy directories
+      .warn_legacy_dirs(cache_dir, verbose = TRUE)
     }
   }
 
@@ -132,7 +198,11 @@ interpElections_cache <- function(
       dir.create(cache_dir, recursive = TRUE)
       if (verbose) message("Deleted entire cache directory: ", cache_dir)
     } else {
-      to_delete <- files[grepl(delete_file, basename(files), fixed = TRUE)]
+      # Match against relative path (not just basename)
+      cache_prefix <- normalizePath(cache_dir, winslash = "/")
+      file_paths <- normalizePath(files, winslash = "/")
+      rel <- substring(file_paths, nchar(cache_prefix) + 2L)
+      to_delete <- files[grepl(delete_file, rel, fixed = TRUE)]
       if (length(to_delete) == 0) {
         if (verbose) message("No cached files matched pattern: ", delete_file)
       } else {
@@ -149,13 +219,134 @@ interpElections_cache <- function(
 }
 
 
+#' Delete cached files by category
+#'
+#' Convenience function for clearing specific categories of cached data.
+#' More discoverable than [interpElections_cache()] with `delete_file`.
+#'
+#' @param category Character. Which category to clear. One of:
+#'   \describe{
+#'     \item{`"all"`}{Delete the entire cache}
+#'     \item{`"downloads"`}{All raw downloads (votes, turnout, geocode, profile, hidalgo, osm)}
+#'     \item{`"processed"`}{All processed/cached results (electoral, tracts)}
+#'     \item{`"networks"`}{All r5r network indices}
+#'     \item{`"travel_times"`}{Cached travel time matrices}
+#'     \item{`"votes"`}{TSE vote data ZIPs}
+#'     \item{`"turnout"`}{TSE turnout data ZIPs}
+#'     \item{`"geocode"`}{TSE polling station location ZIPs}
+#'     \item{`"profile"`}{TSE voter profile ZIPs}
+#'     \item{`"hidalgo"`}{Hidalgo geocoding fallback data}
+#'     \item{`"osm"`}{OpenStreetMap road network extracts}
+#'     \item{`"electoral"`}{Processed electoral data (br_prepare_electoral output)}
+#'     \item{`"tracts"`}{Cached census tract geometries}
+#'     \item{`"r5r"`}{r5r routing network indices}
+#'   }
+#' @param verbose Logical. Print messages. Default: TRUE.
+#'
+#' @return Invisibly returns the path(s) that were deleted.
+#'
+#' @examples
+#' \dontrun{
+#' # Clear only processed electoral data (forces re-computation next run)
+#' interpElections_cache_clean("electoral")
+#'
+#' # Clear all raw downloads
+#' interpElections_cache_clean("downloads")
+#'
+#' # Clear everything
+#' interpElections_cache_clean("all")
+#' }
+#'
+#' @family cache
+#' @seealso [interpElections_cache()]
+#' @export
+interpElections_cache_clean <- function(
+    category = c("all", "downloads", "processed", "networks",
+                 "travel_times", "votes", "turnout", "geocode",
+                 "profile", "hidalgo", "osm", "electoral",
+                 "tracts", "r5r"),
+    verbose = TRUE
+) {
+  category <- match.arg(category)
+  cache_dir <- get_interpElections_cache_dir()
+
+  if (!dir.exists(cache_dir)) {
+    if (verbose) message("Cache directory does not exist yet.")
+    return(invisible(character(0)))
+  }
+
+  if (category == "all") {
+    unlink(cache_dir, recursive = TRUE)
+    dir.create(cache_dir, recursive = TRUE)
+    if (verbose) message("Deleted entire cache directory: ", cache_dir)
+    return(invisible(cache_dir))
+  }
+
+  # Map category to subdirectory path(s)
+  subdirs <- .cache_subdirs()
+  target_dirs <- switch(category,
+    downloads    = file.path(cache_dir, "downloads"),
+    processed    = file.path(cache_dir, "processed"),
+    networks     = file.path(cache_dir, "networks"),
+    travel_times = file.path(cache_dir, subdirs$travel_times),
+    votes        = file.path(cache_dir, subdirs$votes),
+    turnout      = file.path(cache_dir, subdirs$turnout),
+    geocode      = file.path(cache_dir, subdirs$geocode),
+    profile      = file.path(cache_dir, subdirs$profile),
+    hidalgo      = file.path(cache_dir, subdirs$hidalgo),
+    osm          = file.path(cache_dir, subdirs$osm),
+    electoral    = file.path(cache_dir, subdirs$electoral),
+    tracts       = file.path(cache_dir, subdirs$tracts),
+    r5r          = file.path(cache_dir, subdirs$r5r)
+  )
+
+  deleted <- character(0)
+  for (td in target_dirs) {
+    if (dir.exists(td)) {
+      n_files <- length(list.files(td, recursive = TRUE))
+      size_mb <- sum(file.size(
+        list.files(td, recursive = TRUE, full.names = TRUE)
+      ), na.rm = TRUE) / 1e6
+      unlink(td, recursive = TRUE)
+      deleted <- c(deleted, td)
+      if (verbose) {
+        message(sprintf("Deleted %s/ (%.1f MB, %d files)",
+                        category, size_mb, n_files))
+      }
+    } else {
+      if (verbose) message(sprintf("No cached data for category '%s'", category))
+    }
+  }
+
+  invisible(deleted)
+}
+
+
+#' @noRd
+.warn_legacy_dirs <- function(cache_dir, verbose = TRUE) {
+  if (!verbose) return(invisible(NULL))
+  legacy <- .legacy_subdirs()
+  found <- vapply(legacy, function(d) dir.exists(file.path(cache_dir, d)),
+                  logical(1))
+  if (any(found)) {
+    dirs <- legacy[found]
+    message(sprintf(
+      "\n  Note: Legacy cache directories found: %s",
+      paste(dirs, collapse = ", ")
+    ))
+    message("  These are from an older version and are no longer used.")
+    message("  Run interpElections_cache(delete_file = \"all\") to clear and rebuild.")
+  }
+}
+
+
 # --- Internal download helper ---
 
 #' @noRd
 .interpElections_download <- function(
     url,
     filename,
-    subdir  = "tse",
+    subdir  = .cache_subdirs()$votes,
     cache   = TRUE,
     force   = FALSE,
     verbose = TRUE

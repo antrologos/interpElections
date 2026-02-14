@@ -14,8 +14,8 @@ travel-time-based IDW, with optional GPU acceleration via torch.
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/rogeriobarbosa/interpolacao_eleitoral}
-  \item Report bugs at \url{https://github.com/rogeriobarbosa/interpolacao_eleitoral/issues}
+  \item \url{https://github.com/antrologos/interpElections}
+  \item Report bugs at \url{https://github.com/antrologos/interpElections/issues}
 }
 
 }

@@ -104,7 +104,7 @@ download_r5r_data <- function(
     # Download the state-level .pbf to the persistent cache so it
     # can be reused across municipalities in the same state
     osm_cache_dir <- file.path(
-      get_interpElections_cache_dir(), "osm_extracts"
+      get_interpElections_cache_dir(), .cache_subdirs()$osm
     )
     if (!dir.exists(osm_cache_dir)) {
       dir.create(osm_cache_dir, recursive = TRUE)

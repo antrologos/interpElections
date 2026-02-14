@@ -4,14 +4,24 @@
 \alias{interpElections_cache}
 \title{Manage the interpElections download cache}
 \usage{
-interpElections_cache(list_files = TRUE, delete_file = NULL, verbose = TRUE)
+interpElections_cache(
+  list_files = TRUE,
+  delete_file = NULL,
+  details = FALSE,
+  verbose = TRUE
+)
 }
 \arguments{
-\item{list_files}{Logical. If TRUE (default), prints and returns
-cached file paths.}
+\item{list_files}{Logical. If TRUE (default), prints a per-category
+summary and returns cached file paths.}
 
 \item{delete_file}{Character or NULL. A pattern to match files for
-deletion (uses \code{grepl()}), or \code{"all"} to delete the entire cache.}
+deletion (matched against relative paths via \code{grepl()}), or
+\code{"all"} to delete the entire cache. For targeted deletion by
+category, see \code{\link[=interpElections_cache_clean]{interpElections_cache_clean()}}.}
+
+\item{details}{Logical. If TRUE, also prints individual filenames
+within each category. Default: FALSE.}
 
 \item{verbose}{Logical. Print messages. Default: TRUE.}
 }
@@ -20,16 +30,20 @@ Invisibly returns a character vector of cached file paths
 (before any deletion).
 }
 \description{
-Lists or deletes cached files. Use \code{delete_file = "all"} to clear
-the entire cache.
+Lists or deletes cached files. By default shows a per-category size
+breakdown. Use \code{details = TRUE} to see individual files.
+Use \code{delete_file = "all"} to clear the entire cache.
 }
 \examples{
 \dontrun{
-# List all cached files
+# Per-category summary
 interpElections_cache()
 
-# Delete all TSE files
-interpElections_cache(delete_file = "tse")
+# Detailed listing (every file)
+interpElections_cache(details = TRUE)
+
+# Delete files matching a pattern
+interpElections_cache(delete_file = "2020")
 
 # Delete everything
 interpElections_cache(delete_file = "all")
@@ -37,10 +51,13 @@ interpElections_cache(delete_file = "all")
 
 }
 \seealso{
-\code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}, \code{\link[=set_interpElections_cache_dir]{set_interpElections_cache_dir()}}
+\code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}},
+\code{\link[=set_interpElections_cache_dir]{set_interpElections_cache_dir()}},
+\code{\link[=interpElections_cache_clean]{interpElections_cache_clean()}}
 
 Other cache: 
 \code{\link{get_interpElections_cache_dir}()},
+\code{\link{interpElections_cache_clean}()},
 \code{\link{set_interpElections_cache_dir}()}
 }
 \concept{cache}
