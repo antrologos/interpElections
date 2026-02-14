@@ -1,0 +1,82 @@
+---
+title: "Getting Started with interpElections"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with interpElections}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Overview
+
+**interpElections** implements spatial interpolation from geolocated source
+points (e.g., polling locations) into target polygons (e.g., census tracts)
+using inverse distance weighting (IDW) with per-zone optimized decay
+parameters.
+
+The core idea: given travel times from each target zone to each source
+point, find the decay parameters (alpha) that best match the interpolated
+source counts to the known population in each zone. Then use those
+optimized weights to interpolate any variable from source points into
+target zones.
+
+## Quick Example
+
+```{r example, eval = FALSE}
+library(interpElections)
+
+# Load example data
+tt <- readRDS(system.file("extdata/example_tt_matrix.rds", package = "interpElections"))
+pop <- readRDS(system.file("extdata/example_pop_matrix.rds", package = "interpElections"))
+src <- readRDS(system.file("extdata/example_source_matrix.rds", package = "interpElections"))
+
+# Step 1: Find optimal decay parameters
+result <- optimize_alpha(
+  time_matrix = tt,
+  pop_matrix = pop,
+  source_matrix = src,
+  use_gpu = FALSE,
+  verbose = TRUE
+)
+print(result)
+
+# Step 2: Interpolate any source data into target zones
+candidate_votes <- matrix(rpois(8, 500), nrow = 8)
+colnames(candidate_votes) <- "votes"
+interpolated <- idw_interpolate(tt, result$alpha, candidate_votes)
+head(interpolated)
+```
+
+## GPU Acceleration
+
+For large problems (thousands of zones), enable GPU acceleration:
+
+```{r gpu, eval = FALSE}
+# Toggle GPU globally
+use_gpu(enable = TRUE)
+
+# Or per-call
+result <- optimize_alpha(tt, pop, src, use_gpu = TRUE)
+```
+
+See `vignette("gpu-setup")` for installation and configuration details.
+
+## The Mathematical Model
+
+The interpolation minimizes:
+
+$$L(\alpha) = \sum_i \sum_k (\hat{v}_{ik} - p_{ik})^2$$
+
+where:
+
+$$\hat{v}_{ik} = \sum_j W_{ij} \cdot v_{jk}$$
+$$W_{ij} = \frac{(t_{ij} + 1)^{-\alpha_i}}{\sum_{i'} (t_{i'j} + 1)^{-\alpha_{i'}}}$$
+
+- $t_{ij}$: travel time from zone $i$ to source point $j$
+- $\alpha_i$: decay parameter for zone $i$ (optimized)
+- $v_{jk}$: count at source point $j$, demographic group $k$
+- $p_{ik}$: known population at zone $i$, group $k$

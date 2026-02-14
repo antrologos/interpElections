@@ -1,0 +1,49 @@
+Package: interpElections
+Title: Spatial Interpolation of Electoral Data via Inverse Distance Weighting
+Version: 0.1.0
+Authors@R: c(
+    person("Rogerio", "Barbosa", role = c("aut", "cre"),
+           email = "rogerio.barbosa@iesp.uerj.br"),
+    person("Lucas", "Gelape", role = "aut"))
+Description: Interpolates voting counts and electoral demographics from
+    polling locations into census tracts using inverse distance weighting
+    with per-zone optimized decay parameters. Travel-time matrices are
+    computed via the r5r routing engine. Supports GPU-accelerated
+    optimization via torch (ADAM) and CPU fallback via L-BFGS-B.
+    Includes end-to-end helpers for Brazilian electoral data that
+    auto-download census, electoral, and road network data.
+License: MIT + file LICENSE
+URL: https://github.com/antrologos/interpElections
+BugReports: https://github.com/antrologos/interpElections/issues
+Encoding: UTF-8
+SystemRequirements: Java (>= 21) for r5r travel-time computation
+Depends: R (>= 4.1.0)
+Imports:
+    stats,
+    utils,
+    curl
+Suggests:
+    torch,
+    optimParallel,
+    parallel,
+    sf,
+    r5r,
+    osmextract,
+    elevatr,
+    terra,
+    geobr,
+    censobr,
+    dplyr,
+    tidyr,
+    stringr,
+    arrow,
+    data.table,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    numDeriv
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2

@@ -1,0 +1,18 @@
+# R package build artifacts
+*.tar.gz
+*.Rcheck/
+
+# RStudio project files
+.Rproj.user/
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+
+# Byte-compiled / optimized
+*.o
+*.so
+*.dll
+
+# Installed package
+interpElections.Rcheck/

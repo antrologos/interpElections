@@ -1,0 +1,99 @@
+---
+title: "GPU Configuration Guide"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{GPU Configuration Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Quick Diagnostic
+
+Run the built-in diagnostic to check if your GPU setup is working:
+
+```{r diag, eval = FALSE}
+library(interpElections)
+check_torch()
+```
+
+If any checks fail, the automated setup can fix most issues:
+
+```{r auto_setup, eval = FALSE}
+setup_torch()                    # auto-detect and install
+setup_torch(reinstall = TRUE)    # fix broken CUDA install
+```
+
+## When GPU Helps
+
+GPU acceleration is most beneficial for large municipalities with many
+census tracts (> 1000 zones). For small problems (< 500 zones), CPU
+optimization is typically fast enough.
+
+## Installing torch
+
+The easiest way is via `setup_torch()`, which handles everything:
+
+```{r install_easy, eval = FALSE}
+library(interpElections)
+setup_torch()
+```
+
+Or manually:
+
+```{r install_manual, eval = FALSE}
+install.packages("torch")
+torch::install_torch()
+```
+
+## Enabling GPU in interpElections
+
+```{r toggle, eval = FALSE}
+library(interpElections)
+
+# Option 1: Global toggle
+use_gpu(enable = TRUE)                    # auto-detect device
+use_gpu(enable = TRUE, device = "cuda")   # force CUDA
+use_gpu(enable = TRUE, device = "mps")    # force Apple Metal
+
+# Option 2: Per-call
+result <- optimize_alpha(tt, pop, src, use_gpu = TRUE)
+
+# Disable
+use_gpu(enable = FALSE)
+```
+
+## float32 vs float64
+
+- **float64** (default): Higher precision, safer convergence.
+  Recommended for most use cases.
+- **float32**: Faster, uses less GPU memory. Use for very large
+  problems where precision is less critical.
+
+```{r dtype, eval = FALSE}
+use_gpu(enable = TRUE, dtype = "float32")
+```
+
+## Troubleshooting
+
+Start by running the diagnostic:
+
+```{r troubleshoot, eval = FALSE}
+check_torch()
+```
+
+Common issues:
+
+- **"torch package not installed"**: Run `setup_torch()`.
+- **"libtorch/lantern binaries not installed"**: Run `setup_torch()`.
+- **"GPU tensor test: FAILED"**: The libtorch binaries were built
+  without GPU support. Run `setup_torch(reinstall = TRUE)`.
+- **"No GPU device detected"**: Your machine may not have a supported
+  GPU (NVIDIA with CUDA or Apple Silicon with MPS). CPU optimization
+  will be used automatically.
+- **Out of memory**: Try `dtype = "float32"` or reduce problem size.
+- **"Must restart R"**: If you installed new binaries while torch was
+  already loaded, restart R and run `check_torch()` to verify.
