@@ -10,7 +10,6 @@ br_download_turnout(
   code_muni_tse = NULL,
   cargo = NULL,
   turno = 1L,
-  temp_dir = NULL,
   force = FALSE,
   cache = TRUE,
   verbose = TRUE
@@ -29,10 +28,6 @@ If provided, filters results to this municipality only.}
 If NULL, uses any office (turnout is the same across offices).}
 
 \item{turno}{Integer. Election round (1 or 2). Default: 1.}
-
-\item{temp_dir}{Character or NULL. \strong{Deprecated.} Use \code{cache} instead.
-If provided, files are stored in this directory (session-ephemeral).
-Default: NULL (uses persistent cache).}
 
 \item{force}{Logical. Re-download even if cached file exists.
 Default: FALSE.}

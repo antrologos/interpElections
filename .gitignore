@@ -5,7 +5,7 @@
 # RStudio project files
 .Rproj.user/
 .Rhistory
-.Rdata
+.RData
 .httr-oauth
 .DS_Store
 
@@ -16,3 +16,10 @@
 
 # Installed package
 interpElections.Rcheck/
+
+# Test artifacts
+tests/testthat/Rplots.pdf
+
+# Vignette build artifacts
+vignettes/*.R
+vignettes/*.html

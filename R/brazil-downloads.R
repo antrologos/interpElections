@@ -12,9 +12,6 @@
 #' @param cargo Integer or NULL. Electoral office code to filter
 #'   (e.g., 13 = Vereador, 11 = Prefeito). If NULL, returns all offices.
 #' @param turno Integer. Election round (1 or 2). Default: 1.
-#' @param temp_dir Character or NULL. **Deprecated.** Use `cache` instead.
-#'   If provided, files are stored in this directory (session-ephemeral).
-#'   Default: NULL (uses persistent cache).
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
@@ -62,7 +59,6 @@ br_download_votes <- function(
     code_muni_tse = NULL,
     cargo = NULL,
     turno = 1L,
-    temp_dir = NULL,
     force = FALSE,
     cache = TRUE,
     verbose = TRUE
@@ -86,31 +82,11 @@ br_download_votes <- function(
 
   zip_name <- sprintf("votacao_secao_%d_%s.zip", year, uf)
 
-  # Use temp_dir if explicitly provided (backward compat), otherwise cache
-  if (!is.null(temp_dir)) {
-    zip_path <- file.path(temp_dir, zip_name)
-    if (!file.exists(zip_path) || force) {
-      if (verbose) message(sprintf("Downloading candidate votes (%s %d)...", uf, year))
-      tryCatch(
-        utils::download.file(url, zip_path, mode = "wb", quiet = !verbose),
-        error = function(e) {
-          if (file.exists(zip_path)) unlink(zip_path)
-          stop(sprintf(
-            "Failed to download vote data from TSE for %s %d.\nURL: %s\nError: %s",
-            uf, year, url, e$message
-          ), call. = FALSE)
-        }
-      )
-    } else {
-      if (verbose) message(sprintf("Using cached vote file: %s", zip_path))
-    }
-  } else {
-    if (verbose) message(sprintf("Candidate votes (%s %d)...", uf, year))
-    zip_path <- .interpElections_download(
-      url = url, filename = zip_name, subdir = .cache_subdirs()$votes,
-      cache = cache, force = force, verbose = verbose
-    )
-  }
+  if (verbose) message(sprintf("Candidate votes (%s %d)...", uf, year))
+  zip_path <- .interpElections_download(
+    url = url, filename = zip_name, subdir = .cache_subdirs()$votes,
+    cache = cache, force = force, verbose = verbose
+  )
 
   # Extract CSV from ZIP (to temp dir — CSV is transient)
   csv_files <- utils::unzip(zip_path, list = TRUE)$Name
@@ -192,9 +168,6 @@ br_download_votes <- function(
 #' @param cargo Integer or NULL. Electoral office code to filter.
 #'   If NULL, uses any office (turnout is the same across offices).
 #' @param turno Integer. Election round (1 or 2). Default: 1.
-#' @param temp_dir Character or NULL. **Deprecated.** Use `cache` instead.
-#'   If provided, files are stored in this directory (session-ephemeral).
-#'   Default: NULL (uses persistent cache).
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
@@ -233,7 +206,6 @@ br_download_turnout <- function(
     code_muni_tse = NULL,
     cargo = NULL,
     turno = 1L,
-    temp_dir = NULL,
     force = FALSE,
     cache = TRUE,
     verbose = TRUE
@@ -257,35 +229,11 @@ br_download_turnout <- function(
 
   zip_name <- sprintf("detalhe_votacao_secao_%d.zip", year)
 
-  # Use temp_dir if explicitly provided (backward compat), otherwise cache
-  if (!is.null(temp_dir)) {
-    zip_path <- file.path(temp_dir, zip_name)
-    if (!file.exists(zip_path) || force) {
-      if (verbose) {
-        message(sprintf(
-          "Downloading turnout data (%d, nationwide file)...", year
-        ))
-      }
-      tryCatch(
-        utils::download.file(url, zip_path, mode = "wb", quiet = !verbose),
-        error = function(e) {
-          if (file.exists(zip_path)) unlink(zip_path)
-          stop(sprintf(
-            "Failed to download turnout data from TSE for %d.\nURL: %s\nError: %s",
-            year, url, e$message
-          ), call. = FALSE)
-        }
-      )
-    } else {
-      if (verbose) message(sprintf("Using cached turnout file: %s", zip_path))
-    }
-  } else {
-    if (verbose) message(sprintf("Turnout data (%d, nationwide)...", year))
-    zip_path <- .interpElections_download(
-      url = url, filename = zip_name, subdir = .cache_subdirs()$turnout,
-      cache = cache, force = force, verbose = verbose
-    )
-  }
+  if (verbose) message(sprintf("Turnout data (%d, nationwide)...", year))
+  zip_path <- .interpElections_download(
+    url = url, filename = zip_name, subdir = .cache_subdirs()$turnout,
+    cache = cache, force = force, verbose = verbose
+  )
 
   # Extract CSV from ZIP (to temp dir — CSV is transient)
   csv_files <- utils::unzip(zip_path, list = TRUE)$Name
@@ -374,9 +322,6 @@ br_download_turnout <- function(
 #'   provided, filters results to this state.
 #' @param code_muni_tse Character or NULL. 5-digit TSE municipality code.
 #'   If provided, filters results to this municipality only.
-#' @param temp_dir Character or NULL. **Deprecated.** Use `cache` instead.
-#'   If provided, files are stored in this directory (session-ephemeral).
-#'   Default: NULL (uses persistent cache).
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
@@ -418,7 +363,6 @@ br_download_geocode <- function(
     year,
     uf              = NULL,
     code_muni_tse   = NULL,
-    temp_dir        = NULL,
     force           = FALSE,
     cache           = TRUE,
     verbose         = TRUE
@@ -442,62 +386,23 @@ br_download_geocode <- function(
 
   zip_name <- sprintf("eleitorado_local_votacao_%d.zip", year)
 
-  # Use temp_dir if explicitly provided (backward compat), otherwise cache
-  if (!is.null(temp_dir)) {
-    zip_path <- file.path(temp_dir, zip_name)
-    if (!file.exists(zip_path) || force) {
+  if (verbose) message(sprintf("Polling station locations (%d)...", year))
+  zip_path <- tryCatch(
+    .interpElections_download(
+      url = url, filename = zip_name, subdir = .cache_subdirs()$geocode,
+      cache = cache, force = force, verbose = verbose
+    ),
+    error = function(e) {
       if (verbose) {
-        message(sprintf("Downloading polling station locations (%d)...", year))
+        message(sprintf(
+          "  TSE geocoded data not available for %d (no file at TSE CDN)",
+          year
+        ))
       }
-      dl_result <- tryCatch(
-        {
-          utils::download.file(url, zip_path, mode = "wb", quiet = !verbose)
-          TRUE
-        },
-        error = function(e) {
-          if (file.exists(zip_path)) unlink(zip_path)
-          FALSE
-        },
-        warning = function(w) {
-          if (file.exists(zip_path)) {
-            if (file.size(zip_path) < 1000) {
-              unlink(zip_path)
-              return(FALSE)
-            }
-          }
-          TRUE
-        }
-      )
-      if (!dl_result) {
-        if (verbose) {
-          message(sprintf(
-            "  TSE geocoded data not available for %d (no file at TSE CDN)", year
-          ))
-        }
-        return(NULL)
-      }
-    } else {
-      if (verbose) message(sprintf("Using cached geocode file: %s", zip_path))
+      NULL
     }
-  } else {
-    if (verbose) message(sprintf("Polling station locations (%d)...", year))
-    zip_path <- tryCatch(
-      .interpElections_download(
-        url = url, filename = zip_name, subdir = .cache_subdirs()$geocode,
-        cache = cache, force = force, verbose = verbose
-      ),
-      error = function(e) {
-        if (verbose) {
-          message(sprintf(
-            "  TSE geocoded data not available for %d (no file at TSE CDN)",
-            year
-          ))
-        }
-        NULL
-      }
-    )
-    if (is.null(zip_path)) return(NULL)
-  }
+  )
+  if (is.null(zip_path)) return(NULL)
 
   # Verify the ZIP is valid
   csv_files <- tryCatch(

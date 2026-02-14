@@ -17,11 +17,6 @@
   )
 }
 
-# Legacy subdirectory names (pre-v0.2.0)
-.legacy_subdirs <- function() {
-  c("tse", "hidalgo", "osm_extracts", "r5r_networks", "geobr_tracts", "computed")
-}
-
 
 # --- Cache directory management ---
 
@@ -187,8 +182,6 @@ interpElections_cache <- function(
         }
       }
 
-      # Detect legacy directories
-      .warn_legacy_dirs(cache_dir, verbose = TRUE)
     }
   }
 
@@ -319,24 +312,6 @@ interpElections_cache_clean <- function(
   }
 
   invisible(deleted)
-}
-
-
-#' @noRd
-.warn_legacy_dirs <- function(cache_dir, verbose = TRUE) {
-  if (!verbose) return(invisible(NULL))
-  legacy <- .legacy_subdirs()
-  found <- vapply(legacy, function(d) dir.exists(file.path(cache_dir, d)),
-                  logical(1))
-  if (any(found)) {
-    dirs <- legacy[found]
-    message(sprintf(
-      "\n  Note: Legacy cache directories found: %s",
-      paste(dirs, collapse = ", ")
-    ))
-    message("  These are from an older version and are no longer used.")
-    message("  Run interpElections_cache(delete_file = \"all\") to clear and rebuild.")
-  }
 }
 
 

@@ -18,7 +18,6 @@ br_prepare_electoral(
   comparecimento_path = NULL,
   votacao_path = NULL,
   geocode_path = NULL,
-  temp_dir = NULL,
   cache = TRUE,
   force = FALSE,
   verbose = TRUE
@@ -122,10 +121,6 @@ file. If NULL (the default), downloads from TSE.}
 polling station coordinates (columns: \code{nr_zona},
 \code{nr_local_votacao}, \code{lat}, \code{long}). If NULL, coordinates are
 obtained from TSE and Danny Hidalgo's geocoding project.}
-
-\item{temp_dir}{Character or NULL. \strong{Deprecated.} Use \code{cache} instead.
-If provided, files are stored in this directory (session-ephemeral).
-Default: NULL (uses persistent cache).}
 
 \item{cache}{Logical. If TRUE (default), downloaded files are stored
 persistently. See \code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}.}

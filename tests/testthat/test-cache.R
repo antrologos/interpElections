@@ -218,38 +218,6 @@ test_that("interpElections_cache_clean on empty category is silent", {
 })
 
 
-# --- Legacy directory detection ---
-
-test_that(".warn_legacy_dirs detects old subdirectory names", {
-  tmp <- .with_temp_cache()
-
-  # Create a legacy directory
-  dir.create(file.path(tmp, "tse"), recursive = TRUE)
-  writeLines("old", file.path(tmp, "tse", "old_file.zip"))
-
-  out <- capture.output(
-    interpElections:::.warn_legacy_dirs(tmp, verbose = TRUE),
-    type = "message"
-  )
-  combined <- paste(out, collapse = "\n")
-  expect_true(grepl("Legacy", combined, ignore.case = TRUE))
-  expect_true(grepl("tse", combined))
-})
-
-test_that(".warn_legacy_dirs is silent when no legacy dirs exist", {
-  tmp <- .with_temp_cache()
-
-  # Only new-style directories
-  dir.create(file.path(tmp, "downloads", "votes"), recursive = TRUE)
-
-  out <- capture.output(
-    interpElections:::.warn_legacy_dirs(tmp, verbose = TRUE),
-    type = "message"
-  )
-  expect_length(out, 0)
-})
-
-
 # --- .cache_message ---
 
 test_that(".cache_message produces expected messages", {

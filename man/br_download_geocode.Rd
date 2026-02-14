@@ -8,7 +8,6 @@ br_download_geocode(
   year,
   uf = NULL,
   code_muni_tse = NULL,
-  temp_dir = NULL,
   force = FALSE,
   cache = TRUE,
   verbose = TRUE
@@ -22,10 +21,6 @@ provided, filters results to this state.}
 
 \item{code_muni_tse}{Character or NULL. 5-digit TSE municipality code.
 If provided, filters results to this municipality only.}
-
-\item{temp_dir}{Character or NULL. \strong{Deprecated.} Use \code{cache} instead.
-If provided, files are stored in this directory (session-ephemeral).
-Default: NULL (uses persistent cache).}
 
 \item{force}{Logical. Re-download even if cached file exists.
 Default: FALSE.}

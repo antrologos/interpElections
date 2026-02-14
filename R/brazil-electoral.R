@@ -96,9 +96,6 @@
 #'   polling station coordinates (columns: `nr_zona`,
 #'   `nr_local_votacao`, `lat`, `long`). If NULL, coordinates are
 #'   obtained from TSE and Danny Hidalgo's geocoding project.
-#' @param temp_dir Character or NULL. **Deprecated.** Use `cache` instead.
-#'   If provided, files are stored in this directory (session-ephemeral).
-#'   Default: NULL (uses persistent cache).
 #' @param cache Logical. If TRUE (default), downloaded files are stored
 #'   persistently. See [get_interpElections_cache_dir()].
 #' @param force Logical. Re-download even if cached file exists.
@@ -221,7 +218,6 @@ br_prepare_electoral <- function(
     comparecimento_path = NULL,
     votacao_path = NULL,
     geocode_path = NULL,
-    temp_dir = NULL,
     cache = TRUE,
     force = FALSE,
     verbose = TRUE
@@ -280,19 +276,10 @@ br_prepare_electoral <- function(
     )
     zip_name <- basename(url_perfil)
 
-    if (!is.null(temp_dir)) {
-      # Backward compat: use temp_dir
-      zip_path <- file.path(temp_dir, zip_name)
-      if (!file.exists(zip_path) || force) {
-        utils::download.file(url_perfil, zip_path,
-                             mode = "wb", quiet = !verbose)
-      }
-    } else {
-      zip_path <- .interpElections_download(
-        url = url_perfil, filename = zip_name, subdir = .cache_subdirs()$profile,
-        cache = cache, force = force, verbose = verbose
-      )
-    }
+    zip_path <- .interpElections_download(
+      url = url_perfil, filename = zip_name, subdir = .cache_subdirs()$profile,
+      cache = cache, force = force, verbose = verbose
+    )
 
     csv_files <- utils::unzip(zip_path, list = TRUE)$Name
     csv_file <- grep("\\.csv$", csv_files, value = TRUE,
@@ -426,7 +413,7 @@ br_prepare_electoral <- function(
       tse_presidente <- br_download_votes(
         year = year, uf = "BR", code_muni_tse = code_muni_tse,
         cargo = presidente_code, turno = turno,
-        temp_dir = temp_dir, force = force,
+        force = force,
         cache = cache, verbose = verbose
       )
 
@@ -442,7 +429,7 @@ br_prepare_electoral <- function(
         tse_state <- br_download_votes(
           year = year, uf = uf, code_muni_tse = code_muni_tse,
           cargo = download_other, turno = turno,
-          temp_dir = temp_dir, force = force,
+          force = force,
           cache = cache, verbose = verbose
         )
         common_cols <- intersect(names(tse_presidente), names(tse_state))
@@ -458,7 +445,7 @@ br_prepare_electoral <- function(
       tse_votos_all <- br_download_votes(
         year = year, uf = uf, code_muni_tse = code_muni_tse,
         cargo = download_cargo, turno = turno,
-        temp_dir = temp_dir, force = force,
+        force = force,
         cache = cache, verbose = verbose
       )
     }
@@ -645,7 +632,6 @@ br_prepare_electoral <- function(
       code_muni_tse = code_muni_tse,
       code_muni_ibge = code_muni_ibge,
       uf = uf,
-      temp_dir = temp_dir,
       cache = cache,
       force = force,
       verbose = verbose
@@ -850,7 +836,6 @@ br_prepare_electoral <- function(
     code_muni_tse,
     code_muni_ibge,
     uf,
-    temp_dir = NULL,
     cache    = TRUE,
     force    = FALSE,
     verbose  = TRUE
@@ -862,8 +847,7 @@ br_prepare_electoral <- function(
   tse_locs <- NULL
   tse_data <- br_download_geocode(
     year = year, uf = uf, code_muni_tse = code_muni_tse,
-    temp_dir = temp_dir, cache = cache, force = force,
-    verbose = verbose
+    cache = cache, force = force, verbose = verbose
   )
 
   if (!is.null(tse_data) && nrow(tse_data) > 0) {

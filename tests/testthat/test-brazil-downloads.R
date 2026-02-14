@@ -8,8 +8,8 @@ test_that("br_download_votes has correct signature", {
   expect_true("code_muni_tse" %in% fmls)
   expect_true("cargo" %in% fmls)
   expect_true("turno" %in% fmls)
-  expect_true("temp_dir" %in% fmls)
   expect_true("force" %in% fmls)
+  expect_true("cache" %in% fmls)
   expect_true("verbose" %in% fmls)
 })
 
@@ -21,8 +21,8 @@ test_that("br_download_turnout has correct signature", {
   expect_true("code_muni_tse" %in% fmls)
   expect_true("cargo" %in% fmls)
   expect_true("turno" %in% fmls)
-  expect_true("temp_dir" %in% fmls)
   expect_true("force" %in% fmls)
+  expect_true("cache" %in% fmls)
   expect_true("verbose" %in% fmls)
 })
 
@@ -42,12 +42,11 @@ test_that("br_download_votes downloads Boa Vista 2008 data", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("stringr")
 
-  temp <- tempdir()
   # Boa Vista TSE code is 03018 (not 03611)
   result <- br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
-    temp_dir = temp, verbose = FALSE
+    cache = FALSE, verbose = FALSE
   )
 
   expect_true(is.data.frame(result))
@@ -68,25 +67,19 @@ test_that("br_download_votes caches ZIP file", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("stringr")
 
-  temp <- tempdir()
-  zip_path <- file.path(temp, "votacao_secao_2008_RR.zip")
-
   # First call downloads
   result1 <- br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
-    temp_dir = temp, verbose = FALSE
+    verbose = FALSE
   )
-  expect_true(file.exists(zip_path))
 
   # Second call uses cache (faster)
-  t1 <- Sys.time()
   result2 <- br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
-    temp_dir = temp, verbose = FALSE
+    verbose = FALSE
   )
-  t2 <- Sys.time()
 
   expect_equal(nrow(result1), nrow(result2))
 })
@@ -108,8 +101,8 @@ test_that("br_download_geocode has correct signature", {
   expect_true("year" %in% fmls)
   expect_true("uf" %in% fmls)
   expect_true("code_muni_tse" %in% fmls)
-  expect_true("temp_dir" %in% fmls)
   expect_true("force" %in% fmls)
+  expect_true("cache" %in% fmls)
   expect_true("verbose" %in% fmls)
 })
 
@@ -122,7 +115,7 @@ test_that("br_download_geocode returns NULL for 2008 (no TSE data)", {
   skip_if_offline()
   result <- br_download_geocode(
     year = 2008, uf = "RR",
-    temp_dir = tempdir(), verbose = FALSE
+    cache = FALSE, verbose = FALSE
   )
   expect_null(result)
 })
@@ -135,7 +128,7 @@ test_that("br_download_geocode downloads 2020 RR data", {
 
   result <- br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
-    temp_dir = tempdir(), verbose = FALSE
+    cache = FALSE, verbose = FALSE
   )
 
   expect_true(is.data.frame(result))
@@ -163,20 +156,16 @@ test_that("br_download_geocode caches ZIP file", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("stringr")
 
-  temp <- tempdir()
-  zip_path <- file.path(temp, "eleitorado_local_votacao_2020.zip")
-
   # First call downloads (may already be cached from previous test)
   result1 <- br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
-    temp_dir = temp, verbose = FALSE
+    verbose = FALSE
   )
-  expect_true(file.exists(zip_path))
 
   # Second call uses cache
   result2 <- br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
-    temp_dir = temp, verbose = FALSE
+    verbose = FALSE
   )
   expect_equal(nrow(result1), nrow(result2))
 })
