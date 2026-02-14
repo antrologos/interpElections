@@ -1,0 +1,216 @@
+# S3 methods for interpElections_result objects
+# summary(), plot(), as.data.frame(), coef(), residuals()
+
+#' Summarize an interpElections result
+#'
+#' Prints a detailed summary including calibration information,
+#' optimization details, and per-variable statistics.
+#'
+#' @param object An `interpElections_result` object.
+#' @param ... Ignored.
+#'
+#' @return Invisibly returns `object`.
+#'
+#' @exportS3Method
+summary.interpElections_result <- function(object, ...) {
+  x <- object
+  cat("interpElections result summary\n")
+  cat(paste(rep("-", 50), collapse = ""), "\n")
+
+  # Header
+  if (!is.null(x$code_muni)) {
+    cat(sprintf("Municipality: %s (election %d, census %d)\n",
+                x$code_muni, x$year, x$census_year))
+  }
+
+  n <- nrow(x$interpolated)
+  m <- nrow(x$sources)
+  p <- ncol(x$interpolated)
+  cat(sprintf("Zones: %d | Sources: %d | Variables: %d\n\n", n, m, p))
+
+  # Calibration info
+  if (!is.null(x$calib_cols)) {
+    cat("Calibration brackets:\n")
+    cat(sprintf("  Zones:   %s\n",
+                paste(x$calib_cols$zones, collapse = ", ")))
+    cat(sprintf("  Sources: %s\n\n",
+                paste(x$calib_cols$sources, collapse = ", ")))
+  }
+
+  # Optimization
+  if (!is.null(x$optimization)) {
+    cat(sprintf("Optimization: %s | Objective: %.4f | Convergence: %d\n",
+                x$optimization$method, x$optimization$value,
+                x$optimization$convergence))
+  } else {
+    cat("Optimization: skipped (alpha user-supplied)\n")
+  }
+
+  # Alpha distribution (always shown)
+  q <- stats::quantile(x$alpha, c(0.25, 0.5, 0.75))
+  cat(sprintf(
+    "  Alpha: min=%.3f, Q1=%.3f, median=%.3f, Q3=%.3f, max=%.3f\n\n",
+    min(x$alpha), q[1], q[2], q[3], max(x$alpha)
+  ))
+
+  # Per-variable summary
+  cat("Interpolated variables:\n")
+  mat <- x$interpolated
+  for (col in colnames(mat)) {
+    v <- mat[, col]
+    cat(sprintf("  %-30s total=%10.0f  mean=%8.1f  [%.1f, %.1f]\n",
+                col, sum(v), mean(v), min(v), max(v)))
+  }
+
+  # Object size
+  cat(sprintf("\nObject size: %.1f MB",
+              as.numeric(utils::object.size(x)) / 1e6))
+  has_w <- !is.null(x$weights)
+  has_t <- !is.null(x$time_matrix)
+  has_s <- !is.null(x$sources_sf)
+  if (!has_w && !has_t && !has_s) {
+    cat(" (lightweight)")
+  }
+  cat("\n")
+
+  invisible(x)
+}
+
+
+#' Plot an interpolated variable on a map
+#'
+#' Produces a quick choropleth map of an interpolated variable using
+#' the `tracts_sf` stored in the result object.
+#'
+#' @param x An `interpElections_result` object.
+#' @param var Character. Name of the variable to plot. Must be one of
+#'   `x$interp_cols`. If NULL, plots the first interpolated variable.
+#' @param ... Additional arguments passed to [plot.sf()][sf::plot.sf].
+#'
+#' @return Invisibly returns `x`.
+#'
+#' @exportS3Method
+plot.interpElections_result <- function(x, var = NULL, ...) {
+  if (!requireNamespace("sf", quietly = TRUE)) {
+    stop("The 'sf' package is required for plot()", call. = FALSE)
+  }
+  if (is.null(x$tracts_sf)) {
+    stop("No tracts_sf in result object", call. = FALSE)
+  }
+
+  if (is.null(var)) var <- x$interp_cols[1]
+  if (!var %in% names(x$tracts_sf)) {
+    avail <- x$interp_cols
+    if (length(avail) > 5) {
+      avail_str <- paste(c(avail[1:5],
+        sprintf("... and %d more", length(avail) - 5)), collapse = ", ")
+    } else {
+      avail_str <- paste(avail, collapse = ", ")
+    }
+    stop(sprintf("Variable '%s' not found. Available: %s",
+                 var, avail_str),
+         call. = FALSE)
+  }
+
+  plot(x$tracts_sf[var], main = var, ...)
+  invisible(x)
+}
+
+
+#' Convert result to data frame
+#'
+#' Drops geometry from `tracts_sf` and returns a plain data frame with
+#' zone IDs and interpolated values.
+#'
+#' @param x An `interpElections_result` object.
+#' @param ... Ignored.
+#'
+#' @return A data frame.
+#'
+#' @exportS3Method
+as.data.frame.interpElections_result <- function(x, ...) {
+  if (!is.null(x$tracts_sf) && requireNamespace("sf", quietly = TRUE)) {
+    sf::st_drop_geometry(x$tracts_sf)
+  } else {
+    as.data.frame(x$interpolated)
+  }
+}
+
+
+#' Extract alpha coefficients
+#'
+#' Returns the alpha decay parameter vector, which plays the role of
+#' "coefficients" in the IDW model.
+#'
+#' @param object An `interpElections_result` object.
+#' @param ... Ignored.
+#'
+#' @return Numeric vector of length n (one alpha per zone).
+#'
+#' @exportS3Method
+coef.interpElections_result <- function(object, ...) {
+  object$alpha
+}
+
+
+#' Compute calibration residuals
+#'
+#' Returns the matrix of calibration residuals (fitted minus observed)
+#' for each zone and calibration bracket. Requires the weight matrix
+#' or travel time matrix to be present in the result (use
+#' `keep = "weights"` or `keep = "time_matrix"` when running the
+#' interpolation).
+#'
+#' @param object An `interpElections_result` object.
+#' @param ... Ignored.
+#'
+#' @return Numeric matrix \[n x k\] of residuals (fitted - observed),
+#'   where k is the number of calibration brackets.
+#'
+#' @exportS3Method
+residuals.interpElections_result <- function(object, ...) {
+  if (is.null(object$calib_cols) ||
+      length(object$calib_cols$zones) == 0 ||
+      length(object$calib_cols$sources) == 0) {
+    stop("No calibration columns available in result", call. = FALSE)
+  }
+  if (is.null(object$weights) && is.null(object$time_matrix)) {
+    stop(
+      "Cannot compute residuals without weights or time_matrix.\n",
+      "Re-run with keep = c(\"weights\") or keep = c(\"time_matrix\").",
+      call. = FALSE
+    )
+  }
+
+  # Get the weight matrix
+  if (!is.null(object$weights)) {
+    W <- object$weights
+  } else {
+    W <- idw_weights(object$time_matrix, object$alpha, object$offset)
+  }
+
+  # Source calibration values
+  src_mat <- as.matrix(
+    object$sources[, object$calib_cols$sources, drop = FALSE]
+  )
+  storage.mode(src_mat) <- "double"
+
+  # Zone calibration values
+  if (is.null(object$tracts_sf)) {
+    stop("Cannot compute residuals: tracts_sf not available", call. = FALSE)
+  }
+  if (!requireNamespace("sf", quietly = TRUE)) {
+    stop("The 'sf' package is required for residuals()", call. = FALSE)
+  }
+  tracts_df <- sf::st_drop_geometry(object$tracts_sf)
+  pop_mat <- as.matrix(tracts_df[, object$calib_cols$zones, drop = FALSE])
+  storage.mode(pop_mat) <- "double"
+
+  # Fitted = W %*% source_matrix
+  fitted_vals <- W %*% src_mat
+
+  # Residuals = fitted - observed
+  resid <- fitted_vals - pop_mat
+  colnames(resid) <- object$calib_cols$zones
+  resid
+}

@@ -267,8 +267,6 @@ br_prepare_electoral <- function(
       }
     }
   }
-  multi_cargo <- !is.null(cargo) && length(cargo) > 1
-
   code_muni_ibge <- as.character(code_muni_ibge)
   code_muni_tse <- stringr::str_pad(as.character(code_muni_tse), 5, "left", "0")
   uf <- toupper(uf)
@@ -484,7 +482,6 @@ br_prepare_electoral <- function(
       cargo_col <- cargo_col[1]
       if (is.null(cargo)) {
         cargo <- sort(unique(as.integer(tse_votos_all[[cargo_col]])))
-        multi_cargo <- length(cargo) > 1
         if (verbose) {
           cargo_labels <- vapply(cargo, function(c) .br_cargo_label(c), character(1))
           message(sprintf("  Cargos found: %s",
@@ -495,6 +492,7 @@ br_prepare_electoral <- function(
       # No cargo column — treat as single unknown cargo
       if (is.null(cargo)) cargo <- 0L
     }
+    multi_cargo <- length(cargo) > 1
 
     # Section group columns
     grp_cols <- intersect(

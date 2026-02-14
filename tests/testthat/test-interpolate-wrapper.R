@@ -79,8 +79,125 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   expect_equal(result$interpolated, manual, tolerance = 1e-6)
   expect_equal(result$alpha, opt$alpha, tolerance = 1e-6)
   expect_equal(result$optimization$value, opt$value, tolerance = 1e-6)
-  expect_equal(ncol(result$weights), m)
-  expect_equal(nrow(result$weights), n)
+
+  # Lightweight by default: heavy objects are NULL
+  expect_null(result$weights)
+  expect_null(result$time_matrix)
+  expect_null(result$sources_sf)
+
+  # New fields present
+  expect_s3_class(result$tracts_sf, "sf")
+  expect_true(is.data.frame(result$sources))
+  expect_equal(result$zone_id, "zone_id")
+  expect_equal(result$point_id, "point_id")
+  expect_equal(result$interp_cols, src_cols)
+  expect_equal(result$calib_cols$zones, pop_cols)
+  expect_equal(result$calib_cols$sources, src_cols)
+
+  # Brazilian metadata NULL in generic call
+  expect_null(result$code_muni)
+  expect_null(result$year)
+  expect_null(result$census_year)
+  expect_null(result$what)
+  expect_null(result$pop_data)
+})
+
+test_that("interpolate_election() with keep includes heavy objects", {
+  skip_if_not_installed("sf")
+
+  set.seed(42)
+  n <- 10; m <- 5; k <- 3
+  pop_cols <- paste0("pop_", letters[1:k])
+  src_cols <- paste0("src_", letters[1:k])
+
+  tracts <- .mock_tracts_sf(n, pop_cols)
+  sources <- .mock_electoral_sf(m, src_cols)
+  tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
+
+  result <- interpolate_election(
+    tracts_sf = tracts,
+    electoral_sf = sources,
+    zone_id = "zone_id",
+    point_id = "point_id",
+    calib_zones = pop_cols,
+    calib_sources = src_cols,
+    time_matrix = tt,
+    keep = c("weights", "time_matrix"),
+    verbose = FALSE
+  )
+
+  expect_true(is.matrix(result$weights))
+  expect_true(is.matrix(result$time_matrix))
+  expect_equal(dim(result$weights), c(n, m))
+  expect_equal(dim(result$time_matrix), c(n, m))
+})
+
+test_that("interpolate_election() keep sources_sf returns sf object", {
+  skip_if_not_installed("sf")
+
+  set.seed(42)
+  n <- 10; m <- 5; k <- 3
+  pop_cols <- paste0("pop_", letters[1:k])
+  src_cols <- paste0("src_", letters[1:k])
+
+  tracts <- .mock_tracts_sf(n, pop_cols)
+  sources <- .mock_electoral_sf(m, src_cols)
+  tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
+
+  result <- interpolate_election(
+    tracts_sf = tracts,
+    electoral_sf = sources,
+    zone_id = "zone_id",
+    point_id = "point_id",
+    calib_zones = pop_cols,
+    calib_sources = src_cols,
+    time_matrix = tt,
+    keep = "sources_sf",
+    verbose = FALSE
+  )
+
+  expect_s3_class(result$sources_sf, "sf")
+  expect_equal(nrow(result$sources_sf), m)
+  # Without keep, should be NULL
+  expect_null(result$weights)
+  expect_null(result$time_matrix)
+})
+
+test_that("interpolate_election() tracts_sf contains interpolated columns", {
+  skip_if_not_installed("sf")
+
+  set.seed(42)
+  n <- 10; m <- 5
+  pop_cols <- c("pop_a", "pop_b")
+  src_cols <- c("src_a", "src_b")
+  extra <- c("CAND_X", "CAND_Y")
+
+  tracts <- .mock_tracts_sf(n, pop_cols)
+  sources <- .mock_electoral_sf(m, src_cols, extra_cols = extra)
+  tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
+
+  result <- interpolate_election(
+    tracts_sf = tracts,
+    electoral_sf = sources,
+    zone_id = "zone_id",
+    point_id = "point_id",
+    calib_zones = pop_cols,
+    calib_sources = src_cols,
+    interp_sources = extra,
+    time_matrix = tt,
+    verbose = FALSE
+  )
+
+  # tracts_sf should have the interpolated columns
+  expect_true("CAND_X" %in% names(result$tracts_sf))
+  expect_true("CAND_Y" %in% names(result$tracts_sf))
+  expect_equal(result$interp_cols, c("CAND_X", "CAND_Y"))
+
+  # values should match the interpolated matrix
+  expect_equal(
+    result$tracts_sf$CAND_X,
+    as.numeric(result$interpolated[, "CAND_X"])
+  )
 })
 
 test_that("interpolate_election() with pre-supplied alpha skips optimization", {
@@ -309,6 +426,8 @@ test_that("print.interpElections_result works", {
     verbose = FALSE
   )
 
-  expect_output(print(result), "interpElections interpolation result")
+  expect_output(print(result), "interpElections result")
   expect_output(print(result), "Zones:")
+  expect_output(print(result), "Access interpolated sf:")
+  expect_output(print(result), "summary\\(result\\)")
 })

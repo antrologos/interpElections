@@ -22,6 +22,7 @@ interpolate_election_br(
   remove_unpopulated = TRUE,
   osm_buffer_km = 10,
   osm_provider = "openstreetmap_fr",
+  keep = NULL,
   alpha = NULL,
   offset = 1,
   use_gpu = NULL,
@@ -160,6 +161,11 @@ Default: \code{"openstreetmap_fr"} (has state-level extracts for Brazil).
 Alternatives: \code{"geofabrik"}, \code{"bbbike"}. Only used when OSM data is
 auto-downloaded (no \code{network_path} or \code{time_matrix} provided).}
 
+\item{keep}{Character vector or NULL. Names of heavy intermediate
+objects to include in the result. Default NULL (lightweight).
+Options: \code{"weights"}, \code{"time_matrix"}, \code{"sources_sf"}.
+See \code{\link[=interpolate_election]{interpolate_election()}} for details.}
+
 \item{alpha}{Numeric vector or NULL. Pre-computed decay parameters
 (one per tract). If provided, the optimization step is skipped
 entirely. Useful for re-interpolating with a previously optimized
@@ -184,31 +190,34 @@ Default: FALSE.}
 \code{\link[=download_r5r_data]{download_r5r_data()}}.}
 }
 \value{
-A list of class \code{c("interpElections_br_result", "interpElections_result")}
-with components:
+A list of class \code{"interpElections_result"} with components:
 \describe{
 \item{interpolated}{Numeric matrix [n x p]. Rows = census tracts,
 columns = interpolated variables.}
 \item{alpha}{Numeric vector of length n. Optimized decay parameters.}
-\item{weights}{Numeric matrix [n x m]. Column-standardized weight
-matrix used for interpolation.}
-\item{optimization}{\code{interpElections_optim} or NULL (if alpha was
-pre-supplied).}
-\item{time_matrix}{Numeric matrix [n x m]. Travel times (minutes)
-from each tract to each voting location.}
-\item{offset}{Numeric. Offset value used.}
-\item{call}{The matched call.}
 \item{tracts_sf}{\code{sf} object with interpolated columns joined in,
 ready for mapping with \code{plot()} or \code{ggplot2}.}
-\item{electoral_data}{Data frame of prepared electoral data (one row
-per voting location).}
+\item{sources}{Data frame of prepared electoral data (one row
+per voting location), without geometry.}
+\item{optimization}{\code{interpElections_optim} or NULL (if alpha was
+pre-supplied).}
+\item{offset}{Numeric. Offset value used.}
+\item{call}{The matched call.}
+\item{zone_id}{Character. Name of zone ID column.}
+\item{point_id}{Character. Name of source point ID column.}
+\item{interp_cols}{Character vector. Names of interpolated columns.}
+\item{calib_cols}{List with \verb{$zones} and \verb{$sources} calibration columns.}
+\item{weights}{Numeric matrix or NULL. Present only when
+\code{keep} includes \code{"weights"}.}
+\item{time_matrix}{Numeric matrix or NULL. Present only when
+\code{keep} includes \code{"time_matrix"}.}
+\item{sources_sf}{\code{sf} point object or NULL. Present only when
+\code{keep} includes \code{"sources_sf"}.}
+\item{code_muni}{IBGE municipality code.}
+\item{year}{Election year.}
+\item{census_year}{Census year.}
+\item{what}{Character vector of data types interpolated.}
 \item{pop_data}{Data frame of census population by tract.}
-\item{code_muni}{IBGE municipality code used.}
-\item{year}{Election year used.}
-\item{census_year}{Census year used.}
-\item{what}{Character vector of data types that were interpolated.}
-\item{calib_cols}{List with \verb{$zones} (tract population columns) and
-\verb{$sources} (electoral voter count columns) used for calibration.}
 }
 }
 \description{
@@ -373,7 +382,14 @@ result <- interpolate_election_br(
 
 
 # ── Re-using a previous result ─────────────────────────────────
-# Skip optimization by reusing the alpha and travel time matrix
+# Keep the time_matrix for reuse (opt-in via keep)
+result <- interpolate_election_br(
+  code_muni = 3170701, year = 2022,
+  cargo = "governador",
+  keep = "time_matrix"
+)
+
+# Then reuse the alpha and travel time matrix
 result2 <- interpolate_election_br(
   code_muni = 3170701, year = 2022,
   cargo = "governador",

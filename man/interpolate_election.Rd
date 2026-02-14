@@ -19,6 +19,7 @@ interpolate_election(
   min_pop = 1,
   alpha = NULL,
   offset = 1,
+  keep = NULL,
   use_gpu = NULL,
   verbose = TRUE,
   ...
@@ -67,6 +68,14 @@ parameters. If provided, optimization is skipped.}
 
 \item{offset}{Numeric. Travel time offset. Default: 1.}
 
+\item{keep}{Character vector or NULL. Names of heavy intermediate
+objects to include in the result. Default NULL (lightweight).
+Options: \code{"weights"} (column-standardized weight matrix [n x m]),
+\code{"time_matrix"} (travel time matrix [n x m]),
+\code{"sources_sf"} (source points as \code{sf} object with geometry).
+These can be large for big municipalities. Travel times are
+cached on disk and can be reloaded without keeping them in memory.}
+
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
@@ -79,13 +88,22 @@ A list of class \code{"interpElections_result"} with components:
 \describe{
 \item{interpolated}{Numeric matrix [n x p]. Interpolated values.}
 \item{alpha}{Numeric vector of length n. Decay parameters used.}
-\item{weights}{Numeric matrix [n x m]. Column-standardized weight
-matrix.}
+\item{tracts_sf}{\code{sf} object with interpolated columns joined to zones.}
+\item{sources}{Data frame (no geometry) of source point data.}
 \item{optimization}{\code{interpElections_optim} object, or NULL if \code{alpha} was
 pre-supplied.}
-\item{time_matrix}{Numeric matrix [n x m]. Travel times used.}
 \item{offset}{Numeric. Offset value used.}
 \item{call}{The matched call.}
+\item{zone_id}{Character. Name of the ID column in zones.}
+\item{point_id}{Character. Name of the ID column in sources.}
+\item{interp_cols}{Character vector. Names of interpolated columns.}
+\item{calib_cols}{List with \verb{$zones} and \verb{$sources} calibration columns.}
+\item{weights}{Numeric matrix [n x m] or NULL. Present only when
+\code{keep} includes \code{"weights"}.}
+\item{time_matrix}{Numeric matrix [n x m] or NULL. Present only when
+\code{keep} includes \code{"time_matrix"}.}
+\item{sources_sf}{\code{sf} point object or NULL. Source points with
+geometry. Present only when \code{keep} includes \code{"sources_sf"}.}
 }
 }
 \description{

@@ -137,7 +137,7 @@ download_r5r_data <- function(
     if (!is.null(clipped)) {
       osm_path <- clipped
     } else {
-      # Clipping failed — check if the file is likely too large
+      # Clipping failed -- check if the file is likely too large
       # for r5r. State-level extracts for large states (MG, BA,
       # AM, etc.) are typically > 200 MB and exceed the limit.
       file_mb <- file.size(osm_path) / 1e6
@@ -164,7 +164,7 @@ download_r5r_data <- function(
       } else if (verbose) {
         message(
           "  Note: clipping tools not available, but file is ",
-          sprintf("small (%.0f MB) — proceeding without clipping.",
+          sprintf("small (%.0f MB) -- proceeding without clipping.",
                   file_mb)
         )
       }

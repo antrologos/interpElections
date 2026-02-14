@@ -226,19 +226,23 @@ test_that(".safe_sum handles missing columns gracefully", {
   expect_equal(interpElections:::.safe_sum(df, c("x", "y")), c(0, 0, 0))
 })
 
-test_that("print.interpElections_br_result works", {
-  # Create a minimal mock object
+test_that("print.interpElections_result works for Brazilian result", {
+  # Create a minimal mock object with unified class
+  mat <- matrix(1:6, 3, 2)
+  colnames(mat) <- c("CAND_13", "CAND_22")
   obj <- list(
-    interpolated = matrix(1:6, 3, 2),
+    interpolated = mat,
     alpha = c(1, 1.5, 2),
-    time_matrix = matrix(1, 3, 4),
+    sources = data.frame(id = 1:4, CAND_13 = 1:4, CAND_22 = 5:8),
     optimization = list(method = "cpu_lbfgsb", value = 100),
+    interp_cols = c("CAND_13", "CAND_22"),
     code_muni = "1400100",
-    year = 2008,
-    census_year = 2010
+    year = 2008L,
+    census_year = 2010L
   )
-  class(obj) <- c("interpElections_br_result", "interpElections_result")
-  expect_output(print(obj), "Brazilian interpolation")
+  class(obj) <- "interpElections_result"
+  expect_output(print(obj), "Brazilian election")
   expect_output(print(obj), "1400100")
   expect_output(print(obj), "census 2010")
+  expect_output(print(obj), "Access interpolated sf")
 })

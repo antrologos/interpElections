@@ -33,6 +33,13 @@
 #' @param alpha Numeric vector of length n, or NULL. Pre-computed decay
 #'   parameters. If provided, optimization is skipped.
 #' @param offset Numeric. Travel time offset. Default: 1.
+#' @param keep Character vector or NULL. Names of heavy intermediate
+#'   objects to include in the result. Default NULL (lightweight).
+#'   Options: `"weights"` (column-standardized weight matrix \[n x m\]),
+#'   `"time_matrix"` (travel time matrix \[n x m\]),
+#'   `"sources_sf"` (source points as `sf` object with geometry).
+#'   These can be large for big municipalities. Travel times are
+#'   cached on disk and can be reloaded without keeping them in memory.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Additional arguments forwarded to [optimize_alpha()],
@@ -42,13 +49,22 @@
 #' \describe{
 #'   \item{interpolated}{Numeric matrix \[n x p\]. Interpolated values.}
 #'   \item{alpha}{Numeric vector of length n. Decay parameters used.}
-#'   \item{weights}{Numeric matrix \[n x m\]. Column-standardized weight
-#'     matrix.}
+#'   \item{tracts_sf}{`sf` object with interpolated columns joined to zones.}
+#'   \item{sources}{Data frame (no geometry) of source point data.}
 #'   \item{optimization}{`interpElections_optim` object, or NULL if `alpha` was
 #'     pre-supplied.}
-#'   \item{time_matrix}{Numeric matrix \[n x m\]. Travel times used.}
 #'   \item{offset}{Numeric. Offset value used.}
 #'   \item{call}{The matched call.}
+#'   \item{zone_id}{Character. Name of the ID column in zones.}
+#'   \item{point_id}{Character. Name of the ID column in sources.}
+#'   \item{interp_cols}{Character vector. Names of interpolated columns.}
+#'   \item{calib_cols}{List with `$zones` and `$sources` calibration columns.}
+#'   \item{weights}{Numeric matrix \[n x m\] or NULL. Present only when
+#'     `keep` includes `"weights"`.}
+#'   \item{time_matrix}{Numeric matrix \[n x m\] or NULL. Present only when
+#'     `keep` includes `"time_matrix"`.}
+#'   \item{sources_sf}{`sf` point object or NULL. Source points with
+#'     geometry. Present only when `keep` includes `"sources_sf"`.}
 #' }
 #'
 #' @examples
@@ -96,6 +112,7 @@ interpolate_election <- function(
     min_pop        = 1,
     alpha          = NULL,
     offset         = 1,
+    keep           = NULL,
     use_gpu        = NULL,
     verbose        = TRUE,
     ...
@@ -161,10 +178,10 @@ interpolate_election <- function(
   # --- Filter zones by min_pop ---
   if (min_pop > 0) {
     pop_total <- rowSums(tracts_df[, calib_zones, drop = FALSE], na.rm = TRUE)
-    keep <- pop_total >= min_pop
-    if (sum(keep) < nrow(tracts_sf)) {
-      n_removed <- sum(!keep)
-      tracts_sf <- tracts_sf[keep, ]
+    keep_rows <- pop_total >= min_pop
+    if (sum(keep_rows) < nrow(tracts_sf)) {
+      n_removed <- sum(!keep_rows)
+      tracts_sf <- tracts_sf[keep_rows, ]
       tracts_df <- sf::st_drop_geometry(tracts_sf)
       if (verbose) {
         message(sprintf("Filtered %d zones with pop < %g (%d remaining)",
@@ -355,14 +372,34 @@ interpolate_election <- function(
     colnames(interpolated) <- colnames(interp_data)
   }
 
+  # --- Build tracts_sf with interpolated columns joined ---
+  tracts_result <- tracts_sf
+  for (col in colnames(interpolated)) {
+    tracts_result[[col]] <- interpolated[, col]
+  }
+
   result <- list(
-    interpolated = interpolated,
-    alpha = alpha,
-    weights = W_std,
-    optimization = optim_result,
-    time_matrix = time_matrix,
-    offset = offset,
-    call = cl
+    interpolated  = interpolated,
+    alpha         = alpha,
+    tracts_sf     = tracts_result,
+    sources       = elec_df,
+    optimization  = optim_result,
+    offset        = offset,
+    call          = cl,
+    zone_id       = zone_id,
+    point_id      = point_id,
+    interp_cols   = colnames(interpolated),
+    calib_cols    = list(zones = calib_zones, sources = calib_sources),
+    # Heavy objects (opt-in)
+    weights       = if ("weights" %in% keep) W_std else NULL,
+    time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
+    sources_sf    = if ("sources_sf" %in% keep) electoral_sf else NULL,
+    # Brazilian metadata (NULL when called generically)
+    code_muni     = NULL,
+    year          = NULL,
+    census_year   = NULL,
+    what          = NULL,
+    pop_data      = NULL
   )
   class(result) <- "interpElections_result"
 
@@ -376,10 +413,28 @@ interpolate_election <- function(
 
 #' @export
 print.interpElections_result <- function(x, ...) {
-  cat("interpElections interpolation result\n")
-  cat(sprintf("  Zones:     %d\n", nrow(x$interpolated)))
-  cat(sprintf("  Sources:   %d\n", ncol(x$time_matrix)))
-  cat(sprintf("  Variables: %d\n", ncol(x$interpolated)))
+  # Header
+  if (!is.null(x$code_muni)) {
+    cat("interpElections result -- Brazilian election\n")
+    cat(sprintf("  Municipality: %s (election %d, census %d)\n",
+                x$code_muni, x$year, x$census_year))
+  } else {
+    cat("interpElections result\n")
+  }
+
+  # Dimensions
+  n <- nrow(x$interpolated)
+  m <- nrow(x$sources)
+  p <- ncol(x$interpolated)
+  cat(sprintf("  Zones:     %d\n", n))
+  cat(sprintf("  Sources:   %d\n", m))
+  cat(sprintf("  Variables: %d", p))
+  if (p <= 8 && !is.null(x$interp_cols)) {
+    cat(sprintf("  (%s)", paste(x$interp_cols, collapse = ", ")))
+  }
+  cat("\n")
+
+  # Optimization
   if (!is.null(x$optimization)) {
     cat(sprintf("  Optimizer: %s (obj = %.2f)\n",
                 x$optimization$method, x$optimization$value))
@@ -388,5 +443,30 @@ print.interpElections_result <- function(x, ...) {
   }
   cat(sprintf("  Alpha:     [%.3f, %.3f] (mean %.3f)\n",
               min(x$alpha), max(x$alpha), mean(x$alpha)))
+
+  # Heavy objects status
+  has_w <- !is.null(x$weights)
+  has_t <- !is.null(x$time_matrix)
+  has_s <- !is.null(x$sources_sf)
+  if (has_w || has_t || has_s) {
+    kept <- c(
+      if (has_w) "weights",
+      if (has_t) "time_matrix",
+      if (has_s) "sources_sf"
+    )
+    cat(sprintf("  Kept:      %s\n", paste(kept, collapse = ", ")))
+  }
+
+  # Usage hints
+  cat("\n")
+  cat("  Access interpolated sf:    result$tracts_sf\n")
+  cat("  Access alpha vector:       result$alpha\n")
+  cat("  Detailed summary:          summary(result)\n")
+  if (p > 0) {
+    example_var <- if (!is.null(x$interp_cols)) x$interp_cols[1] else "var"
+    cat(sprintf("  Plot a variable:           plot(result, \"%s\")\n",
+                example_var))
+  }
+
   invisible(x)
 }

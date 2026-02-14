@@ -112,6 +112,10 @@
 #'   Default: `"openstreetmap_fr"` (has state-level extracts for Brazil).
 #'   Alternatives: `"geofabrik"`, `"bbbike"`. Only used when OSM data is
 #'   auto-downloaded (no `network_path` or `time_matrix` provided).
+#' @param keep Character vector or NULL. Names of heavy intermediate
+#'   objects to include in the result. Default NULL (lightweight).
+#'   Options: `"weights"`, `"time_matrix"`, `"sources_sf"`.
+#'   See [interpolate_election()] for details.
 #' @param alpha Numeric vector or NULL. Pre-computed decay parameters
 #'   (one per tract). If provided, the optimization step is skipped
 #'   entirely. Useful for re-interpolating with a previously optimized
@@ -129,31 +133,34 @@
 #'   [optimize_alpha()], [compute_travel_times()], and/or
 #'   [download_r5r_data()].
 #'
-#' @return A list of class `c("interpElections_br_result", "interpElections_result")`
-#'   with components:
+#' @return A list of class `"interpElections_result"` with components:
 #' \describe{
 #'   \item{interpolated}{Numeric matrix \[n x p\]. Rows = census tracts,
 #'     columns = interpolated variables.}
 #'   \item{alpha}{Numeric vector of length n. Optimized decay parameters.}
-#'   \item{weights}{Numeric matrix \[n x m\]. Column-standardized weight
-#'     matrix used for interpolation.}
-#'   \item{optimization}{`interpElections_optim` or NULL (if alpha was
-#'     pre-supplied).}
-#'   \item{time_matrix}{Numeric matrix \[n x m\]. Travel times (minutes)
-#'     from each tract to each voting location.}
-#'   \item{offset}{Numeric. Offset value used.}
-#'   \item{call}{The matched call.}
 #'   \item{tracts_sf}{`sf` object with interpolated columns joined in,
 #'     ready for mapping with `plot()` or `ggplot2`.}
-#'   \item{electoral_data}{Data frame of prepared electoral data (one row
-#'     per voting location).}
+#'   \item{sources}{Data frame of prepared electoral data (one row
+#'     per voting location), without geometry.}
+#'   \item{optimization}{`interpElections_optim` or NULL (if alpha was
+#'     pre-supplied).}
+#'   \item{offset}{Numeric. Offset value used.}
+#'   \item{call}{The matched call.}
+#'   \item{zone_id}{Character. Name of zone ID column.}
+#'   \item{point_id}{Character. Name of source point ID column.}
+#'   \item{interp_cols}{Character vector. Names of interpolated columns.}
+#'   \item{calib_cols}{List with `$zones` and `$sources` calibration columns.}
+#'   \item{weights}{Numeric matrix or NULL. Present only when
+#'     `keep` includes `"weights"`.}
+#'   \item{time_matrix}{Numeric matrix or NULL. Present only when
+#'     `keep` includes `"time_matrix"`.}
+#'   \item{sources_sf}{`sf` point object or NULL. Present only when
+#'     `keep` includes `"sources_sf"`.}
+#'   \item{code_muni}{IBGE municipality code.}
+#'   \item{year}{Election year.}
+#'   \item{census_year}{Census year.}
+#'   \item{what}{Character vector of data types interpolated.}
 #'   \item{pop_data}{Data frame of census population by tract.}
-#'   \item{code_muni}{IBGE municipality code used.}
-#'   \item{year}{Election year used.}
-#'   \item{census_year}{Census year used.}
-#'   \item{what}{Character vector of data types that were interpolated.}
-#'   \item{calib_cols}{List with `$zones` (tract population columns) and
-#'     `$sources` (electoral voter count columns) used for calibration.}
 #' }
 #'
 #' @section Election types:
@@ -304,7 +311,14 @@
 #'
 #'
 #' # ── Re-using a previous result ─────────────────────────────────
-#' # Skip optimization by reusing the alpha and travel time matrix
+#' # Keep the time_matrix for reuse (opt-in via keep)
+#' result <- interpolate_election_br(
+#'   code_muni = 3170701, year = 2022,
+#'   cargo = "governador",
+#'   keep = "time_matrix"
+#' )
+#'
+#' # Then reuse the alpha and travel time matrix
 #' result2 <- interpolate_election_br(
 #'   code_muni = 3170701, year = 2022,
 #'   cargo = "governador",
@@ -346,6 +360,7 @@ interpolate_election_br <- function(
     remove_unpopulated  = TRUE,
     osm_buffer_km       = 10,
     osm_provider        = "openstreetmap_fr",
+    keep                = NULL,
     alpha               = NULL,
     offset              = 1,
     use_gpu             = NULL,
@@ -506,68 +521,22 @@ interpolate_election_br <- function(
     min_pop = 0,  # already filtered via br_prepare_tracts
     alpha = alpha,
     offset = offset,
+    keep = keep,
     use_gpu = use_gpu,
     verbose = verbose,
     osm_provider = osm_provider,
     ...
   )
 
-  # --- Join interpolated data back to tracts_sf ---
-  tracts_result <- tracts_sf
-  for (col in colnames(ie_result$interpolated)) {
-    tracts_result[[col]] <- ie_result$interpolated[, col]
-  }
+  # --- Set Brazilian metadata on the unified result ---
+  ie_result$code_muni   <- code_muni
+  ie_result$year        <- as.integer(year)
+  ie_result$census_year <- as.integer(census_year)
+  ie_result$what        <- what
+  ie_result$pop_data    <- pop_data
+  ie_result$call        <- cl  # Override with br call
 
-  result <- list(
-    interpolated = ie_result$interpolated,
-    alpha = ie_result$alpha,
-    weights = ie_result$weights,
-    optimization = ie_result$optimization,
-    time_matrix = ie_result$time_matrix,
-    offset = ie_result$offset,
-    call = cl,
-    tracts_sf = tracts_result,
-    electoral_data = sf::st_drop_geometry(electoral_sf),
-    pop_data = pop_data,
-    code_muni = code_muni,
-    year = year,
-    census_year = census_year,
-    what = what,
-    calib_cols = list(
-      zones = calib$calib_zones,
-      sources = calib$calib_sources
-    )
-  )
-  class(result) <- c("interpElections_br_result", "interpElections_result")
-
-  if (verbose) {
-    message(sprintf(
-      "Done. %d variables interpolated into %d census tracts.",
-      ncol(ie_result$interpolated), nrow(ie_result$interpolated)
-    ))
-  }
-
-  result
-}
-
-#' @export
-print.interpElections_br_result <- function(x, ...) {
-  cat("interpElections Brazilian interpolation result\n")
-  cat(sprintf("  Municipality: %s (election %s, census %s)\n",
-              x$code_muni, x$year, x$census_year))
-  cat(sprintf("  Tracts:       %d\n", nrow(x$interpolated)))
-  cat(sprintf("  Sources:      %d voting locations\n",
-              ncol(x$time_matrix)))
-  cat(sprintf("  Variables:    %d\n", ncol(x$interpolated)))
-  if (!is.null(x$optimization)) {
-    cat(sprintf("  Optimizer:    %s (obj = %.2f)\n",
-                x$optimization$method, x$optimization$value))
-  } else {
-    cat("  Optimizer:    skipped (alpha provided)\n")
-  }
-  cat(sprintf("  Alpha:        [%.3f, %.3f] (mean %.3f)\n",
-              min(x$alpha), max(x$alpha), mean(x$alpha)))
-  invisible(x)
+  ie_result
 }
 
 
