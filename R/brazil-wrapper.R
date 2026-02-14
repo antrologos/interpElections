@@ -372,6 +372,52 @@ interpolate_election_br <- function(
   cl <- match.call()
   code_muni <- as.character(code_muni)
 
+  # --- Check all dependencies upfront ---
+  missing_pkgs <- character(0)
+  for (pkg in c("sf", "dplyr", "censobr", "geobr", "data.table", "stringr")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      missing_pkgs <- c(missing_pkgs, pkg)
+    }
+  }
+  if (is.null(time_matrix) && is.null(network_path)) {
+    # Will need to download OSM and compute travel times
+    for (pkg in c("osmextract", "r5r")) {
+      if (!requireNamespace(pkg, quietly = TRUE)) {
+        missing_pkgs <- c(missing_pkgs, pkg)
+      }
+    }
+  } else if (is.null(time_matrix)) {
+    # Have network_path but need r5r to compute travel times
+    if (!requireNamespace("r5r", quietly = TRUE)) {
+      missing_pkgs <- c(missing_pkgs, "r5r")
+    }
+  }
+  if (length(missing_pkgs) > 0) {
+    stop(
+      "Missing required packages: ", paste(missing_pkgs, collapse = ", "),
+      "\nInstall with: install.packages(c(",
+      paste0('"', missing_pkgs, '"', collapse = ", "), "))",
+      call. = FALSE
+    )
+  }
+
+  # Check for OSM clipping tools if travel times will be computed
+  if (is.null(time_matrix) && is.null(network_path) && !.has_clip_tool()) {
+    .offer_osmium_install(verbose = verbose)
+    if (!.has_clip_tool()) {
+      stop(
+        "A clipping tool (osmium or osmconvert) is required ",
+        "to clip state-level OSM files for r5r routing.\n\n",
+        "Run interpElections::setup_osmium() to install, ",
+        "or install manually:\n",
+        "  Windows: conda install -c conda-forge osmium-tool\n",
+        "  macOS:   brew install osmium-tool\n",
+        "  Linux:   sudo apt install osmium-tool",
+        call. = FALSE
+      )
+    }
+  }
+
   # --- Step 1: Resolve IBGE -> TSE code + UF ---
   if (verbose) message("[1/6] Resolving municipality identifiers...")
   muni_info <- .br_resolve_muni(code_muni)
@@ -445,9 +491,6 @@ interpolate_election_br <- function(
   )
 
   # Build sf point object from electoral data
-  if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("The 'sf' package is required", call. = FALSE)
-  }
   elec_valid <- electoral_data[
     !is.na(electoral_data$lat) & !is.na(electoral_data$long),
   ]

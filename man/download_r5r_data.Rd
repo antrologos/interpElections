@@ -62,11 +62,12 @@ Requires the \code{osmextract} package for OSM downloads and optionally
 the \code{elevatr} package for elevation data. Both are suggested
 dependencies of this package.
 
-For clipping large OSM extracts, install \code{osmium-tool} (recommended)
-or \code{osmconvert} on your system. Run \code{\link[=setup_osmium]{setup_osmium()}} to install
-automatically. Without these tools, downloads larger than 200 MB
-will cause an error (since r5r cannot handle files exceeding its
-~975,000 km2 geographic extent limit).
+For clipping large OSM extracts, \code{osmium-tool} (recommended) or
+\code{osmconvert} must be installed. If neither is found, the function
+will interactively offer to install one via \code{\link[=setup_osmium]{setup_osmium()}} before
+proceeding. In non-interactive mode, it stops with an actionable
+error message. All dependency checks (R packages and clipping tools)
+run at the start, before any downloads begin.
 }
 \seealso{
 \code{\link[=compute_travel_times]{compute_travel_times()}} to use the downloaded data,

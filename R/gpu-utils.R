@@ -6,7 +6,7 @@
 #' @param enable Logical. `TRUE` to enable GPU, `FALSE` for CPU only.
 #' @param device Character or NULL. Torch device: `"cuda"`, `"mps"`, or
 #'   `"cpu"`. `NULL` = auto-detect.
-#' @param dtype Character. `"float32"` or `"float64"`. Default: `"float64"`.
+#' @param dtype Character. `"float32"` or `"float64"`. Default: `"float32"`.
 #'
 #' @details
 #' When GPU is enabled, [optimize_alpha()] uses the torch ADAM optimizer
@@ -25,7 +25,7 @@
 #' use_gpu(FALSE) # ensure CPU mode
 #'
 #' @export
-use_gpu <- function(enable = TRUE, device = NULL, dtype = "float64") {
+use_gpu <- function(enable = TRUE, device = NULL, dtype = "float32") {
   if (!is.null(device)) {
     valid_devices <- c("cuda", "mps", "cpu")
     if (!device %in% valid_devices) {
@@ -112,4 +112,24 @@ use_gpu <- function(enable = TRUE, device = NULL, dtype = "float64") {
     stop("dtype must be 'float32' or 'float64', got '", dtype_string, "'",
          call. = FALSE)
   )
+}
+
+# Internal: detect if running inside RStudio
+.is_rstudio <- function() {
+  nzchar(Sys.getenv("RSTUDIO"))
+}
+
+# Internal: find the interpElections source package root (for pkgload in subprocess).
+# Returns "" if the package was installed normally (not loaded via devtools).
+.find_package_root <- function() {
+  pkg_ns <- asNamespace("interpElections")
+  tryCatch({
+    path <- attr(pkg_ns, "path") %||% ""
+    # Source packages have R/*.R files; installed packages have R/*.rdb
+    if (nzchar(path) && file.exists(file.path(path, "R", "optimize-gpu.R"))) {
+      path
+    } else {
+      ""
+    }
+  }, error = function(e) "")
 }

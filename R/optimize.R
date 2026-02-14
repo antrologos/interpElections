@@ -19,7 +19,8 @@
 #' @param device Character or NULL. Torch device: `"cuda"`, `"mps"`, or
 #'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
-#'   `"float64"`.
+#'   `"float32"`. Float32 halves GPU memory usage with negligible precision
+#'   loss for this optimization problem.
 #' @param gpu_iterations Integer. Number of outer ADAM iterations. Default: 20.
 #' @param gpu_lr_init Numeric. Initial ADAM learning rate. Default: 0.1.
 #' @param gpu_lr_decay Numeric. Learning rate decay factor per outer iteration.
@@ -73,7 +74,7 @@ optimize_alpha <- function(
     alpha_init = NULL,
     use_gpu = NULL,
     device = NULL,
-    dtype = "float64",
+    dtype = "float32",
     gpu_iterations = 20L,
     gpu_lr_init = 0.1,
     gpu_lr_decay = 0.6,
@@ -130,7 +131,7 @@ optimize_alpha <- function(
       getOption("interpElections.device") %||%
       .detect_device()
     resolved_dtype <- dtype %||%
-      getOption("interpElections.dtype", default = "float64")
+      getOption("interpElections.dtype", default = "float32")
 
     if (verbose) {
       message(sprintf("GPU optimization: device=%s, dtype=%s, iterations=%d",

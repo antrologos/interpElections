@@ -4,7 +4,7 @@
 \alias{use_gpu}
 \title{Enable or disable GPU acceleration}
 \usage{
-use_gpu(enable = TRUE, device = NULL, dtype = "float64")
+use_gpu(enable = TRUE, device = NULL, dtype = "float32")
 }
 \arguments{
 \item{enable}{Logical. \code{TRUE} to enable GPU, \code{FALSE} for CPU only.}
@@ -12,7 +12,7 @@ use_gpu(enable = TRUE, device = NULL, dtype = "float64")
 \item{device}{Character or NULL. Torch device: \code{"cuda"}, \code{"mps"}, or
 \code{"cpu"}. \code{NULL} = auto-detect.}
 
-\item{dtype}{Character. \code{"float32"} or \code{"float64"}. Default: \code{"float64"}.}
+\item{dtype}{Character. \code{"float32"} or \code{"float64"}. Default: \code{"float32"}.}
 }
 \value{
 Invisibly returns the previous settings as a list.

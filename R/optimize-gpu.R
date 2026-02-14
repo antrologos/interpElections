@@ -8,6 +8,96 @@
     stop("lr_decay must be in (0, 1), got ", lr_decay, call. = FALSE)
   }
 
+  # --- RStudio subprocess delegation ---
+  # RStudio's embedded R session event loop (environment pane, autocompletion,
+  # etc.) conflicts with CUDA kernel execution and can cause fatal crashes.
+  # When running inside RStudio, we offload GPU optimization to a clean
+  # subprocess via callr::r() where torch CUDA works without interference.
+  if (.is_rstudio() && !identical(Sys.getenv("INTERPELECTIONS_SUBPROCESS"), "1")) {
+    if (!requireNamespace("callr", quietly = TRUE)) {
+      stop(
+        "GPU optimization inside RStudio requires the 'callr' package.\n",
+        "Install with: install.packages('callr')\n",
+        "This is needed because RStudio's event loop conflicts with CUDA.",
+        call. = FALSE
+      )
+    }
+    if (verbose) {
+      message("  Running GPU optimization in subprocess (RStudio CUDA workaround)...")
+    }
+    result <- callr::r(
+      function(time_matrix, pop_matrix, source_matrix, alpha_init,
+               device, dtype, iterations, lr_init, lr_decay,
+               lower_bound, upper_bound, verbose, pkg_path) {
+        Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
+        # Load the package from the same location
+        if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
+          pkgload::load_all(pkg_path, quiet = TRUE)
+        } else {
+          library(interpElections)
+        }
+        interpElections:::.optimize_gpu(
+          time_matrix = time_matrix,
+          pop_matrix = pop_matrix,
+          source_matrix = source_matrix,
+          alpha_init = alpha_init,
+          device = device,
+          dtype = dtype,
+          iterations = iterations,
+          lr_init = lr_init,
+          lr_decay = lr_decay,
+          lower_bound = lower_bound,
+          upper_bound = upper_bound,
+          verbose = verbose
+        )
+      },
+      args = list(
+        time_matrix = time_matrix,
+        pop_matrix = pop_matrix,
+        source_matrix = source_matrix,
+        alpha_init = alpha_init,
+        device = device,
+        dtype = dtype,
+        iterations = iterations,
+        lr_init = lr_init,
+        lr_decay = lr_decay,
+        lower_bound = lower_bound,
+        upper_bound = upper_bound,
+        verbose = verbose,
+        pkg_path = .find_package_root()
+      ),
+      show = verbose  # stream subprocess stdout/stderr to RStudio console
+    )
+    return(result)
+  }
+
+  # --- VRAM safety check ---
+  # The forward + backward pass creates ~6 copies of the time_matrix
+  # (original, t^(-a), column-standardized, plus autograd intermediates).
+  bytes_per_elem <- if (dtype == "float32") 4 else 8
+  n_elements <- as.double(nrow(time_matrix)) * ncol(time_matrix)
+  estimated_mb <- (n_elements * bytes_per_elem * 6) / 1e6
+
+  if (grepl("cuda", device, fixed = TRUE)) {
+    vram_mb <- tryCatch({
+      hw <- .detect_gpu_nvidia()
+      if (hw$found && !is.na(hw$vram_mb)) hw$vram_mb else NA_real_
+    }, error = function(e) NA_real_)
+
+    if (!is.na(vram_mb) && estimated_mb > vram_mb * 0.8) {
+      stop(sprintf(paste0(
+        "Estimated GPU memory: %.0f MB (%.0f MB VRAM available).\n",
+        "This municipality is too large for GPU optimization with %s.\n",
+        "Use use_gpu = FALSE to fall back to CPU optimization."
+      ), estimated_mb, vram_mb, dtype), call. = FALSE)
+    }
+
+    if (verbose && !is.na(vram_mb)) {
+      message(sprintf("  Estimated GPU memory: %.0f MB / %.0f MB VRAM",
+                      estimated_mb, vram_mb))
+    }
+  }
+
   torch_dtype <- .resolve_dtype(dtype)
 
   # Track GPU tensors for cleanup on exit (error or normal)

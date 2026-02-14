@@ -120,8 +120,48 @@ interpolate_election <- function(
   cl <- match.call()
   dots <- list(...)
 
+  # --- Check all dependencies upfront ---
+  missing_pkgs <- character(0)
   if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("The 'sf' package is required", call. = FALSE)
+    missing_pkgs <- c(missing_pkgs, "sf")
+  }
+  if (is.null(time_matrix) && is.null(network_path)) {
+    # Will need to download OSM and compute travel times
+    for (pkg in c("osmextract", "r5r")) {
+      if (!requireNamespace(pkg, quietly = TRUE)) {
+        missing_pkgs <- c(missing_pkgs, pkg)
+      }
+    }
+  } else if (is.null(time_matrix)) {
+    # Have network_path but need r5r to compute travel times
+    if (!requireNamespace("r5r", quietly = TRUE)) {
+      missing_pkgs <- c(missing_pkgs, "r5r")
+    }
+  }
+  if (length(missing_pkgs) > 0) {
+    stop(
+      "Missing required packages: ", paste(missing_pkgs, collapse = ", "),
+      "\nInstall with: install.packages(c(",
+      paste0('"', missing_pkgs, '"', collapse = ", "), "))",
+      call. = FALSE
+    )
+  }
+
+  # Check for OSM clipping tools if travel times will be computed
+  if (is.null(time_matrix) && is.null(network_path) && !.has_clip_tool()) {
+    .offer_osmium_install(verbose = verbose)
+    if (!.has_clip_tool()) {
+      stop(
+        "A clipping tool (osmium or osmconvert) is required ",
+        "to clip state-level OSM files for r5r routing.\n\n",
+        "Run interpElections::setup_osmium() to install, ",
+        "or install manually:\n",
+        "  Windows: conda install -c conda-forge osmium-tool\n",
+        "  macOS:   brew install osmium-tool\n",
+        "  Linux:   sudo apt install osmium-tool",
+        call. = FALSE
+      )
+    }
   }
 
   # --- Validate inputs ---

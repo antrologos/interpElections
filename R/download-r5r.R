@@ -39,11 +39,12 @@
 #' the `elevatr` package for elevation data. Both are suggested
 #' dependencies of this package.
 #'
-#' For clipping large OSM extracts, install `osmium-tool` (recommended)
-#' or `osmconvert` on your system. Run [setup_osmium()] to install
-#' automatically. Without these tools, downloads larger than 200 MB
-#' will cause an error (since r5r cannot handle files exceeding its
-#' ~975,000 km2 geographic extent limit).
+#' For clipping large OSM extracts, `osmium-tool` (recommended) or
+#' `osmconvert` must be installed. If neither is found, the function
+#' will interactively offer to install one via [setup_osmium()] before
+#' proceeding. In non-interactive mode, it stops with an actionable
+#' error message. All dependency checks (R packages and clipping tools)
+#' run at the start, before any downloads begin.
 #'
 #' @family spatial
 #'
@@ -60,9 +61,51 @@ download_r5r_data <- function(
     force = FALSE,
     verbose = TRUE
 ) {
+  # --- Check all dependencies upfront ---
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("The 'sf' package is required for download_r5r_data()",
          call. = FALSE)
+  }
+  if (osm && !requireNamespace("osmextract", quietly = TRUE)) {
+    stop(
+      "The 'osmextract' package is required for OSM downloads.\n",
+      "Install with: install.packages('osmextract')",
+      call. = FALSE
+    )
+  }
+  if (elevation && !requireNamespace("elevatr", quietly = TRUE)) {
+    stop(
+      "The 'elevatr' package is required for elevation downloads.\n",
+      "Install with: install.packages('elevatr')",
+      call. = FALSE
+    )
+  }
+  if (elevation && !requireNamespace("terra", quietly = TRUE)) {
+    stop(
+      "The 'terra' package is required for elevation downloads.\n",
+      "Install with: install.packages('terra')",
+      call. = FALSE
+    )
+  }
+
+  # Check for OSM clipping tools before any downloads.
+  # State-level .pbf files for large states (MG, SP, BA, etc.)
+  # exceed r5r's geographic extent limit and MUST be clipped.
+  if (osm && !.has_clip_tool()) {
+    .offer_osmium_install(verbose = verbose)
+    if (!.has_clip_tool()) {
+      stop(
+        "A clipping tool (osmium or osmconvert) is required ",
+        "to extract the municipality area from state-level ",
+        "OSM files.\n\n",
+        "Run interpElections::setup_osmium() to install, ",
+        "or install manually:\n",
+        "  Windows: conda install -c conda-forge osmium-tool\n",
+        "  macOS:   brew install osmium-tool\n",
+        "  Linux:   sudo apt install osmium-tool",
+        call. = FALSE
+      )
+    }
   }
 
   if (!dir.exists(output_dir)) {
@@ -77,14 +120,6 @@ download_r5r_data <- function(
 
   # --- OSM download ---
   if (osm) {
-    if (!requireNamespace("osmextract", quietly = TRUE)) {
-      stop(
-        "The 'osmextract' package is required for OSM downloads.\n",
-        "Install with: install.packages('osmextract')",
-        call. = FALSE
-      )
-    }
-
     if (verbose) message("Downloading OSM data...")
 
     # osmextract matches the area to the best available extract
@@ -137,9 +172,6 @@ download_r5r_data <- function(
     if (!is.null(clipped)) {
       osm_path <- clipped
     } else {
-      # Clipping failed -- check if the file is likely too large
-      # for r5r. State-level extracts for large states (MG, BA,
-      # AM, etc.) are typically > 200 MB and exceed the limit.
       file_mb <- file.size(osm_path) / 1e6
       if (file_mb > 200) {
         stop(
@@ -175,24 +207,6 @@ download_r5r_data <- function(
 
   # --- Elevation download ---
   if (elevation) {
-    if (!requireNamespace("elevatr", quietly = TRUE)) {
-      stop(
-        "The 'elevatr' package is required for elevation ",
-        "downloads.\n",
-        "Install with: install.packages('elevatr')",
-        call. = FALSE
-      )
-    }
-
-    if (!requireNamespace("terra", quietly = TRUE)) {
-      stop(
-        "The 'terra' package is required for elevation ",
-        "downloads.\n",
-        "Install with: install.packages('terra')",
-        call. = FALSE
-      )
-    }
-
     elev_path <- file.path(output_dir, "elevation.tif")
 
     if (!file.exists(elev_path) || force) {
@@ -554,4 +568,42 @@ setup_osmium <- function(method = NULL, verbose = TRUE) {
   }
 
   NULL
+}
+
+
+#' Check whether any OSM clipping tool is available
+#' @return Logical.
+#' @noRd
+.has_clip_tool <- function() {
+  if (!is.null(.find_tool("osmium"))) return(TRUE)
+  if (!is.null(.find_tool("osmconvert"))) return(TRUE)
+  if (!is.null(.find_tool("osmconvert64"))) return(TRUE)
+  # Check interpElections cache (setup_osmium may have put it there)
+  cached_bin <- file.path(
+    get_interpElections_cache_dir(), "bin",
+    if (.Platform$OS.type == "windows") "osmconvert.exe"
+    else "osmconvert"
+  )
+  file.exists(cached_bin)
+}
+
+
+#' Interactively offer to install osmium-tool
+#' @param verbose Logical.
+#' @noRd
+.offer_osmium_install <- function(verbose = TRUE) {
+  if (!interactive()) return(invisible(NULL))
+
+  if (verbose) {
+    message(
+      "\nNo OSM clipping tool found (osmium, osmconvert).\n",
+      "This is required to clip state-level OSM files for r5r routing."
+    )
+  }
+
+  answer <- readline("Install osmium-tool now? (Y/n): ")
+  if (tolower(trimws(answer)) %in% c("", "y", "yes", "s", "sim")) {
+    setup_osmium(verbose = verbose)
+  }
+  invisible(NULL)
 }

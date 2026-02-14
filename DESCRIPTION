@@ -24,6 +24,8 @@ Imports:
     curl
 Suggests:
     torch,
+    callr,
+    pkgload,
     optimParallel,
     parallel,
     sf,

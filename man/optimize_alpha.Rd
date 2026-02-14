@@ -11,7 +11,7 @@ optimize_alpha(
   alpha_init = NULL,
   use_gpu = NULL,
   device = NULL,
-  dtype = "float64",
+  dtype = "float32",
   gpu_iterations = 20L,
   gpu_lr_init = 0.1,
   gpu_lr_decay = 0.6,
@@ -46,7 +46,8 @@ option \code{interpElections.use_gpu} (set via \code{\link[=use_gpu]{use_gpu()}}
 \code{"cpu"}. Only used when GPU is enabled. Default: NULL (auto-detect).}
 
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
-\code{"float64"}.}
+\code{"float32"}. Float32 halves GPU memory usage with negligible precision
+loss for this optimization problem.}
 
 \item{gpu_iterations}{Integer. Number of outer ADAM iterations. Default: 20.}
 
