@@ -1,0 +1,111 @@
+url: https://antrologos.github.io/interpElections/
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left:  [intro, reference, articles]
+    right: [search, github]
+  components:
+    articles:
+      text: Articles
+      menu:
+        - text: Getting Started
+          href: articles/introduction.html
+        - text: Understanding the Model
+          href: articles/understanding-the-model.html
+        - text: "---"
+        - text: "Use Cases"
+        - text: Brazilian Elections
+          href: articles/brazilian-elections.html
+        - text: Custom Data
+          href: articles/custom-data.html
+        - text: "---"
+        - text: "Advanced"
+        - text: Working with Results
+          href: articles/working-with-results.html
+        - text: Performance & Configuration
+          href: articles/performance-and-configuration.html
+
+articles:
+  - title: Getting Started
+    navbar: ~
+    contents:
+      - introduction
+      - understanding-the-model
+
+  - title: Use Cases
+    navbar: ~
+    contents:
+      - brazilian-elections
+      - custom-data
+
+  - title: Advanced
+    navbar: ~
+    contents:
+      - working-with-results
+      - performance-and-configuration
+
+reference:
+  - title: Core IDW Engine
+    desc: Build weights, evaluate the objective, and optimize decay parameters.
+    contents:
+      - idw_weights
+      - idw_interpolate
+      - idw_objective
+      - idw_gradient
+      - optimize_alpha
+
+  - title: High-Level Wrappers
+    desc: One-call interpolation from sf objects.
+    contents:
+      - interpolate_election
+      - interpolate_election_br
+
+  - title: Result Methods
+    desc: S3 methods for inspecting and exporting interpElections_result objects.
+    contents:
+      - summary.interpElections_result
+      - plot.interpElections_result
+      - coef.interpElections_result
+      - residuals.interpElections_result
+      - as.data.frame.interpElections_result
+
+  - title: Brazilian Data Helpers
+    desc: Download and prepare census, electoral, and geographic data for Brazil.
+    contents:
+      - br_prepare_population
+      - br_prepare_tracts
+      - br_prepare_electoral
+      - br_download_votes
+      - br_download_turnout
+      - br_download_geocode
+      - compute_travel_times
+      - download_r5r_data
+      - muni_crosswalk
+
+  - title: Areal Aggregation
+    desc: Reaggregate interpolated results into larger zones.
+    contents:
+      - areal_weights
+      - areal_interpolate
+
+  - title: Setup and Diagnostics
+    desc: Configure GPU, Java, and routing dependencies.
+    contents:
+      - setup_torch
+      - check_torch
+      - use_gpu
+      - setup_java
+      - set_java_memory
+      - check_r5r
+      - setup_osmium
+
+  - title: Cache Management
+    desc: Inspect and clean downloaded data caches.
+    contents:
+      - get_interpElections_cache_dir
+      - set_interpElections_cache_dir
+      - interpElections_cache
+      - interpElections_cache_clean

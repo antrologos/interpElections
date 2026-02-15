@@ -13,7 +13,8 @@ Description: Interpolates voting counts and electoral demographics from
     Includes end-to-end helpers for Brazilian electoral data that
     auto-download census, electoral, and road network data.
 License: MIT + file LICENSE
-URL: https://github.com/antrologos/interpElections
+URL: https://antrologos.github.io/interpElections/,
+    https://github.com/antrologos/interpElections
 BugReports: https://github.com/antrologos/interpElections/issues
 Encoding: UTF-8
 SystemRequirements: Java (>= 21) for r5r travel-time computation

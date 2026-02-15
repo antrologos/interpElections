@@ -7,76 +7,194 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
-## Overview
+## What is interpElections?
 
-**interpElections** implements spatial interpolation from geolocated source
-points (e.g., polling locations) into target polygons (e.g., census tracts)
-using inverse distance weighting (IDW) with per-zone optimized decay
-parameters.
+Many types of data are collected at geographic locations that do not match
+the spatial units we want to analyze. In elections, for example, votes are
+tallied at **polling locations** (points), but researchers often need
+estimates at the level of **census tracts** (polygons). Each polling
+location serves voters from multiple tracts, and each tract's voters may
+travel to different polling locations. The relationship is many-to-many,
+so there is no simple lookup table to convert between the two.
 
-The core idea: given travel times from each target zone to each source
-point, find the decay parameters (alpha) that best match the interpolated
-source counts to the known population in each zone. Then use those
-optimized weights to interpolate any variable from source points into
-target zones.
+Standard areal interpolation methods (which redistribute polygon data
+based on area overlap) do not apply here because the source data lives at
+points, not polygons. Instead, interpElections uses an **inverse distance
+weighting** (IDW) approach that accounts for the spatial proximity
+between census tracts and polling locations.
+
+In one sentence: interpElections computes travel-time-based IDW weights
+with **per-zone optimized decay parameters**, calibrated so that the
+interpolated values match known demographic totals at the tract level.
+
+
+## Installation
+
+interpElections is not yet on CRAN. Install from GitHub or from a local
+copy:
+
+```{r install, eval=FALSE}
+# From GitHub
+remotes::install_github("antrologos/interpElections")
+
+# Or from a local directory
+devtools::install_local("interpElections")
+```
+
+The core interpolation functions have no heavy dependencies beyond base R.
+Optional packages unlock additional capabilities:
+
+- **torch** -- GPU-accelerated optimization (ADAM optimizer on CUDA or MPS)
+- **r5r** + Java (>= 21) -- travel time computation via the R5 routing engine
+- **sf** -- spatial data handling (required for the wrapper functions)
+
 
 ## Quick Example
 
-```{r example, eval = FALSE}
+The package ships with small example datasets: a 20-tract x 8-source
+travel time matrix, population counts for 3 demographic groups in 20
+tracts, and voter counts for the same 3 groups at 8 source points.
+
+```{r quick-example}
 library(interpElections)
 
-# Load example data
-tt <- readRDS(system.file("extdata/example_tt_matrix.rds", package = "interpElections"))
-pop <- readRDS(system.file("extdata/example_pop_matrix.rds", package = "interpElections"))
-src <- readRDS(system.file("extdata/example_source_matrix.rds", package = "interpElections"))
+tt  <- readRDS(system.file("extdata/example_tt_matrix.rds",
+                            package = "interpElections"))
+pop <- readRDS(system.file("extdata/example_pop_matrix.rds",
+                            package = "interpElections"))
+src <- readRDS(system.file("extdata/example_source_matrix.rds",
+                            package = "interpElections"))
 
-# Step 1: Find optimal decay parameters
-result <- optimize_alpha(
-  time_matrix = tt,
-  pop_matrix = pop,
-  source_matrix = src,
-  use_gpu = FALSE,
-  verbose = TRUE
-)
+dim(tt)   # 20 tracts x 8 sources
+dim(pop)  # 20 tracts x 3 groups
+dim(src)  # 8 sources x 3 groups
+```
+
+Run the optimization to find the best decay parameter (alpha) for each
+tract:
+
+```{r optimize}
+result <- optimize_alpha(tt, pop, src, use_gpu = FALSE, verbose = FALSE)
 print(result)
+```
 
-# Step 2: Interpolate any source data into target zones
-candidate_votes <- matrix(rpois(8, 500), nrow = 8)
-colnames(candidate_votes) <- "votes"
+The result contains the optimal alpha vector, the final objective value
+(sum of squared errors), and metadata about convergence.
+
+
+## Interpolating Variables
+
+Once the alpha values are calibrated, they can be used to interpolate
+**any** variable from the source points into the target zones. Here we
+create a synthetic candidate vote matrix and interpolate it.
+
+```{r interpolate}
+# Synthetic vote counts: 8 sources x 2 candidates
+set.seed(123)
+candidate_votes <- matrix(
+  rpois(8 * 2, lambda = 200),
+  nrow = 8, ncol = 2,
+  dimnames = list(colnames(tt), c("Candidate_A", "Candidate_B"))
+)
+candidate_votes
+```
+
+```{r interpolate-result}
+# Interpolate into 20 tracts
 interpolated <- idw_interpolate(tt, result$alpha, candidate_votes)
 head(interpolated)
 ```
 
-## GPU Acceleration
+A key property of column-standardized IDW is **total conservation**: the
+column sums of the interpolated matrix equal the column sums of the
+source matrix. Each source distributes 100% of its data across the
+target zones.
 
-For large problems (thousands of zones), enable GPU acceleration:
-
-```{r gpu, eval = FALSE}
-# Toggle GPU globally
-use_gpu(enable = TRUE)
-
-# Or per-call
-result <- optimize_alpha(tt, pop, src, use_gpu = TRUE)
+```{r conservation}
+colSums(candidate_votes)  # totals at sources
+colSums(interpolated)     # totals at tracts (should match)
 ```
 
-See `vignette("gpu-setup")` for installation and configuration details.
 
-## The Mathematical Model
+## Package Overview
 
-The interpolation minimizes:
+interpElections provides functions at three levels of abstraction:
 
-$$L(\alpha) = \sum_i \sum_k (\hat{v}_{ik} - p_{ik})^2$$
+| Category | Functions | Purpose |
+|---|---|---|
+| Core IDW | `idw_weights()`, `idw_interpolate()`, `idw_objective()`, `idw_gradient()` | Low-level building blocks for computing weights, interpolating data, and evaluating the objective/gradient |
+| Optimization | `optimize_alpha()` | Finds optimal per-zone decay parameters (CPU or GPU) |
+| Wrappers | `interpolate_election()`, `interpolate_election_br()` | High-level one-call workflows that handle data prep, travel times, optimization, and interpolation |
+| Brazilian data | `br_prepare_population()`, `br_prepare_electoral()`, `br_prepare_tracts()`, `br_download_votes()`, `br_download_turnout()`, `br_download_geocode()`, `compute_travel_times()` | Download and prepare Brazilian census and electoral data |
+| Areal | `areal_weights()`, `areal_interpolate()` | Secondary aggregation from tracts into arbitrary polygons |
+| Setup | `setup_torch()`, `setup_java()`, `setup_osmium()`, `check_torch()`, `check_r5r()` | Install and diagnose optional dependencies |
+| GPU | `use_gpu()` | Toggle GPU acceleration globally |
+| Cache | `get_interpElections_cache_dir()`, `set_interpElections_cache_dir()`, `interpElections_cache()`, `interpElections_cache_clean()` | Manage persistent download cache |
 
-where:
+For the mathematical details behind IDW interpolation and the
+optimization procedure, see `vignette("understanding-the-model")`.
 
-$$\hat{v}_{ik} = \sum_j W_{ij} \cdot v_{jk}$$
-$$W_{ij} = \frac{(t_{ij} + 1)^{-\alpha_i}}{\sum_{i'} (t_{i'j} + 1)^{-\alpha_{i'}}}$$
 
-- $t_{ij}$: travel time from zone $i$ to source point $j$
-- $\alpha_i$: decay parameter for zone $i$ (optimized)
-- $v_{jk}$: count at source point $j$, demographic group $k$
-- $p_{ik}$: known population at zone $i$, group $k$
+## Three Ways to Use the Package
+
+### 1. One-call wrappers
+
+The simplest approach. For Brazilian elections, `interpolate_election_br()`
+handles everything -- downloading census data, electoral data, tract
+geometries, road networks, computing travel times, optimizing alpha, and
+interpolating:
+```r
+result <- interpolate_election_br(code_muni = 3550308, year = 2020)
+```
+
+For non-Brazilian data or custom setups, `interpolate_election()` provides
+the same workflow but takes user-supplied `sf` objects:
+```r
+result <- interpolate_election(
+  tracts_sf = my_zones, electoral_sf = my_points,
+  zone_id = "id", point_id = "id",
+  calib_zones = c("pop_young", "pop_old"),
+  calib_sources = c("voters_young", "voters_old")
+)
+```
+
+### 2. Step-by-step pipeline
+
+For more control, call each step individually:
+```r
+# Prepare inputs
+pop   <- br_prepare_population(code_muni = 3550308, year = 2022)
+tract <- br_prepare_tracts(code_muni = 3550308, pop_data = pop)
+elec  <- br_prepare_electoral(code_muni_ibge = "3550308", ...)
+
+# Compute travel times
+tt <- compute_travel_times(zones_sf = tract, points_sf = elec, ...)
+
+# Optimize and interpolate
+opt   <- optimize_alpha(tt, pop_matrix, source_matrix)
+votes <- idw_interpolate(tt, opt$alpha, candidate_matrix)
+```
+
+### 3. Core functions only
+
+For maximum flexibility or integration into custom pipelines, use the
+low-level functions directly:
+```r
+# Build weights from a travel time matrix and alpha vector
+W <- idw_weights(tt, alpha)
+
+# Evaluate the objective and gradient at a given alpha
+f <- idw_objective(alpha, tt, pop, src)
+g <- idw_gradient(alpha, tt, pop, src)
+
+# Interpolate by matrix multiplication
+interpolated <- W %*% source_data
+```
+
+This level is useful when you want to plug the IDW engine into your own
+optimization loop, compare different alpha values, or integrate with
+other spatial methods.
