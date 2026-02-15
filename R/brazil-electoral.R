@@ -257,7 +257,7 @@ br_prepare_electoral <- function(
         electoral_cache_name, .cache_subdirs()$electoral
       )
       if (!is.null(cached_result)) {
-        if (verbose) message("Using cached electoral data for ",
+        if (verbose) message("  Cached: electoral data for ",
                              code_muni_ibge, " (", year, ")")
         return(cached_result)
       }
@@ -268,7 +268,7 @@ br_prepare_electoral <- function(
   uf <- toupper(uf)
 
   # --- Voter Profile ---
-  if (verbose) message("Loading voter profile data...")
+  if (verbose) message("  Loading voter profile...")
   if (is.null(perfil_path)) {
     url_perfil <- sprintf(
       "https://cdn.tse.jus.br/estatistica/sead/odsele/perfil_eleitor_secao/perfil_eleitor_secao_%d_%s.zip",
@@ -355,7 +355,7 @@ br_prepare_electoral <- function(
 
   # --- Vote Data ---
   needs_votes <- any(c("candidates", "parties", "turnout") %in% what)
-  if (verbose && needs_votes) message("Loading vote data...")
+  if (verbose && needs_votes) message("  Loading vote data...")
   dados_votos <- NULL
   dados_partidos <- NULL
   turnout_from_votes <- NULL
@@ -577,7 +577,7 @@ br_prepare_electoral <- function(
   }
 
   # --- Attendance ---
-  if (verbose) message("Loading attendance data...")
+  if (verbose) message("  Loading attendance data...")
   dados_comp <- NULL
 
   if (!is.null(comparecimento_path)) {
@@ -614,7 +614,7 @@ br_prepare_electoral <- function(
   }
 
   # --- Geocoded Polling Stations ---
-  if (verbose) message("Loading geocoded polling stations...")
+  if (verbose) message("  Loading geocoded polling stations...")
   if (!is.null(geocode_path)) {
     # User override: read custom geocoded file directly
     geocode_locs <- utils::read.csv(geocode_path)
@@ -639,7 +639,7 @@ br_prepare_electoral <- function(
   }
 
   # --- Merge ---
-  if (verbose) message("Merging datasets...")
+  if (verbose) message("  Merging datasets...")
   merged <- perfil_wide
 
   # Summarise profile by section
@@ -772,7 +772,7 @@ br_prepare_electoral <- function(
   }
 
   # Aggregate by lat/long (voting location level)
-  if (verbose) message("Aggregating by voting location...")
+  if (verbose) message("  Aggregating by voting location...")
   drop_cols <- c("NM_MUNICIPIO", "ANO_ELEICAO", "COD_MUN_IBGE",
                  "COD_MUN_TSE", "NR_ZONA", "NR_LOCAL_VOTACAO", "NR_SECAO",
                  "ano", "source",
@@ -874,10 +874,8 @@ br_prepare_electoral <- function(
     tse_missing <- tse_locs[tse_locs$lat == -1 | tse_locs$long == -1, ]
 
     if (verbose) {
-      message(sprintf(
-        "  TSE: %d locations (%d with coords, %d missing)",
-        nrow(tse_locs), nrow(tse_valid), nrow(tse_missing)
-      ))
+      message(sprintf("    TSE: %d locations (%d with coords, %d missing)",
+                      nrow(tse_locs), nrow(tse_valid), nrow(tse_missing)))
     }
   } else {
     tse_valid <- data.frame(
@@ -889,7 +887,7 @@ br_prepare_electoral <- function(
       lat = numeric(0), long = numeric(0)
     )
     if (verbose && is.null(tse_data)) {
-      message("  TSE geocoded data not available, using Hidalgo only")
+      message("    TSE geocoded data not available, using Hidalgo only")
     }
   }
 
@@ -943,7 +941,7 @@ br_prepare_electoral <- function(
         ]
       }
       if (verbose) {
-        message(sprintf("  Hidalgo: %d locations available", nrow(hidalgo_locs)))
+        message(sprintf("    Hidalgo: %d locations available", nrow(hidalgo_locs)))
       }
     }
   }
@@ -1004,10 +1002,8 @@ br_prepare_electoral <- function(
   if (verbose) {
     n_tse <- sum(result$source == "tse")
     n_hid <- sum(result$source == "hidalgo")
-    message(sprintf(
-      "  Geocoded locations: %d total (%d TSE, %d Hidalgo)",
-      nrow(result), n_tse, n_hid
-    ))
+    message(sprintf("    Geocoded: %d locations (%d TSE, %d Hidalgo)",
+                    nrow(result), n_tse, n_hid))
   }
 
   result

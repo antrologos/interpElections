@@ -223,19 +223,19 @@ test_that("interpElections_cache_clean on empty category is silent", {
 test_that(".cache_message produces expected messages", {
   expect_message(
     interpElections:::.cache_message(TRUE, TRUE, TRUE, "test.zip"),
-    "Reading cached file"
+    "Cached: test.zip"
   )
   expect_message(
     interpElections:::.cache_message(TRUE, FALSE, TRUE, "test.zip"),
-    "existing temporary file"
+    "Cached: test.zip"
   )
   expect_message(
     interpElections:::.cache_message(FALSE, TRUE, TRUE, "test.zip"),
-    "Downloading and caching"
+    "Downloading: test.zip"
   )
   expect_message(
     interpElections:::.cache_message(FALSE, FALSE, TRUE, "test.zip"),
-    "not caching"
+    "Downloading: test.zip"
   )
 })
 

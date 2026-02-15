@@ -44,6 +44,10 @@
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Additional arguments forwarded to [optimize_alpha()],
 #'   [compute_travel_times()], and/or [download_r5r_data()].
+#' @param .step_offset Integer. Internal: offset added to step numbers
+#'   when called from [interpolate_election_br()]. Do not set manually.
+#' @param .step_total Integer or NULL. Internal: total step count for
+#'   unified progress display. Do not set manually.
 #'
 #' @return A list of class `"interpElections_result"` with components:
 #' \describe{
@@ -115,7 +119,9 @@ interpolate_election <- function(
     keep           = NULL,
     use_gpu        = NULL,
     verbose        = TRUE,
-    ...
+    ...,
+    .step_offset   = 0L,
+    .step_total    = NULL
 ) {
   cl <- match.call()
   dots <- list(...)
@@ -197,8 +203,8 @@ interpolate_election <- function(
   # Disable S2 for this check to ensure consistent planar geometry
   # across platforms (s2 default differs across sf versions/OS).
   old_s2 <- sf::sf_use_s2()
-  on.exit(sf::sf_use_s2(old_s2), add = TRUE)
-  sf::sf_use_s2(FALSE)
+  on.exit(suppressMessages(sf::sf_use_s2(old_s2)), add = TRUE)
+  suppressMessages(sf::sf_use_s2(FALSE))
 
   # The convex hulls of tracts and source points must intersect,
   # otherwise the data refers to different geographic areas.
@@ -224,7 +230,7 @@ interpolate_election <- function(
       tracts_sf <- tracts_sf[keep_rows, ]
       tracts_df <- sf::st_drop_geometry(tracts_sf)
       if (verbose) {
-        message(sprintf("Filtered %d zones with pop < %g (%d remaining)",
+        message(sprintf("  Filtered %d zones with pop < %g (%d remaining)",
                         n_removed, min_pop, nrow(tracts_sf)))
       }
     }
@@ -235,8 +241,8 @@ interpolate_election <- function(
   #   Pre-computed matrix: 3 steps (matrix, optimize, interpolate)
   #   User-provided network: 4 steps (+ compute travel times)
   #   Auto-download OSM:    5 steps (+ download OSM + compute travel times)
-  step_num <- 1L
-  total_steps <- 3L
+  step_num <- 1L + .step_offset
+  total_steps <- if (!is.null(.step_total)) .step_total else 3L
 
   if (is.null(time_matrix)) {
     # Check for cached travel time matrix
@@ -270,15 +276,20 @@ interpolate_election <- function(
 
     # Determine step counts based on which path we'll take
     if (!is.null(time_matrix)) {
-      # Cached travel times — 3 steps total
+      # Cached travel times — adjust total since we skip OSM + travel time steps
+      if (!is.null(.step_total)) {
+        # Reduce total by skipped steps (OSM download + travel time compute)
+        skipped <- if (is.null(network_path)) 2L else 1L
+        total_steps <- total_steps - skipped
+      }
       if (verbose) message(sprintf(
         "[%d/%d] Using cached travel time matrix (%dx%d)",
         step_num, total_steps, nrow(time_matrix), ncol(time_matrix)
       ))
       step_num <- step_num + 1L
     } else if (is.null(network_path)) {
-      # Need to download OSM + compute — 5 steps total
-      total_steps <- 5L
+      # Need to download OSM + compute — 5 steps total (when standalone)
+      if (is.null(.step_total)) total_steps <- 5L + .step_offset
       if (verbose) message(sprintf("[%d/%d] Downloading OSM road network...",
                                    step_num, total_steps))
 
@@ -309,8 +320,8 @@ interpolate_election <- function(
 
       step_num <- step_num + 1L
     } else {
-      # User provided network_path — 4 steps total
-      total_steps <- 4L
+      # User provided network_path — 4 steps total (when standalone)
+      if (is.null(.step_total)) total_steps <- 4L + .step_offset
     }
 
     # Compute travel times if not cached
@@ -444,7 +455,7 @@ interpolate_election <- function(
   class(result) <- "interpElections_result"
 
   if (verbose) {
-    message(sprintf("Done. %d variables interpolated into %d zones.",
+    message(sprintf("  Interpolated %d variables into %d zones",
                     ncol(interpolated), nrow(interpolated)))
   }
 

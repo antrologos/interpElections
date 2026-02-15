@@ -109,7 +109,7 @@ download_r5r_data <- function(
   }
 
   if (!dir.exists(output_dir)) {
-    if (verbose) message("Creating output directory: ", output_dir)
+    if (verbose) message("  Creating output directory: ", output_dir)
     dir.create(output_dir, recursive = TRUE)
   }
 
@@ -120,11 +120,11 @@ download_r5r_data <- function(
 
   # --- OSM download ---
   if (osm) {
-    if (verbose) message("Downloading OSM data...")
+    if (verbose) message("  Downloading OSM data...")
 
     # osmextract matches the area to the best available extract
     matched <- tryCatch(
-      osmextract::oe_match(area_sf, provider = osm_provider),
+      suppressMessages(osmextract::oe_match(area_sf, provider = osm_provider)),
       error = function(e) {
         stop(
           "Failed to match area to an OSM extract (provider: ",
@@ -146,13 +146,13 @@ download_r5r_data <- function(
     }
 
     osm_path <- tryCatch(
-      osmextract::oe_download(
+      suppressMessages(osmextract::oe_download(
         file_url = matched$url,
         provider = osm_provider,
         download_directory = osm_cache_dir,
         force_download = force,
-        quiet = !verbose
-      ),
+        quiet = TRUE
+      )),
       error = function(e) {
         stop(
           "Failed to download OSM data from ", osm_provider, ".\n",
@@ -163,7 +163,11 @@ download_r5r_data <- function(
       }
     )
 
-    if (verbose) message("OSM data saved to: ", osm_path)
+    if (verbose) {
+      osm_mb <- file.size(osm_path) / 1e6
+      message(sprintf("  OSM extract: %s (%.0f MB)",
+                      basename(osm_path), osm_mb))
+    }
 
     # Clip the .pbf to the area_sf bbox so r5r doesn't exceed
     # its geographic extent limit (~975,000 km2)
@@ -210,7 +214,7 @@ download_r5r_data <- function(
     elev_path <- file.path(output_dir, "elevation.tif")
 
     if (!file.exists(elev_path) || force) {
-      if (verbose) message("Downloading elevation data...")
+      if (verbose) message("  Downloading elevation data...")
 
       elev_raster <- elevatr::get_elev_raster(
         locations = area_sf,
@@ -224,11 +228,11 @@ download_r5r_data <- function(
       )
 
       if (verbose) {
-        message("Elevation data saved to: ", elev_path)
+        message("  Elevation data saved to: ", elev_path)
       }
     } else {
       if (verbose) {
-        message("Elevation file already exists: ", elev_path)
+        message("  Using cached elevation file")
       }
     }
 
@@ -266,8 +270,9 @@ download_r5r_data <- function(
 
   if (file.exists(clipped_path) && !force) {
     if (verbose) {
-      message("Using existing clipped OSM file: ",
-              clipped_path)
+      clipped_mb <- file.size(clipped_path) / 1e6
+      message(sprintf("  Using cached clipped OSM file (%.1f MB)",
+                      clipped_mb))
     }
     return(clipped_path)
   }
@@ -281,7 +286,7 @@ download_r5r_data <- function(
   # Try osmium first (preferred)
   osmium <- .find_tool("osmium")
   if (!is.null(osmium)) {
-    if (verbose) message("Clipping OSM data with osmium...")
+    if (verbose) message("  Clipping with osmium...")
     args <- c("extract", "-b", bbox_arg, "-o", clipped_path,
               "--overwrite", pbf_path)
     err_out <- tryCatch(
@@ -292,7 +297,8 @@ download_r5r_data <- function(
     if (is.null(rc)) rc <- 0L
     if (rc == 0 && file.exists(clipped_path)) {
       if (verbose) {
-        message("Clipped OSM file: ", clipped_path)
+        clipped_mb <- file.size(clipped_path) / 1e6
+        message(sprintf("  Clipped: %.1f MB", clipped_mb))
       }
       return(clipped_path)
     }
@@ -317,7 +323,7 @@ download_r5r_data <- function(
   }
 
   if (!is.null(osmconvert)) {
-    if (verbose) message("Clipping OSM data with osmconvert...")
+    if (verbose) message("  Clipping with osmconvert...")
     base_args <- c(
       pbf_path,
       sprintf("-b=%s", bbox_arg),
@@ -336,7 +342,8 @@ download_r5r_data <- function(
       if (is.null(rc)) rc <- 0L
       if (rc == 0 && file.exists(clipped_path)) {
         if (verbose) {
-          message("Clipped OSM file: ", clipped_path)
+          clipped_mb <- file.size(clipped_path) / 1e6
+          message(sprintf("  Clipped: %.1f MB", clipped_mb))
         }
         return(clipped_path)
       }

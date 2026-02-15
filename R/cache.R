@@ -361,7 +361,7 @@ interpElections_cache_clean <- function(
       if (file.exists(local_file) && attempt > 1L) {
         unlink(local_file)
       }
-      curl::curl_download(url, local_file, handle = h, quiet = !verbose)
+      curl::curl_download(url, local_file, handle = h, quiet = TRUE)
       TRUE
     }, error = function(e) {
       if (verbose) {
@@ -411,7 +411,7 @@ interpElections_cache_clean <- function(
 
   if (verbose) {
     size_mb <- file.size(local_file) / 1e6
-    message(sprintf("  Downloaded %.1f MB -> %s", size_mb, local_file))
+    message(sprintf("    Downloaded %s (%.1f MB)", filename, size_mb))
   }
 
   local_file
@@ -422,17 +422,10 @@ interpElections_cache_clean <- function(
 .cache_message <- function(file_exists, cache, verbose, filename = "") {
   if (!verbose) return(invisible(NULL))
 
-  if (file_exists && isTRUE(cache)) {
-    message(sprintf("  Reading cached file: %s", filename))
-  } else if (file_exists && !isTRUE(cache)) {
-    message(sprintf("  Using existing temporary file: %s", filename))
-  } else if (!file_exists && isTRUE(cache)) {
-    message(sprintf("  Downloading and caching locally: %s", filename))
+  if (file_exists) {
+    message(sprintf("    Cached: %s", filename))
   } else {
-    message(sprintf(
-      "  Downloading (not caching): %s. Set cache=TRUE for faster future use.",
-      filename
-    ))
+    message(sprintf("    Downloading: %s...", filename))
   }
 }
 

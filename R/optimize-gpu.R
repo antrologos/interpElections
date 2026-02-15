@@ -193,14 +193,14 @@
           diff_val <- f_hist[hist_idx] - f_hist[hist_idx - 1L]
         }
 
-        if (verbose && k %% 50 == 0) {
-          message(sprintf(
-            "  iter=%d, f=%.4f, diff=%.6f, lr=%.6f",
-            k, current, diff_val, rate
-          ))
-        }
         k <- k + 1L
         inner_iter <- inner_iter + 1L
+      }
+
+      # Log per-phase summary (first, every 5th, and last)
+      if (verbose && (j == 1L || j %% 5L == 0L || j == iterations)) {
+        message(sprintf("  Phase %d/%d: %d steps, objective=%.0f",
+                        j, iterations, inner_iter, current))
       }
 
       if (j < iterations) {

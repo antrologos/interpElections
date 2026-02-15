@@ -82,7 +82,7 @@ br_download_votes <- function(
 
   zip_name <- sprintf("votacao_secao_%d_%s.zip", year, uf)
 
-  if (verbose) message(sprintf("Candidate votes (%s %d)...", uf, year))
+  if (verbose) message(sprintf("  Candidate votes (%s %d)...", uf, year))
   zip_path <- .interpElections_download(
     url = url, filename = zip_name, subdir = .cache_subdirs()$votes,
     cache = cache, force = force, verbose = verbose
@@ -103,10 +103,11 @@ br_download_votes <- function(
                overwrite = TRUE)
 
   # Read CSV
-  if (verbose) message("Reading vote data...")
+  if (verbose) message("  Reading vote data...")
   dados <- data.table::fread(
     csv_path, sep = ";", encoding = "Latin-1",
-    colClasses = "character"
+    colClasses = "character",
+    showProgress = FALSE
   )
 
   # Ensure key columns are present
@@ -229,7 +230,7 @@ br_download_turnout <- function(
 
   zip_name <- sprintf("detalhe_votacao_secao_%d.zip", year)
 
-  if (verbose) message(sprintf("Turnout data (%d, nationwide)...", year))
+  if (verbose) message(sprintf("  Turnout data (%d)...", year))
   zip_path <- .interpElections_download(
     url = url, filename = zip_name, subdir = .cache_subdirs()$turnout,
     cache = cache, force = force, verbose = verbose
@@ -250,10 +251,11 @@ br_download_turnout <- function(
                overwrite = TRUE)
 
   # Read CSV
-  if (verbose) message("Reading turnout data...")
+  if (verbose) message("  Reading turnout data...")
   dados <- data.table::fread(
     csv_path, sep = ";", encoding = "Latin-1",
-    colClasses = "character"
+    colClasses = "character",
+    showProgress = FALSE
   )
 
   # Ensure key columns
@@ -386,7 +388,7 @@ br_download_geocode <- function(
 
   zip_name <- sprintf("eleitorado_local_votacao_%d.zip", year)
 
-  if (verbose) message(sprintf("Polling station locations (%d)...", year))
+  if (verbose) message(sprintf("  Polling station locations (%d)...", year))
   zip_path <- tryCatch(
     .interpElections_download(
       url = url, filename = zip_name, subdir = .cache_subdirs()$geocode,
@@ -427,10 +429,11 @@ br_download_geocode <- function(
                overwrite = TRUE)
 
   # Read CSV
-  if (verbose) message("Reading polling station location data...")
+  if (verbose) message("  Reading polling station location data...")
   dados <- data.table::fread(
     csv_path, sep = ";", encoding = "Latin-1",
-    colClasses = "character"
+    colClasses = "character",
+    showProgress = FALSE
   )
 
   # Check for coordinate columns

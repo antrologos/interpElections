@@ -22,7 +22,9 @@ interpolate_election(
   keep = NULL,
   use_gpu = NULL,
   verbose = TRUE,
-  ...
+  ...,
+  .step_offset = 0L,
+  .step_total = NULL
 )
 }
 \arguments{
@@ -82,6 +84,12 @@ cached on disk and can be reloaded without keeping them in memory.}
 
 \item{...}{Additional arguments forwarded to \code{\link[=optimize_alpha]{optimize_alpha()}},
 \code{\link[=compute_travel_times]{compute_travel_times()}}, and/or \code{\link[=download_r5r_data]{download_r5r_data()}}.}
+
+\item{.step_offset}{Integer. Internal: offset added to step numbers
+when called from \code{\link[=interpolate_election_br]{interpolate_election_br()}}. Do not set manually.}
+
+\item{.step_total}{Integer or NULL. Internal: total step count for
+unified progress display. Do not set manually.}
 }
 \value{
 A list of class \code{"interpElections_result"} with components:

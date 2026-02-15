@@ -56,20 +56,20 @@ br_prepare_tracts <- function(
 
   # Disable S2 for planar operations
   old_s2 <- sf::sf_use_s2()
-  on.exit(sf::sf_use_s2(old_s2), add = TRUE)
-  sf::sf_use_s2(FALSE)
+  on.exit(suppressMessages(sf::sf_use_s2(old_s2)), add = TRUE)
+  suppressMessages(sf::sf_use_s2(FALSE))
 
   # Download census tract shapefiles (with persistent cache)
   cache_name <- sprintf("tracts_%s_%d.rds", code_muni, year)
   shape <- .load_from_cache(cache_name, .cache_subdirs()$tracts)
 
   if (is.null(shape)) {
-    if (verbose) message("Downloading census tract geometries for ", code_muni, "...")
+    if (verbose) message("  Downloading census tract geometries...")
     shape <- tryCatch(
-      geobr::read_census_tract(
+      suppressMessages(geobr::read_census_tract(
         code_tract = as.numeric(code_muni),
         year = year
-      ),
+      )),
       error = function(e) {
         stop(sprintf(
           "Failed to download census tracts from geobr for municipality %s (year %d): %s",
@@ -88,7 +88,7 @@ br_prepare_tracts <- function(
       }
     )
   } else {
-    if (verbose) message("Using cached census tract geometries for ", code_muni)
+    if (verbose) message("  Using cached geometries")
   }
 
   shape <- sf::st_transform(shape, crs = crs)
@@ -163,7 +163,7 @@ br_prepare_tracts <- function(
     result <- dplyr::filter(result, .data$pop_total > 0)
     n_after <- nrow(result)
     if (n_before > n_after && verbose) {
-      message(sprintf("Removed %d unpopulated tracts (%d remaining)",
+      message(sprintf("  Removed %d unpopulated tracts (%d remaining)",
                        n_before - n_after, n_after))
     }
   }

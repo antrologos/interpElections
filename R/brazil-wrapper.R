@@ -418,8 +418,23 @@ interpolate_election_br <- function(
     }
   }
 
+  # --- Compute step counts for unified numbering ---
+  # Outer steps: 5 (resolve, population, tracts, electoral, calibration)
+  # Inner steps (interpolate_election): depends on travel time availability
+  #   time_matrix provided:   2 (optimize + interpolate)
+  #   network_path provided:  3 (+ compute travel times)
+  #   nothing provided:       4 (+ download OSM + compute travel times)
+  # Cache hits are determined inside interpolate_election, so we estimate
+  # the maximum and let inner function adjust.
+  .outer_steps <- 5L
+  .inner_estimate <- if (!is.null(time_matrix)) 2L
+                     else if (!is.null(network_path)) 3L
+                     else 4L
+  .total_steps <- .outer_steps + .inner_estimate
+
   # --- Step 1: Resolve IBGE -> TSE code + UF ---
-  if (verbose) message("[1/6] Resolving municipality identifiers...")
+  if (verbose) message(sprintf("[1/%d] Resolving municipality identifiers...",
+                               .total_steps))
   muni_info <- .br_resolve_muni(code_muni)
   if (verbose) {
     message(sprintf("  %s (%s) - IBGE: %s, TSE: %s",
@@ -442,22 +457,22 @@ interpolate_election_br <- function(
       2022L
     }
     if (verbose) {
-      message(sprintf(
-        "  Auto-selected census year: %d (election %d)",
-        census_year, year
-      ))
+      message(sprintf("  Census year: %d (election %d)",
+                      census_year, year))
     }
   }
 
   # --- Step 3: Census population ---
-  if (verbose) message("[2/6] Preparing census population data...")
+  if (verbose) message(sprintf("[2/%d] Preparing census population data...",
+                               .total_steps))
   pop_data <- br_prepare_population(
     code_muni = code_muni,
     year = census_year
   )
 
   # --- Step 4: Census tract geometries ---
-  if (verbose) message("[3/6] Preparing census tract geometries...")
+  if (verbose) message(sprintf("[3/%d] Preparing census tract geometries...",
+                               .total_steps))
   tracts_sf <- br_prepare_tracts(
     code_muni = code_muni,
     pop_data = pop_data,
@@ -467,7 +482,8 @@ interpolate_election_br <- function(
   )
 
   # --- Step 5: Electoral data ---
-  if (verbose) message("[4/6] Preparing electoral data...")
+  if (verbose) message(sprintf("[4/%d] Preparing electoral data...",
+                               .total_steps))
   # Forward geocode_path from ... if provided
   dots <- list(...)
   geocode_path <- dots$geocode_path
@@ -505,7 +521,8 @@ interpolate_election_br <- function(
   tracts_sf$id <- as.character(tracts_sf$code_tract)
 
   # --- Step 6: Match calibration brackets ---
-  if (verbose) message("[5/6] Matching calibration brackets...")
+  if (verbose) message(sprintf("[5/%d] Matching calibration brackets...",
+                               .total_steps))
   calib <- .br_match_calibration(
     census_year = census_year,
     tracts_sf = tracts_sf,
@@ -549,7 +566,7 @@ interpolate_election_br <- function(
   }
 
   # --- Step 8: Call interpolate_election() ---
-  if (verbose) message("[6/6] Running interpolation pipeline...")
+  # Pass step offset so inner steps continue the unified numbering
   ie_result <- interpolate_election(
     tracts_sf = tracts_sf,
     electoral_sf = electoral_sf,
@@ -568,8 +585,12 @@ interpolate_election_br <- function(
     use_gpu = use_gpu,
     verbose = verbose,
     osm_provider = osm_provider,
-    ...
+    ...,
+    .step_offset = .outer_steps,
+    .step_total = .total_steps
   )
+
+  if (verbose) message("\nDone.")
 
   # --- Set Brazilian metadata on the unified result ---
   ie_result$code_muni   <- code_muni

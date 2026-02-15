@@ -123,9 +123,9 @@ compute_travel_times <- function(
   }
 
   # Project to equal-area CRS for centroid computation, then to WGS84
-  if (verbose) message("Computing zone centroids...")
+  if (verbose) message("  Computing zone centroids...")
   zones_proj <- sf::st_transform(zones_sf, "EPSG:5880")
-  centroids_proj <- sf::st_centroid(zones_proj)
+  centroids_proj <- suppressWarnings(sf::st_centroid(zones_proj))
   centroids <- sf::st_transform(centroids_proj, 4326)
   points_sf <- sf::st_transform(points_sf, 4326)
 
@@ -142,12 +142,12 @@ compute_travel_times <- function(
   )
 
   # Build r5r network
-  if (verbose) message("Building r5r network...")
-  r5r_core <- r5r::setup_r5(
+  if (verbose) message("  Building r5r network...")
+  r5r_core <- suppressMessages(r5r::setup_r5(
     data_path = network_path,
-    verbose = verbose
-  )
-  on.exit(r5r::stop_r5(r5r_core), add = TRUE)
+    verbose = FALSE
+  ))
+  on.exit(suppressMessages(r5r::stop_r5(r5r_core)), add = TRUE)
 
   # Build travel time call args
   tt_args <- list(
@@ -156,7 +156,7 @@ compute_travel_times <- function(
     destinations = destinations,
     mode = mode,
     max_trip_duration = max_trip_duration,
-    verbose = verbose,
+    verbose = FALSE,
     max_rides = 1L
   )
 
@@ -166,8 +166,8 @@ compute_travel_times <- function(
   }
 
   # Calculate travel times
-  if (verbose) message("Computing travel times...")
-  tt <- do.call(r5r::travel_time_matrix, tt_args)
+  if (verbose) message("  Computing travel times...")
+  tt <- suppressMessages(do.call(r5r::travel_time_matrix, tt_args))
 
   # Vectorized pivot to wide matrix
   zone_ids <- origins$id
@@ -204,10 +204,8 @@ compute_travel_times <- function(
   mat[is.na(mat)] <- fill_missing
 
   if (verbose) {
-    message(sprintf(
-      "Travel time matrix: %d zones x %d points",
-      nrow(mat), ncol(mat)
-    ))
+    message(sprintf("  Travel time matrix: %d x %d",
+                    nrow(mat), ncol(mat)))
   }
 
   mat

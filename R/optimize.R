@@ -134,7 +134,7 @@ optimize_alpha <- function(
       getOption("interpElections.dtype", default = "float32")
 
     if (verbose) {
-      message(sprintf("GPU optimization: device=%s, dtype=%s, iterations=%d",
+      message(sprintf("  GPU (ADAM, %s, %s, %d phases)",
                        resolved_device, resolved_dtype, gpu_iterations))
     }
 
@@ -164,7 +164,7 @@ optimize_alpha <- function(
     }
 
     if (verbose) {
-      message(sprintf("CPU optimization: method=%s, parallel=%s",
+      message(sprintf("  CPU optimization: method=%s, parallel=%s",
                        cpu_method, cpu_parallel))
     }
 
@@ -211,8 +211,12 @@ optimize_alpha <- function(
   class(result) <- "interpElections_optim"
 
   if (verbose) {
-    message(sprintf("Done. Objective: %.4f | Method: %s | Time: %.1f secs",
-                     result$value, result$method, as.numeric(elapsed, units = "secs")))
+    message(sprintf(
+      "  Converged in %d steps (%.1fs), objective=%s",
+      result$iterations,
+      as.numeric(elapsed, units = "secs"),
+      format(round(result$value), big.mark = ",")
+    ))
   }
 
   result
