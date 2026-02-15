@@ -178,9 +178,26 @@ compute_travel_times <- function(
                 ncol = length(point_ids),
                 dimnames = list(zone_ids, point_ids))
 
-  # Use match() for vectorized lookup instead of row-by-row loop
-  row_idx <- match(as.character(tt$from_id), zone_ids)
-  col_idx <- match(as.character(tt$to_id), point_ids)
+  # Detect whether r5r swapped origins and destinations.
+  # r5r may internally route from the smaller set for efficiency,
+  # returning from_id = original destinations and to_id = original origins.
+  from_ids <- as.character(tt$from_id)
+  to_ids   <- as.character(tt$to_id)
+  fwd_zone <- sum(from_ids %in% zone_ids)
+  rev_zone <- sum(to_ids   %in% zone_ids)
+
+  if (fwd_zone >= rev_zone) {
+    # Normal: from_id = zones, to_id = points
+    row_idx <- match(from_ids, zone_ids)
+    col_idx <- match(to_ids, point_ids)
+  } else {
+    # Swapped: from_id = points, to_id = zones
+    if (verbose) {
+      message("  Note: r5r swapped origins/destinations; adjusting ID mapping")
+    }
+    row_idx <- match(to_ids, zone_ids)
+    col_idx <- match(from_ids, point_ids)
+  }
   valid <- !is.na(row_idx) & !is.na(col_idx)
 
   # r5r column name varies by version
@@ -195,6 +212,27 @@ compute_travel_times <- function(
   }
   tt_values <- tt[[tt_col[1]]]
 
+  n_valid <- sum(valid)
+  n_total <- length(zone_ids) * length(point_ids)
+
+  if (n_valid == 0) {
+    warning(
+      "r5r returned no usable travel times. ",
+      "The entire matrix is filled with fill_missing (", fill_missing, ").\n",
+      "This will produce constant interpolation weights. ",
+      "Check that the OSM network covers the study area and that ",
+      "origins/destinations snap to the street network.",
+      call. = FALSE
+    )
+  } else if (n_valid < n_total * 0.1) {
+    warning(
+      sprintf("r5r returned travel times for only %.1f%% of OD pairs (%d/%d). ",
+              100 * n_valid / n_total, n_valid, n_total),
+      "Most entries are fill_missing. Check network coverage.",
+      call. = FALSE
+    )
+  }
+
   if (any(valid)) {
     mat[cbind(row_idx[valid], col_idx[valid])] <-
       tt_values[valid]
@@ -204,8 +242,9 @@ compute_travel_times <- function(
   mat[is.na(mat)] <- fill_missing
 
   if (verbose) {
-    message(sprintf("  Travel time matrix: %d x %d",
-                    nrow(mat), ncol(mat)))
+    pct <- 100 * n_valid / n_total
+    message(sprintf("  Travel time matrix: %d x %d (%d/%d = %.1f%% actual values)",
+                    nrow(mat), ncol(mat), n_valid, n_total, pct))
   }
 
   mat
