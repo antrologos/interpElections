@@ -182,8 +182,8 @@ summary(result)
 #> Interpolated variables:
 #>   vot_18_34                    total=       972  mean=    48.6  [42.7, 54.8]
 #>   vot_35_54                    total=      1032  mean=    51.6  [45.2, 58.2]
-#>   vot_55_69                    total=      1043  mean=    52.2  [45.6, 58.8]
-#>   Candidate_A                  total=      1233  mean=    61.6  [53.8, 69.5]
+#>   vot_55_69                    total=      1043  mean=    52.1  [45.6, 58.8]
+#>   Candidate_A                  total=      1233  mean=    61.7  [53.8, 69.5]
 #>   Candidate_B                  total=      1266  mean=    63.3  [55.5, 71.4]
 #> 
 #> Object size: 0.0 MB

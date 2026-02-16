@@ -110,7 +110,7 @@ result_default$iterations
 #> function gradient 
 #>       58       58
 cat("Elapsed:", format(result_default$elapsed), "\n")
-#> Elapsed: 0.4363866 secs
+#> Elapsed: 0.3748732 secs
 cat("Objective:", round(result_default$value, 2), "\n")
 #> Objective: 2150.05
 ```
@@ -311,7 +311,7 @@ with a temporary directory:
 old_cache <- get_interpElections_cache_dir()
 set_interpElections_cache_dir(tempdir(), verbose = FALSE)
 get_interpElections_cache_dir()   # now points to temp
-#> [1] "/tmp/RtmpGBOSf4"
+#> [1] "/tmp/RtmpqbNGuf"
 
 # Restore the original
 set_interpElections_cache_dir(old_cache, verbose = FALSE)
