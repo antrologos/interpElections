@@ -322,7 +322,7 @@ br_download_turnout <- function(
 #'   persistently. See [get_interpElections_cache_dir()].
 #' @param verbose Logical. Default: TRUE.
 #'
-#' @return A data frame with TSE party legend data. Key columns:
+#' @return A data frame with TSE party/coalition data. Key columns:
 #'   \describe{
 #'     \item{NR_PARTIDO}{Party number (2-digit)}
 #'     \item{SG_PARTIDO}{Party abbreviation (e.g., "PT", "MDB")}
@@ -331,7 +331,9 @@ br_download_turnout <- function(
 #'
 #' @details
 #' Data is downloaded from
-#' `https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_legendas/`.
+#' `https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_coligacao/`.
+#' This file contains coalition/party records for each election year,
+#' from which the unique party number-to-abbreviation mapping is extracted.
 #' Files are cached persistently by default and reused on subsequent
 #' calls unless `force = TRUE`.
 #'
@@ -356,11 +358,11 @@ br_download_party_legends <- function(
   year <- as.integer(year)
 
   url <- sprintf(
-    "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_legendas/consulta_legendas_%d.zip",
+    "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_coligacao/consulta_coligacao_%d.zip",
     year
   )
 
-  zip_name <- sprintf("consulta_legendas_%d.zip", year)
+  zip_name <- sprintf("consulta_coligacao_%d.zip", year)
 
   if (verbose) message(sprintf("  Party legends (%d)...", year))
   zip_path <- .interpElections_download(
@@ -368,19 +370,21 @@ br_download_party_legends <- function(
     cache = cache, force = force, verbose = verbose
   )
 
-  # Extract CSV from ZIP
+  # Extract CSV from ZIP — prefer BRASIL file (contains all states)
   csv_files <- utils::unzip(zip_path, list = TRUE)$Name
-  csv_file <- grep("\\.csv$", csv_files, value = TRUE, ignore.case = TRUE)
-  if (length(csv_file) == 0) {
+  csv_all <- grep("\\.csv$", csv_files, value = TRUE, ignore.case = TRUE)
+  if (length(csv_all) == 0) {
     stop("No CSV file found in ZIP archive: ", zip_path, call. = FALSE)
   }
+  csv_brasil <- grep("_BRASIL\\.csv$", csv_all, value = TRUE, ignore.case = TRUE)
+  csv_file <- if (length(csv_brasil) > 0) csv_brasil[1] else csv_all[1]
 
   extract_dir <- tempfile("interpElections_legends_")
   dir.create(extract_dir, recursive = TRUE)
   on.exit(unlink(extract_dir, recursive = TRUE), add = TRUE)
-  csv_path <- file.path(extract_dir, csv_file[1])
-  utils::unzip(zip_path, files = csv_file[1], exdir = extract_dir,
+  utils::unzip(zip_path, files = csv_file, exdir = extract_dir,
                overwrite = TRUE)
+  csv_path <- file.path(extract_dir, csv_file)
 
   if (verbose) message("  Reading party legend data...")
   dados <- data.table::fread(
@@ -398,7 +402,7 @@ br_download_party_legends <- function(
 
   if (verbose) {
     n_parties <- length(unique(dados$SG_PARTIDO))
-    message(sprintf("  %d party legend records loaded (%d unique parties)",
+    message(sprintf("  %d party records loaded (%d unique parties)",
                     nrow(dados), n_parties))
   }
 

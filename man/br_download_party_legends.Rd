@@ -18,7 +18,7 @@ persistently. See \code{\link[=get_interpElections_cache_dir]{get_interpElection
 \item{verbose}{Logical. Default: TRUE.}
 }
 \value{
-A data frame with TSE party legend data. Key columns:
+A data frame with TSE party/coalition data. Key columns:
 \describe{
 \item{NR_PARTIDO}{Party number (2-digit)}
 \item{SG_PARTIDO}{Party abbreviation (e.g., "PT", "MDB")}
@@ -33,7 +33,9 @@ numbers (\code{NR_PARTIDO}) to abbreviations (\code{SG_PARTIDO}) and full names
 }
 \details{
 Data is downloaded from
-\verb{https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_legendas/}.
+\verb{https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_coligacao/}.
+This file contains coalition/party records for each election year,
+from which the unique party number-to-abbreviation mapping is extracted.
 Files are cached persistently by default and reused on subsequent
 calls unless \code{force = TRUE}.
 }
