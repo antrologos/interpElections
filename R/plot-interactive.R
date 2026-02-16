@@ -103,7 +103,7 @@ plot_interactive <- function(
     layer_name <- paste0(display_name, qty_suffix)
   }
 
-  mapview::mapview(
+  suppressWarnings(mapview::mapview(
     plot_sf,
     zcol = display_name,
     layer.name = layer_name,
@@ -113,7 +113,7 @@ plot_interactive <- function(
     popup = popup,
     map.types = basemap,
     ...
-  )
+  ))
 }
 
 
@@ -154,7 +154,7 @@ plot_interactive <- function(
     }
     lname <- paste0(display_name, qty_suffix)
 
-    mapview::mapview(
+    suppressWarnings(mapview::mapview(
       plot_sf,
       zcol = display_name,
       layer.name = lname,
@@ -164,7 +164,7 @@ plot_interactive <- function(
       popup = popup,
       map.types = basemap,
       ...
-    )
+    ))
   })
 
   do.call(leafsync::sync, maps)
