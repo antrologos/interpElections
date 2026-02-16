@@ -701,6 +701,12 @@ interpolate_election_br <- function(
   # Start with electoral metadata (candidates + parties)
   dict <- attr(electoral_data, "column_dictionary")
 
+  # Fallback: if no dictionary attribute (e.g. old cached data), build
+  # basic dictionary entries from column name patterns
+  if (is.null(dict)) {
+    dict <- .br_dict_from_colnames(interp_cols)
+  }
+
   # Add calibration columns
   calib_rows <- lapply(calib$calib_sources, function(col) {
     data.frame(
@@ -746,6 +752,62 @@ interpolate_election_br <- function(
 
   if (nrow(full_dict) == 0) return(NULL)
   full_dict
+}
+
+
+# --- Internal: build basic dictionary from column names ---
+# Fallback for when electoral data was cached without the dictionary attribute.
+# Extracts type and ballot number from patterns like PRESIDENTE_CAND_13,
+# PARTY_PT, DEPUTADO_FEDERAL_PARTY_MDB, etc.
+
+.br_dict_from_colnames <- function(interp_cols) {
+  # Known non-electoral patterns (handled elsewhere)
+  skip_re <- "^(votantes_|pop_|QT_|GENERO_|EDUC_)"
+
+  rows <- list()
+  for (col in interp_cols) {
+    if (grepl(skip_re, col)) next
+
+    # Candidate columns: *_CAND_<number> or CAND_<number>
+    if (grepl("CAND_[0-9]+$", col)) {
+      ballot <- sub(".*CAND_", "", col)
+      # Extract cargo prefix (everything before _CAND_)
+      cargo <- sub("_CAND_[0-9]+$", "", col)
+      if (cargo == col) cargo <- NA_character_  # no prefix (bare CAND_13)
+
+      cand_name <- if (ballot == "95") {
+        "Votos em Branco"
+      } else if (ballot == "96") {
+        "Votos Nulos"
+      } else {
+        NA_character_
+      }
+
+      rows[[length(rows) + 1L]] <- data.frame(
+        column = col, type = "candidate", cargo = cargo,
+        ballot_number = ballot, candidate_name = cand_name,
+        party = NA_character_, stringsAsFactors = FALSE
+      )
+      next
+    }
+
+    # Party columns: *_PARTY_<abbr> or PARTY_<abbr>
+    if (grepl("PARTY_", col)) {
+      party_abbr <- sub(".*PARTY_", "", col)
+      cargo <- sub("_PARTY_.*$", "", col)
+      if (cargo == col) cargo <- NA_character_
+
+      rows[[length(rows) + 1L]] <- data.frame(
+        column = col, type = "party", cargo = cargo,
+        ballot_number = NA_character_, candidate_name = NA_character_,
+        party = party_abbr, stringsAsFactors = FALSE
+      )
+      next
+    }
+  }
+
+  if (length(rows) == 0) return(NULL)
+  do.call(rbind, rows)
 }
 
 
