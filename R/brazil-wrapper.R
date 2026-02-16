@@ -3,13 +3,21 @@
 #' High-level wrapper that auto-downloads census data, electoral data,
 #' tract geometries, and OSM road networks, then runs the full optimization
 #' and interpolation pipeline. The user only needs to provide an IBGE
-#' municipality code and an election year.
+#' municipality code (or name) and an election year.
 #'
 #' Internally calls [interpolate_election()] after preparing all inputs.
 #'
-#' @param code_muni Numeric or character. 7-digit IBGE municipality code
-#'   (e.g., `3550308` for Sao Paulo, `3170701` for Varginha). The TSE code
-#'   and state abbreviation are resolved automatically.
+#' @param code_muni Numeric or character. Either a 7-digit IBGE municipality
+#'   code (e.g., `3550308` for Sao Paulo) or a municipality **name** (e.g.,
+#'   `"Sao Paulo"`, `"SAO PAULO"`, `"São Paulo"`). Name matching is
+#'   case-insensitive, accent-insensitive, and whitespace-trimmed. If the
+#'   name exists in multiple states, use the `uf` parameter to disambiguate.
+#'   The TSE code and state abbreviation are resolved automatically from the
+#'   bundled [muni_crosswalk] table.
+#' @param uf Character or NULL. Two-letter state abbreviation (e.g., `"SP"`,
+#'   `"RJ"`) for disambiguation when `code_muni` is a municipality name that
+#'   exists in multiple states. Case-insensitive. Ignored (with a message)
+#'   when `code_muni` is a numeric IBGE code. Default: `NULL`.
 #' @param year Integer. Election year. Brazil holds two types of elections:
 #'
 #'   - **Municipal** (even years divisible by 4): 2000, 2004, 2008, 2012,
@@ -344,6 +352,7 @@
 #' @export
 interpolate_election_br <- function(
     code_muni,
+    uf                  = NULL,
     year,
     comparecimento_path = NULL,
     votacao_path        = NULL,
@@ -435,7 +444,8 @@ interpolate_election_br <- function(
   # --- Step 1: Resolve IBGE -> TSE code + UF ---
   if (verbose) message(sprintf("[1/%d] Resolving municipality identifiers...",
                                .total_steps))
-  muni_info <- .br_resolve_muni(code_muni)
+  muni_info <- .br_resolve_muni(code_muni, uf = uf)
+  code_muni <- muni_info$code_muni_ibge
   if (verbose) {
     message(sprintf("  %s (%s) - IBGE: %s, TSE: %s",
                     muni_info$nome_municipio, muni_info$uf,
@@ -593,29 +603,85 @@ interpolate_election_br <- function(
   if (verbose) message("\nDone.")
 
   # --- Set Brazilian metadata on the unified result ---
-  ie_result$code_muni   <- code_muni
-  ie_result$year        <- as.integer(year)
-  ie_result$census_year <- as.integer(census_year)
+  ie_result$code_muni      <- code_muni
+  ie_result$nome_municipio <- muni_info$nome_municipio
+  ie_result$code_muni_tse  <- muni_info$code_muni_tse
+  ie_result$uf             <- muni_info$uf
+  ie_result$year           <- as.integer(year)
+  ie_result$census_year    <- as.integer(census_year)
   ie_result$what        <- what
   ie_result$pop_data    <- pop_data
   ie_result$call        <- cl  # Override with br call
+
+  # --- Build column dictionary ---
+  ie_result$dictionary <- .br_build_dictionary(
+    electoral_data, ie_result$interp_cols, calib, what)
 
   ie_result
 }
 
 
-# --- Internal: resolve IBGE code to TSE code + UF ---
+# --- Internal: resolve municipality identifier to TSE code + UF ---
+# Accepts either a 7-digit IBGE code (numeric or character) or a municipality
+# name.  When using a name, the optional `uf` narrows matches to one state.
 
-.br_resolve_muni <- function(code_muni_ibge) {
-  code_muni_ibge <- as.character(code_muni_ibge)
-
-  # Use bundled crosswalk data (interpElections::muni_crosswalk)
+.br_resolve_muni <- function(code_muni, uf = NULL) {
+  code_muni <- trimws(as.character(code_muni))
   xwalk <- muni_crosswalk
-  row <- xwalk[xwalk$code_ibge == code_muni_ibge, ]
 
-  if (nrow(row) == 0) {
-    stop(sprintf("IBGE code '%s' not found in crosswalk table",
-                 code_muni_ibge), call. = FALSE)
+  # Detect whether input is a numeric IBGE code or a name
+  is_code <- grepl("^[0-9]+$", code_muni)
+
+  if (is_code) {
+    # --- IBGE code path ---
+    if (!is.null(uf)) {
+      message("Note: `uf` is ignored when `code_muni` is a numeric IBGE code.")
+    }
+    row <- xwalk[xwalk$code_ibge == code_muni, ]
+    if (nrow(row) == 0) {
+      stop(sprintf("IBGE code '%s' not found in crosswalk table",
+                   code_muni), call. = FALSE)
+    }
+  } else {
+    # --- Name-based lookup ---
+    input_norm <- toupper(trimws(.br_remove_accents(code_muni)))
+    xwalk_norm <- toupper(trimws(.br_remove_accents(xwalk$nome)))
+
+    matches <- which(xwalk_norm == input_norm)
+
+    # Apply UF filter if provided
+    if (!is.null(uf)) {
+      uf_norm <- toupper(trimws(uf))
+      matches <- matches[toupper(xwalk$uf[matches]) == uf_norm]
+    }
+
+    if (length(matches) == 0) {
+      if (!is.null(uf)) {
+        stop(sprintf(
+          "Municipality '%s' not found in state '%s'.\n  Check spelling or try without the `uf` parameter to see all matches.",
+          code_muni, toupper(trimws(uf))
+        ), call. = FALSE)
+      } else {
+        stop(sprintf(
+          "Municipality name '%s' not found in crosswalk table.\n  Check spelling. Names are matched case- and accent-insensitively.",
+          code_muni
+        ), call. = FALSE)
+      }
+    }
+
+    if (length(matches) > 1) {
+      dup_rows <- xwalk[matches, ]
+      uf_list <- paste(
+        sprintf("  %s (%s) - IBGE: %s", dup_rows$nome, dup_rows$uf, dup_rows$code_ibge),
+        collapse = "\n"
+      )
+      stop(sprintf(
+        "Municipality name '%s' matches %d municipalities in different states:\n%s\n\nUse the `uf` parameter to disambiguate, e.g.: uf = \"%s\"",
+        code_muni, length(matches), uf_list, dup_rows$uf[1]
+      ), call. = FALSE)
+    }
+
+    row <- xwalk[matches, ]
   }
 
   list(
@@ -624,6 +690,62 @@ interpolate_election_br <- function(
     uf             = row$uf[1],
     nome_municipio = row$nome[1]
   )
+}
+
+
+# --- Internal: build column dictionary for the result ---
+# Combines the electoral dictionary (from br_prepare_electoral) with entries
+# for calibration, turnout, and demographics columns.
+
+.br_build_dictionary <- function(electoral_data, interp_cols, calib, what) {
+  # Start with electoral metadata (candidates + parties)
+  dict <- attr(electoral_data, "column_dictionary")
+
+  # Add calibration columns
+  calib_rows <- lapply(calib$calib_sources, function(col) {
+    data.frame(
+      column = col, type = "calibration", cargo = NA_character_,
+      ballot_number = NA_character_, candidate_name = NA_character_,
+      party = NA_character_, stringsAsFactors = FALSE)
+  })
+
+  # Add turnout columns
+  turnout_names <- intersect(
+    c("QT_COMPARECIMENTO", "QT_APTOS", "QT_ABSTENCOES"), interp_cols)
+  turnout_rows <- lapply(turnout_names, function(col) {
+    data.frame(
+      column = col, type = "turnout", cargo = NA_character_,
+      ballot_number = NA_character_, candidate_name = NA_character_,
+      party = NA_character_, stringsAsFactors = FALSE)
+  })
+
+  # Add demographics columns
+  demo_names <- grep("^(GENERO_|EDUC_)", interp_cols, value = TRUE)
+  demo_rows <- lapply(demo_names, function(col) {
+    data.frame(
+      column = col, type = "demographics", cargo = NA_character_,
+      ballot_number = NA_character_, candidate_name = NA_character_,
+      party = NA_character_, stringsAsFactors = FALSE)
+  })
+
+  all_rows <- c(
+    if (!is.null(dict)) list(dict) else list(),
+    calib_rows, turnout_rows, demo_rows
+  )
+
+  if (length(all_rows) == 0) return(NULL)
+
+  full_dict <- do.call(rbind, all_rows)
+  row.names(full_dict) <- NULL
+
+  # Deduplicate: keep first occurrence of each column name
+  full_dict <- full_dict[!duplicated(full_dict$column), , drop = FALSE]
+
+  # Filter to only columns actually interpolated
+  full_dict <- full_dict[full_dict$column %in% interp_cols, , drop = FALSE]
+
+  if (nrow(full_dict) == 0) return(NULL)
+  full_dict
 }
 
 
@@ -645,7 +767,7 @@ interpolate_election_br <- function(
   if (census_year %in% c(2000, 2010)) {
     # Census produces: pop_18_20, pop_21_24, pop_25_29, pop_30_39,
     #   pop_40_49, pop_50_59, pop_60_69
-    # TSE produces: votantes_18_20, ..., votantes_65_69 (11 fine groups)
+    # TSE produces: votantes_18_19, votantes_20, ..., votantes_65_69 (12 fine groups)
     # Need to aggregate TSE's fine groups to match census coarser groups
 
     calib_zones <- c("pop_18_20", "pop_21_24", "pop_25_29",
@@ -653,6 +775,8 @@ interpolate_election_br <- function(
                      "pop_60_69")
 
     # Aggregate TSE voter columns
+    electoral_sf$votantes_18_20 <- .safe_sum(
+      elec_df, c("votantes_18_19", "votantes_20"))
     electoral_sf$votantes_30_39 <- .safe_sum(
       elec_df, c("votantes_30_34", "votantes_35_39"))
     electoral_sf$votantes_40_49 <- .safe_sum(
@@ -670,13 +794,14 @@ interpolate_election_br <- function(
   } else {
     # Census 2022 produces: pop_15_19, pop_20_24, pop_25_29, pop_30_39,
     #   pop_40_49, pop_50_59, pop_60_69
-    # 15-19 and 20-24 don't match TSE's 18-20 and 21-24
-    # Combine both sides: pop_15_24 <-> votantes_15_24
+    # 15-19 bracket includes non-voting ages (15-17); use 2/5 as proxy
+    # for ages 18-19 (assuming uniform distribution within bracket).
+    # pop_20_24 matches TSE's "20 anos" + "21 a 24 anos" directly.
 
-    tracts_sf$pop_15_24 <- tracts_df$pop_15_19 + tracts_df$pop_20_24
+    tracts_sf$pop_18_19 <- tracts_df$pop_15_19 * 2 / 5
 
-    electoral_sf$votantes_15_24 <- .safe_sum(
-      elec_df, c("votantes_18_20", "votantes_21_24"))
+    electoral_sf$votantes_20_24 <- .safe_sum(
+      elec_df, c("votantes_20", "votantes_21_24"))
     electoral_sf$votantes_30_39 <- .safe_sum(
       elec_df, c("votantes_30_34", "votantes_35_39"))
     electoral_sf$votantes_40_49 <- .safe_sum(
@@ -686,11 +811,13 @@ interpolate_election_br <- function(
     electoral_sf$votantes_60_69 <- .safe_sum(
       elec_df, c("votantes_60_64", "votantes_65_69"))
 
-    calib_zones <- c("pop_15_24", "pop_25_29", "pop_30_39",
-                     "pop_40_49", "pop_50_59", "pop_60_69")
-    calib_sources <- c("votantes_15_24", "votantes_25_29",
-                       "votantes_30_39", "votantes_40_49",
-                       "votantes_50_59", "votantes_60_69")
+    calib_zones <- c("pop_18_19", "pop_20_24", "pop_25_29",
+                     "pop_30_39", "pop_40_49", "pop_50_59",
+                     "pop_60_69")
+    calib_sources <- c("votantes_18_19", "votantes_20_24",
+                       "votantes_25_29", "votantes_30_39",
+                       "votantes_40_49", "votantes_50_59",
+                       "votantes_60_69")
   }
 
   # Verify all columns exist

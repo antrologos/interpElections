@@ -327,7 +327,8 @@ br_prepare_electoral <- function(
   dados_perfil <- dplyr::mutate(dados_perfil,
     DS_FAIXA_ETARIA = stringr::str_trim(.data$DS_FAIXA_ETARIA),
     faixa_idade = dplyr::case_when(
-      .data$DS_FAIXA_ETARIA %in% c("18 anos", "19 anos", "20 anos") ~ "votantes_18_20",
+      .data$DS_FAIXA_ETARIA %in% c("18 anos", "19 anos") ~ "votantes_18_19",
+      .data$DS_FAIXA_ETARIA == "20 anos" ~ "votantes_20",
       .data$DS_FAIXA_ETARIA == "21 a 24 anos" ~ "votantes_21_24",
       .data$DS_FAIXA_ETARIA == "25 a 29 anos" ~ "votantes_25_29",
       .data$DS_FAIXA_ETARIA == "30 a 34 anos" ~ "votantes_30_34",
@@ -360,6 +361,7 @@ br_prepare_electoral <- function(
   dados_partidos <- NULL
   turnout_from_votes <- NULL
   turnout_extra <- NULL
+  dict_rows <- list()
 
   if (!is.null(votacao_path)) {
     # Read from user-provided parquet file
@@ -533,6 +535,7 @@ br_prepare_electoral <- function(
       if (nrow(tse_votos_i) == 0) next
 
       prefix <- if (multi_cargo) paste0(.br_cargo_label(cargo_i), "_") else ""
+      cargo_label <- .br_cargo_label(cargo_i)
 
       if ("candidates" %in% what) {
         votos_filtered <- if (!is.null(candidates)) {
@@ -543,6 +546,10 @@ br_prepare_electoral <- function(
         if (nrow(votos_filtered) > 0) {
           dados_votos_list[[as.character(cargo_i)]] <-
             .br_pivot_candidates(votos_filtered, id_cols, prefix)
+
+          # Extract candidate metadata for dictionary
+          dict_rows <- .br_extract_candidate_dict(
+            votos_filtered, prefix, cargo_label, dict_rows)
         }
       }
 
@@ -555,6 +562,10 @@ br_prepare_electoral <- function(
         if (nrow(votos_for_parties) > 0) {
           dados_partidos_list[[as.character(cargo_i)]] <-
             .br_pivot_parties(votos_for_parties, id_cols, prefix)
+
+          # Extract party metadata for dictionary
+          dict_rows <- .br_extract_party_dict(
+            votos_for_parties, prefix, cargo_label, dict_rows)
         }
       }
     }
@@ -790,6 +801,13 @@ br_prepare_electoral <- function(
       long = as.numeric(.data$long)
     ) |>
     dplyr::filter(!is.na(.data$lat), !is.na(.data$long))
+
+  # Attach column dictionary as attribute
+  if (length(dict_rows) > 0) {
+    col_dict <- do.call(rbind, dict_rows)
+    row.names(col_dict) <- NULL
+    attr(result, "column_dictionary") <- col_dict
+  }
 
   # Cache processed result for future re-use
   if (!is.null(electoral_cache_name)) {
@@ -1104,6 +1122,88 @@ br_prepare_electoral <- function(
     result <- if (!is.null(gender_wide)) gender_wide else educ_wide
   }
   result
+}
+
+#' @noRd
+.br_extract_candidate_dict <- function(tse_votos, prefix, cargo_label,
+                                       dict_rows) {
+  has_name <- "NM_VOTAVEL" %in% names(tse_votos)
+  has_party <- "SG_PARTIDO" %in% names(tse_votos)
+
+  # Get unique ballot numbers with their metadata
+  nr_vals <- unique(as.character(tse_votos$NR_VOTAVEL))
+
+  for (nr in nr_vals) {
+    subset_i <- tse_votos[as.character(tse_votos$NR_VOTAVEL) == nr, ]
+
+    # Candidate name
+    cand_name <- if (nr == "95") {
+      "Votos em Branco"
+    } else if (nr == "96") {
+      "Votos Nulos"
+    } else if (has_name) {
+      nm <- unique(as.character(subset_i$NM_VOTAVEL))
+      nm <- nm[!is.na(nm) & nm != ""]
+      if (length(nm) > 0) nm[1] else NA_character_
+    } else {
+      NA_character_
+    }
+
+    # Party abbreviation
+    party <- if (nr %in% c("95", "96")) {
+      NA_character_
+    } else if (has_party) {
+      sg <- unique(trimws(as.character(subset_i$SG_PARTIDO)))
+      sg <- sg[!is.na(sg) & sg != ""]
+      if (length(sg) > 0) toupper(sg[1]) else NA_character_
+    } else {
+      NA_character_
+    }
+
+    dict_rows[[length(dict_rows) + 1L]] <- data.frame(
+      column         = paste0(prefix, "CAND_", nr),
+      type           = "candidate",
+      cargo          = cargo_label,
+      ballot_number  = nr,
+      candidate_name = cand_name,
+      party          = party,
+      stringsAsFactors = FALSE
+    )
+  }
+  dict_rows
+}
+
+#' @noRd
+.br_extract_party_dict <- function(tse_votos, prefix, cargo_label,
+                                   dict_rows) {
+  # Exclude blank (95) and null (96) votes
+  party_data <- tse_votos[
+    !(as.character(tse_votos$NR_VOTAVEL) %in% c("95", "96")), ]
+  if (nrow(party_data) == 0) return(dict_rows)
+
+  has_sg <- "SG_PARTIDO" %in% names(party_data) &&
+    !all(is.na(party_data$SG_PARTIDO)) &&
+    !all(trimws(party_data$SG_PARTIDO) == "")
+
+  if (has_sg) {
+    parties <- unique(gsub("\\s+", "_", toupper(trimws(party_data$SG_PARTIDO))))
+    parties <- parties[!is.na(parties) & parties != ""]
+  } else {
+    parties <- unique(substr(as.character(party_data$NR_VOTAVEL), 1, 2))
+  }
+
+  for (p in parties) {
+    dict_rows[[length(dict_rows) + 1L]] <- data.frame(
+      column         = paste0(prefix, "PARTY_", p),
+      type           = "party",
+      cargo          = cargo_label,
+      ballot_number  = NA_character_,
+      candidate_name = NA_character_,
+      party          = p,
+      stringsAsFactors = FALSE
+    )
+  }
+  dict_rows
 }
 
 #' @noRd

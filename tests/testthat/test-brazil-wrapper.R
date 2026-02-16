@@ -28,6 +28,109 @@ test_that(".br_resolve_muni errors on invalid code", {
   )
 })
 
+
+# --- Name-based resolution tests ---
+
+test_that(".br_resolve_muni resolves by name (uppercase, accented)", {
+  info <- interpElections:::.br_resolve_muni("SÃO PAULO")
+  expect_equal(info$code_muni_ibge, "3550308")
+  expect_equal(info$uf, "SP")
+})
+
+test_that(".br_resolve_muni resolves by name (case-insensitive)", {
+  info <- interpElections:::.br_resolve_muni("sao paulo")
+  expect_equal(info$code_muni_ibge, "3550308")
+  expect_equal(info$uf, "SP")
+})
+
+test_that(".br_resolve_muni resolves by name (accent-insensitive)", {
+  info1 <- interpElections:::.br_resolve_muni("Sao Paulo")
+  info2 <- interpElections:::.br_resolve_muni("São Paulo")
+  expect_equal(info1$code_muni_ibge, "3550308")
+  expect_equal(info2$code_muni_ibge, "3550308")
+})
+
+test_that(".br_resolve_muni resolves by name (whitespace-trimmed)", {
+  info <- interpElections:::.br_resolve_muni("  Sao Paulo  ")
+  expect_equal(info$code_muni_ibge, "3550308")
+})
+
+test_that(".br_resolve_muni with uf disambiguates duplicate names", {
+  xwalk <- interpElections::muni_crosswalk
+  norm_names <- toupper(trimws(xwalk$nome))
+  dup_names <- names(which(table(norm_names) > 1))
+  skip_if(length(dup_names) == 0, "No duplicate municipality names found")
+
+  test_name <- dup_names[1]
+  test_rows <- xwalk[toupper(trimws(xwalk$nome)) == test_name, ]
+
+  # Without uf -> should error listing the matches
+  expect_error(
+    interpElections:::.br_resolve_muni(test_name),
+    "matches.*municipalities"
+  )
+
+  # With uf -> should resolve to the correct one
+  for (i in seq_len(nrow(test_rows))) {
+    info <- interpElections:::.br_resolve_muni(test_name, uf = test_rows$uf[i])
+    expect_equal(info$code_muni_ibge, test_rows$code_ibge[i])
+    expect_equal(info$uf, test_rows$uf[i])
+  }
+})
+
+test_that(".br_resolve_muni errors on unknown name", {
+  expect_error(
+    interpElections:::.br_resolve_muni("NONEXISTENT CITY XYZ"),
+    "not found"
+  )
+})
+
+test_that(".br_resolve_muni errors on valid name + wrong uf", {
+  expect_error(
+    interpElections:::.br_resolve_muni("Sao Paulo", uf = "RJ"),
+    "not found in state"
+  )
+})
+
+test_that(".br_resolve_muni warns and ignores uf for IBGE code input", {
+  expect_message(
+    info <- interpElections:::.br_resolve_muni("3550308", uf = "RJ"),
+    "ignored"
+  )
+  expect_equal(info$code_muni_ibge, "3550308")
+  expect_equal(info$uf, "SP")
+})
+
+test_that(".br_resolve_muni handles numeric input as IBGE code", {
+  info <- interpElections:::.br_resolve_muni(3550308)
+  expect_equal(info$code_muni_ibge, "3550308")
+})
+
+test_that(".br_resolve_muni character IBGE code works", {
+  info <- interpElections:::.br_resolve_muni("3550308")
+  expect_equal(info$code_muni_ibge, "3550308")
+  expect_equal(info$uf, "SP")
+})
+
+test_that(".br_resolve_muni uf is case-insensitive", {
+  xwalk <- interpElections::muni_crosswalk
+  norm_names <- toupper(trimws(xwalk$nome))
+  dup_names <- names(which(table(norm_names) > 1))
+  skip_if(length(dup_names) == 0)
+
+  test_name <- dup_names[1]
+  test_rows <- xwalk[toupper(trimws(xwalk$nome)) == test_name, ]
+
+  info <- interpElections:::.br_resolve_muni(test_name, uf = tolower(test_rows$uf[1]))
+  expect_equal(info$code_muni_ibge, test_rows$code_ibge[1])
+})
+
+test_that("interpolate_election_br has uf parameter", {
+  expect_true("uf" %in% names(formals(interpolate_election_br)))
+  expect_null(formals(interpolate_election_br)$uf)
+})
+
+
 test_that("census year auto-selection works correctly", {
   # Test the auto-selection logic inline (it's inside interpolate_election_br)
   auto_select <- function(year) {
@@ -87,7 +190,8 @@ test_that("census year auto-selection works correctly", {
   )
   df <- data.frame(
     id = seq_len(m),
-    votantes_18_20 = rpois(m, 30),
+    votantes_18_19 = rpois(m, 20),
+    votantes_20 = rpois(m, 10),
     votantes_21_24 = rpois(m, 40),
     votantes_25_29 = rpois(m, 50),
     votantes_30_34 = rpois(m, 40),
@@ -130,10 +234,18 @@ test_that(".br_match_calibration for census 2010 produces 7 matched groups", {
 
   # Aggregated votantes columns should exist in returned electoral_sf
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
+  expect_true("votantes_18_20" %in% names(elec_df))
   expect_true("votantes_30_39" %in% names(elec_df))
   expect_true("votantes_40_49" %in% names(elec_df))
   expect_true("votantes_50_59" %in% names(elec_df))
   expect_true("votantes_60_69" %in% names(elec_df))
+
+  # votantes_18_20 should be aggregated from votantes_18_19 + votantes_20
+  orig_elec <- sf::st_drop_geometry(elec)
+  expect_equal(
+    elec_df$votantes_18_20,
+    orig_elec$votantes_18_19 + orig_elec$votantes_20
+  )
 })
 
 test_that(".br_match_calibration for census 2000 produces same groups as 2010", {
@@ -151,7 +263,7 @@ test_that(".br_match_calibration for census 2000 produces same groups as 2010", 
   ))
 })
 
-test_that(".br_match_calibration for census 2022 merges 15-24 bracket", {
+test_that(".br_match_calibration for census 2022 splits 18-19 and 20-24 brackets", {
   skip_if_not_installed("sf")
 
   set.seed(30)
@@ -160,34 +272,35 @@ test_that(".br_match_calibration for census 2022 merges 15-24 bracket", {
 
   result <- interpElections:::.br_match_calibration(2022, tracts, elec)
 
-  # 6 groups for 2022 (15-24 merged)
-  expect_equal(length(result$calib_zones), 6)
-  expect_equal(length(result$calib_sources), 6)
+  # 7 groups for 2022 (pop_18_19 proxy + pop_20_24)
+  expect_equal(length(result$calib_zones), 7)
+  expect_equal(length(result$calib_sources), 7)
 
   expect_equal(result$calib_zones, c(
-    "pop_15_24", "pop_25_29", "pop_30_39",
-    "pop_40_49", "pop_50_59", "pop_60_69"
+    "pop_18_19", "pop_20_24", "pop_25_29",
+    "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
   ))
 
   expect_equal(result$calib_sources, c(
-    "votantes_15_24", "votantes_25_29", "votantes_30_39",
-    "votantes_40_49", "votantes_50_59", "votantes_60_69"
+    "votantes_18_19", "votantes_20_24", "votantes_25_29",
+    "votantes_30_39", "votantes_40_49", "votantes_50_59",
+    "votantes_60_69"
   ))
 
-  # pop_15_24 should be sum of pop_15_19 and pop_20_24
+  # pop_18_19 should be pop_15_19 * 2/5 (uniform distribution proxy)
   tracts_df <- sf::st_drop_geometry(result$tracts_sf)
   orig_df <- sf::st_drop_geometry(tracts)
   expect_equal(
-    tracts_df$pop_15_24,
-    orig_df$pop_15_19 + orig_df$pop_20_24
+    tracts_df$pop_18_19,
+    orig_df$pop_15_19 * 2 / 5
   )
 
-  # votantes_15_24 should be sum of votantes_18_20 and votantes_21_24
+  # votantes_20_24 should be sum of votantes_20 and votantes_21_24
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
   orig_elec <- sf::st_drop_geometry(elec)
   expect_equal(
-    elec_df$votantes_15_24,
-    orig_elec$votantes_18_20 + orig_elec$votantes_21_24
+    elec_df$votantes_20_24,
+    orig_elec$votantes_20 + orig_elec$votantes_21_24
   )
 })
 
@@ -201,6 +314,12 @@ test_that(".br_match_calibration aggregation is numerically correct", {
   result <- interpElections:::.br_match_calibration(2010, tracts, elec)
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
   orig_df <- sf::st_drop_geometry(elec)
+
+  # votantes_18_20 = votantes_18_19 + votantes_20
+  expect_equal(
+    elec_df$votantes_18_20,
+    orig_df$votantes_18_19 + orig_df$votantes_20
+  )
 
   # votantes_30_39 = votantes_30_34 + votantes_35_39
   expect_equal(
@@ -244,5 +363,5 @@ test_that("print.interpElections_result works for Brazilian result", {
   expect_output(print(obj), "Brazilian election")
   expect_output(print(obj), "1400100")
   expect_output(print(obj), "census 2010")
-  expect_output(print(obj), "Access interpolated sf")
+  expect_output(print(obj), "result\\$tracts_sf")
 })

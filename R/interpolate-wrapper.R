@@ -276,17 +276,23 @@ interpolate_election <- function(
 
     # Determine step counts based on which path we'll take
     if (!is.null(time_matrix)) {
-      # Cached travel times — adjust total since we skip OSM + travel time steps
-      if (!is.null(.step_total)) {
-        # Reduce total by skipped steps (OSM download + travel time compute)
-        skipped <- if (is.null(network_path)) 2L else 1L
-        total_steps <- total_steps - skipped
+      # Cached travel times — keep original total, skip step numbers
+      if (!is.null(.step_total) && is.null(network_path)) {
+        # Cache replaces 2 planned steps (download OSM + compute TT)
+        if (verbose) message(sprintf(
+          "[%d-%d/%d] Using cached travel time matrix (%dx%d)",
+          step_num, step_num + 1L, total_steps,
+          nrow(time_matrix), ncol(time_matrix)
+        ))
+        step_num <- step_num + 2L
+      } else {
+        # Cache replaces 1 step (compute TT) — 1-for-1, or standalone call
+        if (verbose) message(sprintf(
+          "[%d/%d] Using cached travel time matrix (%dx%d)",
+          step_num, total_steps, nrow(time_matrix), ncol(time_matrix)
+        ))
+        step_num <- step_num + 1L
       }
-      if (verbose) message(sprintf(
-        "[%d/%d] Using cached travel time matrix (%dx%d)",
-        step_num, total_steps, nrow(time_matrix), ncol(time_matrix)
-      ))
-      step_num <- step_num + 1L
     } else if (is.null(network_path)) {
       # Need to download OSM + compute — 5 steps total (when standalone)
       if (is.null(.step_total)) total_steps <- 5L + .step_offset
@@ -446,11 +452,15 @@ interpolate_election <- function(
     time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
     sources_sf    = if ("sources_sf" %in% keep) electoral_sf else NULL,
     # Brazilian metadata (NULL when called generically)
-    code_muni     = NULL,
-    year          = NULL,
-    census_year   = NULL,
-    what          = NULL,
-    pop_data      = NULL
+    code_muni      = NULL,
+    nome_municipio = NULL,
+    code_muni_tse  = NULL,
+    uf             = NULL,
+    year           = NULL,
+    census_year    = NULL,
+    what           = NULL,
+    pop_data       = NULL,
+    dictionary     = NULL
   )
   class(result) <- "interpElections_result"
 
@@ -467,8 +477,14 @@ print.interpElections_result <- function(x, ...) {
   # Header
   if (!is.null(x$code_muni)) {
     cat("interpElections result -- Brazilian election\n")
-    cat(sprintf("  Municipality: %s (election %d, census %d)\n",
-                x$code_muni, x$year, x$census_year))
+    if (!is.null(x$nome_municipio)) {
+      cat(sprintf("  Municipality: %s (%s)\n", x$nome_municipio, x$uf))
+      cat(sprintf("  IBGE: %s | TSE: %s | Election: %d | Census: %d\n",
+                  x$code_muni, x$code_muni_tse, x$year, x$census_year))
+    } else {
+      cat(sprintf("  Municipality: %s (election %d, census %d)\n",
+                  x$code_muni, x$year, x$census_year))
+    }
   } else {
     cat("interpElections result\n")
   }
@@ -477,15 +493,23 @@ print.interpElections_result <- function(x, ...) {
   n <- nrow(x$interpolated)
   m <- nrow(x$sources)
   p <- ncol(x$interpolated)
-  cat(sprintf("  Zones:     %d\n", n))
-  cat(sprintf("  Sources:   %d\n", m))
-  cat(sprintf("  Variables: %d", p))
-  if (p <= 8 && !is.null(x$interp_cols)) {
-    cat(sprintf("  (%s)", paste(x$interp_cols, collapse = ", ")))
+  cat(sprintf("  Zones: %d | Sources: %d\n", n, m))
+
+  # Variable summary by type (from dictionary) or plain column names
+  cat(sprintf("\n  Variables: %d\n", p))
+  if (!is.null(x$dictionary) && nrow(x$dictionary) > 0) {
+    .print_var_summary(x$dictionary)
+  } else if (p <= 8 && !is.null(x$interp_cols)) {
+    cat(sprintf("    %s\n", paste(x$interp_cols, collapse = ", ")))
+  } else if (!is.null(x$interp_cols)) {
+    first4 <- x$interp_cols[seq_len(min(4, p))]
+    cat(sprintf("    %s", paste(first4, collapse = ", ")))
+    if (p > 4) cat(sprintf(", ... and %d more", p - 4))
+    cat("\n")
   }
-  cat("\n")
 
   # Optimization
+  cat("\n")
   if (!is.null(x$optimization)) {
     cat(sprintf("  Optimizer: %s (obj = %.2f)\n",
                 x$optimization$method, x$optimization$value))
@@ -495,29 +519,73 @@ print.interpElections_result <- function(x, ...) {
   cat(sprintf("  Alpha:     [%.3f, %.3f] (mean %.3f)\n",
               min(x$alpha), max(x$alpha), mean(x$alpha)))
 
-  # Heavy objects status
+  # Contents
+  cat("\n  Contents:\n")
+  cat(sprintf("    result$tracts_sf       sf with zones + interpolated columns\n"))
+  cat(sprintf("    result$interpolated    numeric matrix [%d x %d]\n", n, p))
+  cat(sprintf("    result$alpha           decay parameters (length %d)\n", n))
+  if (!is.null(x$dictionary)) {
+    cat(sprintf("    result$dictionary      column metadata (%d rows) -- View(result$dictionary)\n",
+                nrow(x$dictionary)))
+  }
+  cat(sprintf("    result$sources         source data frame [%d rows]\n", m))
+  # Heavy objects
   has_w <- !is.null(x$weights)
   has_t <- !is.null(x$time_matrix)
   has_s <- !is.null(x$sources_sf)
-  if (has_w || has_t || has_s) {
-    kept <- c(
-      if (has_w) "weights",
-      if (has_t) "time_matrix",
-      if (has_s) "sources_sf"
-    )
-    cat(sprintf("  Kept:      %s\n", paste(kept, collapse = ", ")))
-  }
+  if (has_w) cat("    result$weights         weight matrix\n")
+  if (has_t) cat("    result$time_matrix     travel time matrix\n")
+  if (has_s) cat("    result$sources_sf      source locations (sf)\n")
 
-  # Usage hints
-  cat("\n")
-  cat("  Access interpolated sf:    result$tracts_sf\n")
-  cat("  Access alpha vector:       result$alpha\n")
-  cat("  Detailed summary:          summary(result)\n")
-  if (p > 0) {
-    example_var <- if (!is.null(x$interp_cols)) x$interp_cols[1] else "var"
-    cat(sprintf("  Plot a variable:           plot(result, \"%s\")\n",
-                example_var))
-  }
+  cat("  Methods: summary(), plot(), as.data.frame(), coef(), residuals()\n")
 
   invisible(x)
+}
+
+# Print variable summary grouped by type from dictionary
+.print_var_summary <- function(dict) {
+  # Fixed display order
+  type_order <- c("candidate", "party", "turnout", "demographics", "calibration")
+  type_labels <- c(candidate = "Candidates", party = "Parties",
+                   turnout = "Turnout", demographics = "Demographics",
+                   calibration = "Calibration")
+  # Max names to show inline (calibration/turnout/demographics always full)
+  max_abbrev <- 4L
+
+  types_present <- intersect(type_order, unique(dict$type))
+  for (tp in types_present) {
+    cols <- dict$column[dict$type == tp]
+    label <- type_labels[tp]
+    nc <- length(cols)
+
+    # Calibration, turnout, demographics: always show all
+    if (tp %in% c("calibration", "turnout", "demographics")) {
+      col_str <- paste(cols, collapse = ", ")
+      cat(sprintf("    %-14s %d (%s)\n", paste0(label, ":"), nc, col_str))
+    } else {
+      # Candidates, parties: abbreviate if too many
+      if (nc <= max_abbrev) {
+        col_str <- paste(cols, collapse = ", ")
+      } else {
+        col_str <- paste0(
+          paste(cols[seq_len(max_abbrev)], collapse = ", "),
+          ", ..."
+        )
+      }
+      cat(sprintf("    %-14s %d (%s)\n", paste0(label, ":"), nc, col_str))
+    }
+  }
+}
+
+# Format a single dictionary row into a compact label for printing
+.format_dict_label <- function(row) {
+  if (row$type == "candidate") {
+    name_part <- if (!is.na(row$candidate_name)) row$candidate_name else ""
+    party_part <- if (!is.na(row$party)) paste0(" (", row$party, ")") else ""
+    paste0(name_part, party_part)
+  } else if (row$type == "party") {
+    if (!is.na(row$party)) row$party else ""
+  } else {
+    row$type
+  }
 }

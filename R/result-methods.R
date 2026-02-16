@@ -19,8 +19,16 @@ summary.interpElections_result <- function(object, ...) {
 
   # Header
   if (!is.null(x$code_muni)) {
-    cat(sprintf("Municipality: %s (election %d, census %d)\n",
-                x$code_muni, x$year, x$census_year))
+    if (!is.null(x$nome_municipio)) {
+      cat(sprintf("Municipality: %s (%s) -- IBGE: %s, TSE: %s\n",
+                  x$nome_municipio, x$uf,
+                  x$code_muni, x$code_muni_tse))
+      cat(sprintf("Election: %d | Census: %d\n",
+                  x$year, x$census_year))
+    } else {
+      cat(sprintf("Municipality: %s (election %d, census %d)\n",
+                  x$code_muni, x$year, x$census_year))
+    }
   }
 
   n <- nrow(x$interpolated)
@@ -53,13 +61,15 @@ summary.interpElections_result <- function(object, ...) {
     min(x$alpha), q[1], q[2], q[3], max(x$alpha)
   ))
 
-  # Per-variable summary
-  cat("Interpolated variables:\n")
+  # Per-variable summary grouped by type
   mat <- x$interpolated
-  for (col in colnames(mat)) {
-    v <- mat[, col]
-    cat(sprintf("  %-30s total=%10.0f  mean=%8.1f  [%.1f, %.1f]\n",
-                col, sum(v), mean(v), min(v), max(v)))
+  dict <- x$dictionary
+
+  if (!is.null(dict) && nrow(dict) > 0) {
+    .summary_by_type(mat, dict)
+  } else {
+    # No dictionary: flat listing with cap
+    .summary_flat(mat, max_show = 15L)
   }
 
   # Object size
@@ -74,6 +84,65 @@ summary.interpElections_result <- function(object, ...) {
   cat("\n")
 
   invisible(x)
+}
+
+# Print variable statistics grouped by dictionary type
+.summary_by_type <- function(mat, dict) {
+  type_order <- c("candidate", "party", "turnout",
+                  "demographics", "calibration")
+  type_labels <- c(candidate = "Candidates", party = "Parties",
+                   turnout = "Turnout", demographics = "Demographics",
+                   calibration = "Calibration")
+  # Candidates/parties capped; calibration/turnout/demographics always full
+  max_rows <- c(candidate = 4L, party = 4L,
+                turnout = Inf, demographics = Inf, calibration = Inf)
+
+  types_present <- intersect(type_order, unique(dict$type))
+  for (tp in types_present) {
+    sub <- dict[dict$type == tp, , drop = FALSE]
+    nc <- nrow(sub)
+    cat(sprintf("%s (%d):\n", type_labels[tp], nc))
+
+    show_n <- min(nc, max_rows[tp])
+    for (i in seq_len(show_n)) {
+      col <- sub$column[i]
+      label <- .format_dict_label(sub[i, ])
+      if (col %in% colnames(mat)) {
+        v <- mat[, col]
+        if (nzchar(label)) {
+          cat(sprintf("  %-24s %-22s total=%10.0f  mean=%8.1f  [%.1f, %.1f]\n",
+                      col, label, sum(v), mean(v), min(v), max(v)))
+        } else {
+          cat(sprintf("  %-24s total=%10.0f  mean=%8.1f  [%.1f, %.1f]\n",
+                      col, sum(v), mean(v), min(v), max(v)))
+        }
+      } else {
+        cat(sprintf("  %-24s %s\n", col, label))
+      }
+    }
+    remaining <- nc - show_n
+    if (remaining > 0) {
+      cat(sprintf("  ... %d more -- View(result$dictionary)\n", remaining))
+    }
+    cat("\n")
+  }
+}
+
+# Flat variable listing with cap (when no dictionary)
+.summary_flat <- function(mat, max_show = 15L) {
+  cat("Interpolated variables:\n")
+  cols <- colnames(mat)
+  show_n <- min(length(cols), max_show)
+  for (i in seq_len(show_n)) {
+    col <- cols[i]
+    v <- mat[, col]
+    cat(sprintf("  %-28s total=%10.0f  mean=%8.1f  [%.1f, %.1f]\n",
+                col, sum(v), mean(v), min(v), max(v)))
+  }
+  remaining <- length(cols) - show_n
+  if (remaining > 0) {
+    cat(sprintf("  ... and %d more variables\n", remaining))
+  }
 }
 
 

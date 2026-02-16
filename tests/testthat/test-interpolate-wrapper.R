@@ -428,6 +428,6 @@ test_that("print.interpElections_result works", {
 
   expect_output(print(result), "interpElections result")
   expect_output(print(result), "Zones:")
-  expect_output(print(result), "Access interpolated sf:")
-  expect_output(print(result), "summary\\(result\\)")
+  expect_output(print(result), "result\\$tracts_sf")
+  expect_output(print(result), "Methods:")
 })
