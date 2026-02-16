@@ -146,46 +146,6 @@ summary.interpElections_result <- function(object, ...) {
 }
 
 
-#' Plot an interpolated variable on a map
-#'
-#' Produces a quick choropleth map of an interpolated variable using
-#' the `tracts_sf` stored in the result object.
-#'
-#' @param x An `interpElections_result` object.
-#' @param var Character. Name of the variable to plot. Must be one of
-#'   `x$interp_cols`. If NULL, plots the first interpolated variable.
-#' @param ... Additional arguments passed to [plot.sf()][sf::plot.sf].
-#'
-#' @return Invisibly returns `x`.
-#'
-#' @exportS3Method
-plot.interpElections_result <- function(x, var = NULL, ...) {
-  if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("The 'sf' package is required for plot()", call. = FALSE)
-  }
-  if (is.null(x$tracts_sf)) {
-    stop("No tracts_sf in result object", call. = FALSE)
-  }
-
-  if (is.null(var)) var <- x$interp_cols[1]
-  if (!var %in% names(x$tracts_sf)) {
-    avail <- x$interp_cols
-    if (length(avail) > 5) {
-      avail_str <- paste(c(avail[1:5],
-        sprintf("... and %d more", length(avail) - 5)), collapse = ", ")
-    } else {
-      avail_str <- paste(avail, collapse = ", ")
-    }
-    stop(sprintf("Variable '%s' not found. Available: %s",
-                 var, avail_str),
-         call. = FALSE)
-  }
-
-  plot(x$tracts_sf[var], main = var, ...)
-  invisible(x)
-}
-
-
 #' Convert result to data frame
 #'
 #' Drops geometry from `tracts_sf` and returns a plain data frame with

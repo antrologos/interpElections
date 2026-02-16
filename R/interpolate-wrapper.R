@@ -537,7 +537,9 @@ print.interpElections_result <- function(x, ...) {
   if (has_t) cat("    result$time_matrix     travel time matrix\n")
   if (has_s) cat("    result$sources_sf      source locations (sf)\n")
 
-  cat("  Methods: summary(), plot(), as.data.frame(), coef(), residuals()\n")
+  cat("  Methods: summary(), as.data.frame(), coef(), residuals()\n")
+  cat("  Plotting: plot(result, variable = ..., type = ..., breaks = ...)\n")
+  cat("            plot_interactive(result, variable = ...) -- mapview\n")
 
   invisible(x)
 }

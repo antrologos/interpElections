@@ -13,6 +13,9 @@ NULL
 # Avoid R CMD check NOTE about .data pronoun used in dplyr pipelines
 utils::globalVariables(".data")
 
+# Avoid R CMD check NOTE about ggplot2 NSE columns in plot methods
+utils::globalVariables(c(".plot_value", "value", ".facet_var"))
+
 # Avoid R CMD check NOTE about data.table NSE symbols and bundled data
 utils::globalVariables(c(
   ":=", ".SD",

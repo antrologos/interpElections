@@ -13,7 +13,8 @@
 }
 \value{
 Numeric matrix [n x k] of residuals (fitted - observed),
-where k is the number of calibration brackets.
+where k is the number of calibration brackets. Returns \code{NULL}
+(with a message) if the required data is not available.
 }
 \description{
 Returns the matrix of calibration residuals (fitted minus observed)

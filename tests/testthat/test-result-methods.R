@@ -196,37 +196,7 @@ test_that("summary without optimization shows alpha range", {
 })
 
 
-# --- plot ---
-
-test_that("plot.interpElections_result plots first variable by default", {
-  skip_if_not_installed("sf")
-  obj <- .mock_result()
-
-  # Should not error
-  expect_no_error(plot(obj))
-})
-
-test_that("plot.interpElections_result plots named variable", {
-  skip_if_not_installed("sf")
-  obj <- .mock_result()
-
-  expect_no_error(plot(obj, var = "VAR_2"))
-})
-
-test_that("plot errors on missing variable", {
-  skip_if_not_installed("sf")
-  obj <- .mock_result()
-
-  expect_error(plot(obj, var = "NONEXISTENT"), "not found")
-})
-
-test_that("plot errors when tracts_sf is NULL", {
-  skip_if_not_installed("sf")
-  obj <- .mock_result()
-  obj$tracts_sf <- NULL
-
-  expect_error(plot(obj), "No tracts_sf")
-})
+# --- plot tests moved to test-plot.R ---
 
 
 # --- as.data.frame ---
@@ -387,12 +357,13 @@ test_that("summary always shows alpha quantiles", {
 
 test_that("plot error truncates long variable list", {
   skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
   # Create result with many variables
   obj <- .mock_result(p = 20)
 
   expect_error(
-    plot(obj, var = "NONEXISTENT"),
-    "and 15 more"
+    plot(obj, variable = "NONEXISTENT"),
+    "and \\d+ more"
   )
 })
 
@@ -475,9 +446,10 @@ test_that("print shows dictionary type summary when available", {
   expect_match(full, "result\\$dictionary")
   expect_match(full, "View\\(result\\$dictionary\\)")
 
-  # Methods
+  # Methods and plotting
   expect_match(full, "summary\\(\\)")
-  expect_match(full, "plot\\(\\)")
+  expect_match(full, "plot\\(result")
+  expect_match(full, "plot_interactive\\(result")
 })
 
 test_that("summary groups variables by type with stats", {
