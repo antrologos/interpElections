@@ -109,7 +109,11 @@ plot.interpElections_result <- function(
     return(invisible(p))
   }
 
-  col <- .resolve_var(variable, x)
+  col <- tryCatch(.resolve_var(variable, x), error = function(e) {
+    message(conditionMessage(e))
+    NULL
+  })
+  if (is.null(col)) return(invisible(NULL))
   values <- .compute_quantity(x, col, type)
 
   # Build plotting sf

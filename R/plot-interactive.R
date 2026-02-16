@@ -82,7 +82,11 @@ plot_interactive <- function(
                               popup_vars, alpha, legend, basemap, ...))
   }
 
-  col <- .resolve_var(variable, result)
+  col <- tryCatch(.resolve_var(variable, result), error = function(e) {
+    message(conditionMessage(e))
+    NULL
+  })
+  if (is.null(col)) return(invisible(NULL))
   values <- .compute_quantity(result, col, type)
 
   # Build sf for display

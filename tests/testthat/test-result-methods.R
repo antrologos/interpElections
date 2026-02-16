@@ -361,10 +361,11 @@ test_that("plot error truncates long variable list", {
   # Create result with many variables
   obj <- .mock_result(p = 20)
 
-  expect_error(
-    plot(obj, variable = "NONEXISTENT"),
+  expect_message(
+    result <- plot(obj, variable = "NONEXISTENT"),
     "and \\d+ more"
   )
+  expect_null(result)
 })
 
 
