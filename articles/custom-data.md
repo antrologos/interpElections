@@ -185,7 +185,7 @@ summary(result)
 #>   Alpha: min=6.976, Q1=8.777, median=9.775, Q3=11.769, max=20.000
 #> 
 #> Interpolated variables:
-#>   budget                         total=      5070  mean=   845.0  [491.6, 1227.5]
+#>   budget                       total=      5070  mean=   845.0  [491.6, 1227.5]
 #> 
 #> Object size: 0.0 MB (lightweight)
 ```

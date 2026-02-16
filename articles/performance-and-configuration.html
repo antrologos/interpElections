@@ -200,7 +200,7 @@ settings:</p>
 <span><span class="co">#&gt; function gradient </span></span>
 <span><span class="co">#&gt;       58       58</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Elapsed:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/format.html" class="external-link">format</a></span><span class="op">(</span><span class="va">result_default</span><span class="op">$</span><span class="va">elapsed</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Elapsed: 0.4164841 secs</span></span>
+<span><span class="co">#&gt; Elapsed: 0.4363866 secs</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Objective:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">result_default</span><span class="op">$</span><span class="va">value</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Objective: 2150.05</span></span></code></pre></div>
 <p><strong>CPU cascade.</strong> When <code>cpu_method = "auto"</code>
@@ -418,7 +418,7 @@ with a temporary directory:</p>
 <code class="sourceCode R"><span><span class="va">old_cache</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/get_interpElections_cache_dir.html">get_interpElections_cache_dir</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/set_interpElections_cache_dir.html">set_interpElections_cache_dir</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/get_interpElections_cache_dir.html">get_interpElections_cache_dir</a></span><span class="op">(</span><span class="op">)</span>   <span class="co"># now points to temp</span></span>
-<span><span class="co">#&gt; [1] "/tmp/RtmpDSIjRO"</span></span>
+<span><span class="co">#&gt; [1] "/tmp/RtmpGBOSf4"</span></span>
 <span></span>
 <span><span class="co"># Restore the original</span></span>
 <span><span class="fu"><a href="../reference/set_interpElections_cache_dir.html">set_interpElections_cache_dir</a></span><span class="op">(</span><span class="va">old_cache</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>

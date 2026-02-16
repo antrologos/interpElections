@@ -84,17 +84,17 @@ summary(result)
 #>   Alpha: min=0.991, Q1=1.293, median=1.460, Q3=1.645, max=9.541
 #> 
 #> Interpolated variables:
-#>   QT_COMPARECIMENTO              total=    165428  mean=   326.9  [0.0, 1073.7]
-#>   CAND_18999                     total=      1606  mean=     3.2  [0.0, 11.5]
-#>   CAND_90123                     total=       135  mean=     0.3  [0.0, 1.7]
-#>   CAND_12012                     total=        64  mean=     0.1  [0.0, 0.6]
-#>   CAND_25000                     total=       616  mean=     1.2  [0.0, 3.8]
-#>   CAND_22444                     total=       442  mean=     0.9  [0.0, 3.2]
-#>   CAND_28029                     total=        66  mean=     0.1  [0.0, 1.0]
-#>   CAND_14100                     total=       337  mean=     0.7  [0.0, 2.6]
-#>   CAND_77234                     total=       394  mean=     0.8  [0.0, 3.0]
-#>   CAND_28008                     total=       371  mean=     0.7  [0.0, 3.4]
-#>   CAND_22123                     total=       190  mean=     0.4  [0.0, 1.3]
+#>   QT_COMPARECIMENTO            total=    165428  mean=   326.9  [0.0, 1073.7]
+#>   CAND_18999                   total=      1606  mean=     3.2  [0.0, 11.5]
+#>   CAND_90123                   total=       135  mean=     0.3  [0.0, 1.7]
+#>   CAND_12012                   total=        64  mean=     0.1  [0.0, 0.6]
+#>   CAND_25000                   total=       616  mean=     1.2  [0.0, 3.8]
+#>   CAND_22444                   total=       442  mean=     0.9  [0.0, 3.2]
+#>   CAND_28029                   total=        66  mean=     0.1  [0.0, 1.0]
+#>   CAND_14100                   total=       337  mean=     0.7  [0.0, 2.6]
+#>   CAND_77234                   total=       394  mean=     0.8  [0.0, 3.0]
+#>   CAND_28008                   total=       371  mean=     0.7  [0.0, 3.4]
+#>   CAND_22123                   total=       190  mean=     0.4  [0.0, 1.3]
 #> 
 #> Object size: 0.8 MB (lightweight)
 ```

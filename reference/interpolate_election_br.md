@@ -3,13 +3,14 @@
 High-level wrapper that auto-downloads census data, electoral data,
 tract geometries, and OSM road networks, then runs the full optimization
 and interpolation pipeline. The user only needs to provide an IBGE
-municipality code and an election year.
+municipality code (or name) and an election year.
 
 ## Usage
 
 ``` r
 interpolate_election_br(
   code_muni,
+  uf = NULL,
   year,
   comparecimento_path = NULL,
   votacao_path = NULL,
@@ -41,9 +42,22 @@ interpolate_election_br(
 
 - code_muni:
 
-  Numeric or character. 7-digit IBGE municipality code (e.g., `3550308`
-  for Sao Paulo, `3170701` for Varginha). The TSE code and state
-  abbreviation are resolved automatically.
+  Numeric or character. Either a 7-digit IBGE municipality code (e.g.,
+  `3550308` for Sao Paulo) or a municipality **name** (e.g.,
+  `"Sao Paulo"`, `"SAO PAULO"`, `"São Paulo"`). Name matching is
+  case-insensitive, accent-insensitive, and whitespace-trimmed. If the
+  name exists in multiple states, use the `uf` parameter to
+  disambiguate. The TSE code and state abbreviation are resolved
+  automatically from the bundled
+  [muni_crosswalk](https://antrologos.github.io/interpElections/reference/muni_crosswalk.md)
+  table.
+
+- uf:
+
+  Character or NULL. Two-letter state abbreviation (e.g., `"SP"`,
+  `"RJ"`) for disambiguation when `code_muni` is a municipality name
+  that exists in multiple states. Case-insensitive. Ignored (with a
+  message) when `code_muni` is a numeric IBGE code. Default: `NULL`.
 
 - year:
 
