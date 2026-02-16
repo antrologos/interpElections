@@ -288,11 +288,12 @@ test_that("residuals works with time_matrix (recomputes weights)", {
   expect_equal(nrow(resid), 10)
 })
 
-test_that("residuals errors without weights or time_matrix", {
+test_that("residuals returns NULL with message when no weights or time_matrix", {
   skip_if_not_installed("sf")
   obj <- .mock_result()
 
-  expect_error(residuals(obj), "Cannot compute residuals")
+  expect_message(res <- residuals(obj), "Cannot compute residuals")
+  expect_null(res)
 })
 
 test_that("residuals with weights matches manual computation", {
@@ -316,12 +317,13 @@ test_that("residuals with weights matches manual computation", {
   expect_equal(actual, expected, tolerance = 1e-10)
 })
 
-test_that("residuals errors when calib_cols is NULL", {
+test_that("residuals returns NULL with message when calib_cols is NULL", {
   skip_if_not_installed("sf")
   obj <- .mock_result(keep_weights = TRUE)
   obj$calib_cols <- NULL
 
-  expect_error(residuals(obj), "No calibration columns")
+  expect_message(res <- residuals(obj), "No calibration columns")
+  expect_null(res)
 })
 
 test_that("residuals works with single calibration bracket (k=1)", {

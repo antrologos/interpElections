@@ -234,21 +234,23 @@ coef.interpElections_result <- function(object, ...) {
 #' @param ... Ignored.
 #'
 #' @return Numeric matrix \[n x k\] of residuals (fitted - observed),
-#'   where k is the number of calibration brackets.
+#'   where k is the number of calibration brackets. Returns `NULL`
+#'   (with a message) if the required data is not available.
 #'
 #' @exportS3Method
 residuals.interpElections_result <- function(object, ...) {
   if (is.null(object$calib_cols) ||
       length(object$calib_cols$zones) == 0 ||
       length(object$calib_cols$sources) == 0) {
-    stop("No calibration columns available in result", call. = FALSE)
+    message("No calibration columns available in result.")
+    return(invisible(NULL))
   }
   if (is.null(object$weights) && is.null(object$time_matrix)) {
-    stop(
+    message(
       "Cannot compute residuals without weights or time_matrix.\n",
-      "Re-run with keep = c(\"weights\") or keep = c(\"time_matrix\").",
-      call. = FALSE
+      "Re-run with keep = c(\"weights\") or keep = c(\"time_matrix\")."
     )
+    return(invisible(NULL))
   }
 
   # Get the weight matrix
