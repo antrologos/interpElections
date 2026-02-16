@@ -566,13 +566,54 @@ test_that("plot_interactive custom popup_vars works", {
   expect_true(inherits(m, "mapview"))
 })
 
+test_that("plot_interactive with quantile breaks bins values", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("mapview")
+  obj <- .mock_plot_result()
+
+  m <- plot_interactive(obj, variable = "CAND_13",
+                        breaks = "quantile", n_breaks = 3)
+  expect_true(inherits(m, "mapview"))
+})
+
+test_that("plot_interactive with custom numeric breaks works", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("mapview")
+  obj <- .mock_plot_result()
+
+  m <- plot_interactive(obj, variable = "CAND_13",
+                        breaks = c(0, 10, 30, Inf))
+  expect_true(inherits(m, "mapview"))
+})
+
+test_that("plot_interactive with continuous breaks uses numeric scale", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("mapview")
+  obj <- .mock_plot_result()
+
+  m <- plot_interactive(obj, variable = "CAND_13",
+                        breaks = "continuous")
+  expect_true(inherits(m, "mapview"))
+})
+
+test_that("plot_interactive sync with breaks uses shared scale", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("mapview")
+  skip_if_not_installed("leafsync")
+  obj <- .mock_plot_result()
+
+  m <- plot_interactive(obj, variable = c("CAND_13", "CAND_22"),
+                        breaks = "quantile", n_breaks = 3)
+  expect_true(!is.null(m))
+})
+
 
 # --- .auto_popup_cols tests ---
 
 test_that(".auto_popup_cols includes zone_id and plot col", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  cols <- .auto_popup_cols(obj, "CAND_13")
+  cols <- .auto_popup_cols(obj$tracts_sf, obj, "CAND_13")
   expect_true("zone_id" %in% cols)
   expect_true("CAND_13" %in% cols)
 })
@@ -580,15 +621,25 @@ test_that(".auto_popup_cols includes zone_id and plot col", {
 test_that(".auto_popup_cols includes turnout columns", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  cols <- .auto_popup_cols(obj, "CAND_13")
+  cols <- .auto_popup_cols(obj$tracts_sf, obj, "CAND_13")
   expect_true("QT_COMPARECIMENTO" %in% cols)
 })
 
 test_that(".auto_popup_cols caps at 8", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  cols <- .auto_popup_cols(obj, "CAND_13")
+  cols <- .auto_popup_cols(obj$tracts_sf, obj, "CAND_13")
   expect_true(length(cols) <= 8)
+})
+
+test_that(".auto_popup_cols finds computed column in plot_sf", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Simulate computed quantity added to plot_sf (as done in plot_interactive)
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Joao da Silva (PT \u2014 13)"]] <- runif(nrow(plot_sf))
+  cols <- .auto_popup_cols(plot_sf, obj, "Joao da Silva (PT \u2014 13)")
+  expect_true("Joao da Silva (PT \u2014 13)" %in% cols)
 })
 
 
@@ -624,6 +675,166 @@ test_that(".scale_labels returns comma formatter for absolute", {
   fn <- .scale_labels("absolute")
   expect_equal(fn(1000), "1,000")
   expect_equal(fn(NA), "")
+})
+
+
+# --- .make_bin_labels tests ---
+
+test_that(".make_bin_labels generates interval labels for pct type", {
+  labels <- .make_bin_labels(c(0, 5, 10, 20), "pct_tract")
+  expect_equal(length(labels), 3)
+  # en-dash separator and % suffix
+  expect_true(grepl("\u2013", labels[1]))
+  expect_true(grepl("%", labels[1]))
+  expect_true(grepl("0", labels[1]))
+  expect_true(grepl("5", labels[1]))
+})
+
+test_that(".make_bin_labels handles Inf in last break", {
+  labels <- .make_bin_labels(c(0, 5, 10, Inf), "pct_tract")
+  expect_equal(length(labels), 3)
+  expect_true(grepl("^>", labels[3]))
+  expect_true(grepl("10", labels[3]))
+})
+
+test_that(".make_bin_labels handles -Inf in first break", {
+  labels <- .make_bin_labels(c(-Inf, 5, 10), "absolute")
+  expect_true(grepl("^<", labels[1]))
+  expect_true(grepl("5", labels[1]))
+})
+
+test_that(".make_bin_labels no suffix for absolute", {
+  labels <- .make_bin_labels(c(0, 100, 200), "absolute")
+  expect_false(grepl("%", labels[1]))
+})
+
+test_that(".make_bin_labels density suffix", {
+  labels <- .make_bin_labels(c(0, 50, 100), "density")
+  expect_true(grepl("km", labels[1]))
+})
+
+test_that(".make_bin_labels uses sufficient precision for small breaks", {
+  labels <- .make_bin_labels(c(0, 0.01, 0.025, 0.05, Inf), "pct_tract")
+  # 0.01 and 0.025 must be distinguishable (not both "0%")
+  expect_true(grepl("0.010", labels[1]) || grepl("0.01", labels[1]))
+  expect_true(grepl("0.025", labels[2]))
+})
+
+
+# --- .cut_values tests ---
+
+test_that(".cut_values returns factor with correct levels", {
+  vals <- c(2, 7, 15)
+  f <- .cut_values(vals, c(0, 5, 10, 20), "pct_tract")
+  expect_s3_class(f, "factor")
+  expect_equal(length(levels(f)), 3)
+})
+
+test_that(".cut_values extends breaks when data exceeds range", {
+  vals <- c(-1, 7, 25)
+  f <- .cut_values(vals, c(0, 5, 10, 20), "pct_tract")
+  expect_true(!any(is.na(f)))
+})
+
+test_that(".cut_values handles degenerate breaks", {
+  vals <- c(5, 5, 5)
+  f <- .cut_values(vals, c(5), "absolute")
+  expect_s3_class(f, "factor")
+})
+
+
+# --- .bin_colors tests ---
+
+test_that(".bin_colors returns correct number of colors", {
+  skip_if_not_installed("RColorBrewer")
+  colors <- .bin_colors("RdYlBu", 5)
+  expect_equal(length(colors), 5)
+})
+
+test_that(".bin_colors works with viridis palette", {
+  skip_if_not_installed("viridisLite")
+  colors <- .bin_colors("viridis", 4)
+  expect_equal(length(colors), 4)
+})
+
+
+# --- Municipality contour tests ---
+
+test_that(".muni_border_layer returns NULL without geobr or code_muni", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+  # NULL code_muni returns NULL
+  expect_null(.muni_border_layer(NULL, obj$tracts_sf))
+})
+
+test_that("plot works without municipality contour (no geobr download)", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+  # Mock code_muni that won't match real data (no download)
+  obj$code_muni <- NULL
+  p <- plot(obj, variable = "CAND_13")
+  expect_s3_class(p, "gg")
+})
+
+
+# --- Limits validation tests ---
+
+test_that(".prepare_limits warns when limits don't overlap data", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Mock data is in CRS 4326 at x=[0,3], y=[0,2]; limits far away
+  expect_message(
+    .prepare_limits(c(100, 200, 100, 200), obj$tracts_sf),
+    "limits do not overlap"
+  )
+})
+
+test_that(".prepare_limits returns xlim/ylim and is silent when overlap", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Mock data is in CRS 4326 at x=[0,3], y=[0,2]; limits inside
+  result <- expect_silent(.prepare_limits(c(0, 2, 0, 1), obj$tracts_sf))
+  expect_true(is.list(result))
+  expect_true("xlim" %in% names(result))
+  expect_true("ylim" %in% names(result))
+})
+
+
+# --- Binned scale produces discrete fill ---
+
+test_that("plot with quantile breaks produces discrete fill scale", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13", breaks = "quantile", n_breaks = 3)
+  expect_s3_class(p, "gg")
+  fill_scale <- p$scales$get_scales("fill")
+  expect_true(fill_scale$is_discrete())
+})
+
+test_that("plot with custom breaks produces discrete fill scale", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13", breaks = c(0, 50, 100, 200))
+  expect_s3_class(p, "gg")
+  fill_scale <- p$scales$get_scales("fill")
+  expect_true(fill_scale$is_discrete())
+})
+
+test_that("plot with continuous breaks uses continuous scale", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13", breaks = "continuous")
+  expect_s3_class(p, "gg")
+  fill_scale <- p$scales$get_scales("fill")
+  expect_false(fill_scale$is_discrete())
 })
 
 

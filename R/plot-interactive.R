@@ -17,6 +17,11 @@
 #'   `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`, `"density"`.
 #' @param palette Color palette name. Default: `"RdYlBu"`
 #'   (diverging, colorblind-friendly).
+#' @param breaks Scale breaks: `"quantile"` (default), `"continuous"`,
+#'   `"jenks"` (requires classInt), or a numeric vector of custom
+#'   break points.
+#' @param n_breaks Number of breaks for `"quantile"` or `"jenks"`.
+#'   Default: 5.
 #' @param popup_vars Character vector of column names to show in
 #'   click popups. If NULL, auto-selects zone ID, the plotted variable,
 #'   turnout, and calibration columns (capped at 8).
@@ -52,6 +57,7 @@
 plot_interactive <- function(
     result, variable = NULL, type = "pct_tract",
     palette = "RdYlBu",
+    breaks = "quantile", n_breaks = 5L,
     popup_vars = NULL,
     alpha = 0.7,
     legend = TRUE,
@@ -79,6 +85,7 @@ plot_interactive <- function(
   # Multi-variable: synchronized panels
   if (length(variable) > 1L) {
     return(.interactive_sync(result, variable, type, palette,
+                              breaks, n_breaks,
                               popup_vars, alpha, legend, basemap, ...))
   }
 
@@ -92,13 +99,22 @@ plot_interactive <- function(
   # Build sf for display
   plot_sf <- result$tracts_sf
   display_name <- .auto_title(col, result)
-  plot_sf[[display_name]] <- values
 
-  # Build popup
+  # Compute breaks and optionally bin values (same logic as plot())
+  brk <- .compute_breaks(values, breaks, n_breaks)
+  if (!is.null(brk)) {
+    plot_sf[[display_name]] <- .cut_values(values, brk, type)
+    pal <- .bin_colors(palette, length(brk) - 1L, direction = -1)
+  } else {
+    plot_sf[[display_name]] <- values
+    pal <- .mapview_palette(palette)
+  }
+
+  # Build popup (include computed quantity column)
   popup_cols <- if (!is.null(popup_vars)) {
     intersect(popup_vars, names(plot_sf))
   } else {
-    .auto_popup_cols(result, display_name)
+    .auto_popup_cols(plot_sf, result, display_name)
   }
   popup <- .build_popup(plot_sf, popup_cols)
 
@@ -108,17 +124,32 @@ plot_interactive <- function(
     layer_name <- paste0(display_name, qty_suffix)
   }
 
-  suppressWarnings(mapview::mapview(
+  m <- suppressWarnings(mapview::mapview(
     plot_sf,
     zcol = display_name,
     layer.name = layer_name,
-    col.regions = .mapview_palette(palette),
+    col.regions = pal,
     alpha.regions = alpha,
     legend = legend,
     popup = popup,
     map.types = basemap,
     ...
   ))
+
+  # Municipality contour overlay
+  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(plot_sf))
+  if (!is.null(muni_sf)) {
+    muni_map <- suppressWarnings(mapview::mapview(
+      muni_sf,
+      color = "grey30", lwd = 2,
+      alpha.regions = 0, legend = FALSE,
+      layer.name = "Municipality",
+      map.types = basemap
+    ))
+    m <- m + muni_map
+  }
+
+  m
 }
 
 
@@ -127,6 +158,7 @@ plot_interactive <- function(
 #' @noRd
 .interactive_sync <- function(
     result, variables, type, palette,
+    breaks, n_breaks,
     popup_vars, alpha, legend, basemap, ...) {
 
   if (!requireNamespace("leafsync", quietly = TRUE)) {
@@ -139,16 +171,36 @@ plot_interactive <- function(
 
   cols <- .resolve_vars(variables, result)
 
-  maps <- lapply(cols, function(col) {
-    values <- .compute_quantity(result, col, type)
+  # Compute all values first for shared breaks
+  all_values <- lapply(cols, function(col) {
+    .compute_quantity(result, col, type)
+  })
+
+  # Compute breaks across ALL variables for a shared scale
+  combined <- unlist(all_values)
+  brk <- .compute_breaks(combined, breaks, n_breaks)
+
+  # Municipality contour (shared across panels)
+  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(result$tracts_sf))
+
+  maps <- lapply(seq_along(cols), function(i) {
+    col <- cols[i]
+    values <- all_values[[i]]
     plot_sf <- result$tracts_sf
     display_name <- .auto_title(col, result)
-    plot_sf[[display_name]] <- values
+
+    if (!is.null(brk)) {
+      plot_sf[[display_name]] <- .cut_values(values, brk, type)
+      pal <- .bin_colors(palette, length(brk) - 1L, direction = -1)
+    } else {
+      plot_sf[[display_name]] <- values
+      pal <- .mapview_palette(palette)
+    }
 
     popup_cols_i <- if (!is.null(popup_vars)) {
       intersect(popup_vars, names(plot_sf))
     } else {
-      .auto_popup_cols(result, display_name)
+      .auto_popup_cols(plot_sf, result, display_name)
     }
     popup <- .build_popup(plot_sf, popup_cols_i)
 
@@ -159,17 +211,31 @@ plot_interactive <- function(
     }
     lname <- paste0(display_name, qty_suffix)
 
-    suppressWarnings(mapview::mapview(
+    m <- suppressWarnings(mapview::mapview(
       plot_sf,
       zcol = display_name,
       layer.name = lname,
-      col.regions = .mapview_palette(palette),
+      col.regions = pal,
       alpha.regions = alpha,
       legend = legend,
       popup = popup,
       map.types = basemap,
       ...
     ))
+
+    # Add municipality contour
+    if (!is.null(muni_sf)) {
+      muni_map <- suppressWarnings(mapview::mapview(
+        muni_sf,
+        color = "grey30", lwd = 2,
+        alpha.regions = 0, legend = FALSE,
+        layer.name = "Municipality",
+        map.types = basemap
+      ))
+      m <- m + muni_map
+    }
+
+    m
   })
 
   do.call(leafsync::sync, maps)
@@ -180,8 +246,8 @@ plot_interactive <- function(
 
 #' Auto-select informative popup columns
 #' @noRd
-.auto_popup_cols <- function(result, plot_col) {
-  sf_cols <- names(result$tracts_sf)
+.auto_popup_cols <- function(plot_sf, result, plot_col) {
+  sf_cols <- names(plot_sf)
   keep <- character(0)
 
   # Zone ID
@@ -189,7 +255,7 @@ plot_interactive <- function(
     keep <- c(keep, result$zone_id)
   }
 
-  # The plotted variable
+  # The plotted variable (computed quantity added to plot_sf)
   if (plot_col %in% sf_cols) {
     keep <- c(keep, plot_col)
   }

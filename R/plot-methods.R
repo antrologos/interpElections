@@ -1,5 +1,8 @@
 # ggplot2-based plotting for interpElections_result objects
 
+# Package-level cache for municipality boundaries (avoids repeated downloads)
+.plot_cache <- new.env(parent = emptyenv())
+
 
 #' Plot an interpolated variable as a choropleth map
 #'
@@ -126,8 +129,21 @@ plot.interpElections_result <- function(
   if (is.null(legend_title)) legend_title <- .quantity_label(type)
   if (is.null(caption)) caption <- .auto_caption()
 
+  # Inform about data range when custom breaks are used
+  if (is.numeric(breaks)) {
+    rng <- range(values, na.rm = TRUE)
+    message(sprintf("Data range: [%.4g, %.4g]. Custom breaks: %s",
+                    rng[1], rng[2],
+                    paste(breaks, collapse = ", ")))
+  }
+
   # Compute breaks
   brk <- .compute_breaks(values, breaks, n_breaks)
+
+  # For binned scales: convert to factor with interval labels
+  if (!is.null(brk)) {
+    plot_sf$.plot_value <- .cut_values(values, brk, type)
+  }
 
   # Build plot
   p <- ggplot2::ggplot(plot_sf) +
@@ -141,19 +157,30 @@ plot.interpElections_result <- function(
                   fill = legend_title, caption = caption) +
     .map_theme()
 
-  # Crop to limits
+  # Municipality contour
+  border_layer <- .muni_border_layer(x$code_muni, plot_sf)
+  if (!is.null(border_layer)) p <- p + border_layer
+
+  # Crop to limits (interpreted as lon/lat, transformed to data CRS)
   if (!is.null(limits)) {
+    lim <- .prepare_limits(limits, plot_sf)
     p <- p + ggplot2::coord_sf(
-      xlim = limits[1:2], ylim = limits[3:4], expand = FALSE
+      xlim = lim$xlim, ylim = lim$ylim, expand = FALSE
     )
   }
 
   # Scale bar
   if (scale_bar && requireNamespace("ggspatial", quietly = TRUE)) {
-    p <- p + ggspatial::annotation_scale(
-      location = "bl", width_hint = 0.25,
-      line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
-      text_cex = 0.6
+    p <- tryCatch(
+      p + ggspatial::annotation_scale(
+        location = "bl", width_hint = 0.25,
+        line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
+        text_cex = 0.6
+      ),
+      error = function(e) {
+        message("Scale bar could not be drawn: ", conditionMessage(e))
+        p
+      }
     )
   }
 
@@ -227,9 +254,22 @@ autoplot.interpElections_result <- function(object, ...) {
   sf_long$.facet_var <- factor(sf_long$.facet_var,
                                levels = unique(sf_long$.facet_var))
 
-  # Compute breaks across all values
+  # Inform about data range when custom breaks are used
   all_vals <- sf_long$value
+  if (is.numeric(breaks)) {
+    rng <- range(all_vals, na.rm = TRUE)
+    message(sprintf("Data range: [%.4g, %.4g]. Custom breaks: %s",
+                    rng[1], rng[2],
+                    paste(breaks, collapse = ", ")))
+  }
+
+  # Compute breaks across all values
   brk <- .compute_breaks(all_vals, breaks, n_breaks)
+
+  # For binned scales: convert to factor with interval labels
+  if (!is.null(brk)) {
+    sf_long$value <- .cut_values(sf_long$value, brk, type)
+  }
 
   if (is.null(title)) title <- NULL
   if (is.null(subtitle)) subtitle <- .auto_subtitle(x, type, breaks)
@@ -248,19 +288,30 @@ autoplot.interpElections_result <- function(object, ...) {
                   fill = legend_title, caption = caption) +
     .map_theme()
 
-  # Crop to limits
+  # Municipality contour
+  border_layer <- .muni_border_layer(x$code_muni, x$tracts_sf)
+  if (!is.null(border_layer)) p <- p + border_layer
+
+  # Crop to limits (interpreted as lon/lat, transformed to data CRS)
   if (!is.null(limits)) {
+    lim <- .prepare_limits(limits, x$tracts_sf)
     p <- p + ggplot2::coord_sf(
-      xlim = limits[1:2], ylim = limits[3:4], expand = FALSE
+      xlim = lim$xlim, ylim = lim$ylim, expand = FALSE
     )
   }
 
   # Scale bar
   if (scale_bar && requireNamespace("ggspatial", quietly = TRUE)) {
-    p <- p + ggspatial::annotation_scale(
-      location = "bl", width_hint = 0.25,
-      line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
-      text_cex = 0.6
+    p <- tryCatch(
+      p + ggspatial::annotation_scale(
+        location = "bl", width_hint = 0.25,
+        line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
+        text_cex = 0.6
+      ),
+      error = function(e) {
+        message("Scale bar could not be drawn: ", conditionMessage(e))
+        p
+      }
     )
   }
 
@@ -387,7 +438,7 @@ autoplot.interpElections_result <- function(object, ...) {
       brks <- stats::quantile(values,
                                probs = seq(0, 1, length.out = n_breaks + 1L),
                                na.rm = TRUE)
-      as.numeric(unique(brks))
+      brks <- .clean_breaks(brks)
     },
     jenks = {
       if (!requireNamespace("classInt", quietly = TRUE)) {
@@ -398,7 +449,8 @@ autoplot.interpElections_result <- function(object, ...) {
         )
       }
       clean <- values[!is.na(values)]
-      classInt::classIntervals(clean, n = n_breaks, style = "jenks")$brks
+      brks <- classInt::classIntervals(clean, n = n_breaks, style = "jenks")$brks
+      .clean_breaks(brks)
     },
     stop(sprintf("Unknown breaks method: '%s'. Use 'continuous', 'quantile', 'jenks', or a numeric vector.",
                  method), call. = FALSE)
@@ -406,17 +458,29 @@ autoplot.interpElections_result <- function(object, ...) {
 }
 
 
+#' Round computed breaks to clean values for display
+#' @noRd
+.clean_breaks <- function(brks) {
+  brks <- as.numeric(unique(brks))
+  brks <- signif(brks, 3L)
+  # Replace near-zero values with exact 0
+  rng <- diff(range(brks))
+  if (rng > 0) brks[abs(brks) < rng * 1e-4] <- 0
+  unique(brks)
+}
+
+
 #' Build the ggplot2 fill scale
 #' @noRd
 .build_fill_scale <- function(palette, breaks, n_breaks, direction = -1,
                                type = "absolute") {
-  viridis_names <- c("viridis", "magma", "plasma", "inferno",
-                     "cividis", "mako", "rocket", "turbo")
-  is_viridis <- tolower(palette) %in% viridis_names
-  labels_fn <- .scale_labels(type)
-
   if (is.null(breaks)) {
     # Continuous scale
+    viridis_names <- c("viridis", "magma", "plasma", "inferno",
+                       "cividis", "mako", "rocket", "turbo")
+    is_viridis <- tolower(palette) %in% viridis_names
+    labels_fn <- .scale_labels(type, breaks)
+
     if (is_viridis) {
       ggplot2::scale_fill_viridis_c(option = palette, direction = direction,
                                      na.value = "grey90", labels = labels_fn)
@@ -425,40 +489,264 @@ autoplot.interpElections_result <- function(object, ...) {
                                      na.value = "grey90", labels = labels_fn)
     }
   } else {
-    # Binned scale
-    if (is_viridis) {
-      ggplot2::scale_fill_viridis_b(option = palette, breaks = breaks,
-                                     direction = direction,
-                                     na.value = "grey90", labels = labels_fn)
-    } else {
-      n_colors <- max(length(breaks) - 1L, 3L)
-      pal_info <- tryCatch(
-        RColorBrewer::brewer.pal.info[palette, ],
-        error = function(e) NULL
-      )
-      max_n <- if (!is.null(pal_info)) pal_info$maxcolors else 9L
-      colors <- RColorBrewer::brewer.pal(min(n_colors, max_n), palette)
-      if (n_colors > max_n) {
-        colors <- grDevices::colorRampPalette(colors)(n_colors)
-      }
-      if (direction == -1) colors <- rev(colors)
-      ggplot2::scale_fill_stepsn(colours = colors, breaks = breaks,
-                                  na.value = "grey90", labels = labels_fn)
-    }
+    # Discrete scale from cut() bins
+    bin_labels <- .make_bin_labels(breaks, type)
+    n_bins <- length(bin_labels)
+    colors <- .bin_colors(palette, n_bins, direction)
+    names(colors) <- bin_labels
+    ggplot2::scale_fill_manual(values = colors, na.value = "grey90",
+                                drop = FALSE)
   }
 }
 
 #' Build label formatting function based on quantity type
 #' @noRd
-.scale_labels <- function(type) {
+.scale_labels <- function(type, breaks = NULL) {
   pct_types <- c("pct_tract", "pct_muni", "pct_valid", "pct_eligible")
   if (type %in% pct_types) {
-    function(x) ifelse(is.na(x), "", paste0(round(x, 1), "%"))
+    digits <- .label_precision(breaks, default = 1L)
+    function(x) ifelse(is.na(x), "", paste0(round(x, digits), "%"))
   } else if (type == "density") {
-    function(x) ifelse(is.na(x), "", format(round(x, 1), big.mark = ","))
+    digits <- .label_precision(breaks, default = 1L)
+    function(x) ifelse(is.na(x), "", format(round(x, digits), big.mark = ","))
   } else {
-    function(x) ifelse(is.na(x), "", format(round(x), big.mark = ","))
+    digits <- .label_precision(breaks, default = 0L)
+    function(x) ifelse(is.na(x), "", format(round(x, digits), big.mark = ","))
   }
+}
+
+#' Compute label decimal precision from break values
+#'
+#' Finds the minimum number of decimal places needed to represent
+#' all finite, non-zero break values exactly (up to floating-point
+#' tolerance).
+#' @noRd
+.label_precision <- function(breaks, default = 1L) {
+  if (is.null(breaks)) return(default)
+  finite_brks <- breaks[is.finite(breaks) & breaks != 0]
+  if (length(finite_brks) == 0L) return(default)
+  digits_needed <- vapply(finite_brks, function(v) {
+    for (d in seq_len(10L)) {
+      if (abs(round(v, d) - v) < .Machine$double.eps * 100) return(d)
+    }
+    10L
+  }, integer(1L))
+  max(default, max(digits_needed))
+}
+
+
+#' Generate human-readable interval labels from break points
+#'
+#' Percentages: at most 2 significant digits. Absolute: no decimals.
+#'
+#' @param breaks Numeric vector of break points (length >= 2).
+#' @param type Quantity type for suffix formatting.
+#' @return Character vector of length `length(breaks) - 1`.
+#' @noRd
+.make_bin_labels <- function(breaks, type) {
+  n <- length(breaks) - 1L
+  pct_types <- c("pct_tract", "pct_muni", "pct_valid", "pct_eligible")
+
+  suffix <- if (type %in% pct_types) {
+    "%"
+  } else if (type == "density") {
+    "/km\u00b2"
+  } else {
+    ""
+  }
+
+  fmt <- if (type %in% c(pct_types, "density")) {
+    # Percentages / density: 2 significant digits, no scientific notation
+    function(x) {
+      if (x == 0) return("0")
+      format(signif(x, 2), scientific = FALSE, big.mark = ",",
+             drop0trailing = TRUE, trim = TRUE)
+    }
+  } else {
+    # Absolute: no decimal places
+    function(x) format(round(x), big.mark = ",", trim = TRUE)
+  }
+
+  labels <- character(n)
+  for (i in seq_len(n)) {
+    lo <- breaks[i]
+    hi <- breaks[i + 1L]
+
+    if (is.infinite(lo) && lo < 0) {
+      labels[i] <- paste0("<", fmt(hi), suffix)
+    } else if (is.infinite(hi) && hi > 0) {
+      labels[i] <- paste0(">", fmt(lo), suffix)
+    } else {
+      labels[i] <- paste0(fmt(lo), "\u2013", fmt(hi), suffix)
+    }
+  }
+  labels
+}
+
+
+#' Generate N discrete colors from a palette
+#'
+#' @param palette Palette name (RColorBrewer or viridis).
+#' @param n Number of colors needed.
+#' @param direction Color direction (-1 = reversed).
+#' @return Character vector of hex colors.
+#' @noRd
+.bin_colors <- function(palette, n, direction = -1) {
+  viridis_names <- c("viridis", "magma", "plasma", "inferno",
+                     "cividis", "mako", "rocket", "turbo")
+  is_viridis <- tolower(palette) %in% viridis_names
+
+  if (is_viridis && requireNamespace("viridisLite", quietly = TRUE)) {
+    colors <- viridisLite::viridis(n, option = palette, direction = direction)
+  } else {
+    n_fetch <- max(n, 3L)
+    pal_info <- tryCatch(
+      RColorBrewer::brewer.pal.info[palette, ],
+      error = function(e) NULL
+    )
+    max_n <- if (!is.null(pal_info)) pal_info$maxcolors else 9L
+    base_colors <- RColorBrewer::brewer.pal(min(n_fetch, max_n), palette)
+    if (n_fetch > max_n) {
+      base_colors <- grDevices::colorRampPalette(base_colors)(n_fetch)
+    }
+    if (direction == -1) base_colors <- rev(base_colors)
+    colors <- if (n == n_fetch) {
+      base_colors
+    } else {
+      grDevices::colorRampPalette(base_colors)(n)
+    }
+  }
+  colors
+}
+
+
+#' Cut numeric values into labeled factor bins
+#'
+#' @param values Numeric vector.
+#' @param breaks Numeric break vector.
+#' @param type Quantity type (for label formatting).
+#' @return Factor with human-readable bin labels.
+#' @noRd
+.cut_values <- function(values, breaks, type) {
+  if (length(breaks) < 2L) {
+    return(factor(rep("All values equal", length(values))))
+  }
+
+  bin_labels <- .make_bin_labels(breaks, type)
+
+  # Extend outermost breaks to cover full data range (prevents NAs)
+  brk <- breaks
+  rng <- range(values, na.rm = TRUE)
+  if (is.finite(rng[1]) && rng[1] < brk[1]) brk[1] <- rng[1]
+  if (is.finite(rng[2]) && rng[2] > brk[length(brk)]) brk[length(brk)] <- rng[2]
+
+  cut(values, breaks = brk, labels = bin_labels,
+      include.lowest = TRUE, right = TRUE)
+}
+
+
+#' Download/cache municipality boundary sf object
+#'
+#' Downloads the municipality boundary via geobr and caches it in
+#' `.plot_cache`. Optionally transforms to a target CRS.
+#'
+#' @param code_muni IBGE municipality code.
+#' @param target_crs Target CRS (from sf::st_crs). NULL to skip transform.
+#' @return An sf object or NULL.
+#' @noRd
+.get_muni_sf <- function(code_muni, target_crs = NULL) {
+  if (is.null(code_muni)) return(NULL)
+  if (!requireNamespace("geobr", quietly = TRUE)) return(NULL)
+
+  cache_key <- paste0("muni_", code_muni)
+
+  if (exists(cache_key, envir = .plot_cache)) {
+    muni_sf <- get(cache_key, envir = .plot_cache)
+  } else {
+    muni_sf <- tryCatch(
+      suppressMessages(
+        geobr::read_municipality(code_muni = as.numeric(code_muni), year = 2022)
+      ),
+      error = function(e) {
+        message("Could not download municipality boundary: ",
+                conditionMessage(e))
+        NULL
+      }
+    )
+    if (!is.null(muni_sf)) {
+      assign(cache_key, muni_sf, envir = .plot_cache)
+    }
+  }
+  if (is.null(muni_sf)) return(NULL)
+
+  # Match CRS if requested
+  if (!is.null(target_crs) && !is.na(target_crs) &&
+      sf::st_crs(muni_sf) != target_crs) {
+    muni_sf <- sf::st_transform(muni_sf, target_crs)
+  }
+
+  muni_sf
+}
+
+
+#' Create a ggplot2 layer for the municipality contour
+#'
+#' @param code_muni IBGE municipality code.
+#' @param tracts_sf An sf object (for CRS matching).
+#' @return A ggplot2 layer (geom_sf) or NULL.
+#' @noRd
+.muni_border_layer <- function(code_muni, tracts_sf) {
+  muni_sf <- .get_muni_sf(code_muni, sf::st_crs(tracts_sf))
+  if (is.null(muni_sf)) return(NULL)
+
+  ggplot2::geom_sf(
+    data = muni_sf,
+    fill = NA,
+    color = "grey30",
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  )
+}
+
+
+#' Transform lon/lat limits to the data CRS and validate overlap
+#'
+#' Limits are always interpreted as lon/lat (EPSG:4326) and
+#' transformed to the data CRS for coord_sf. Returns a list with
+#' xlim and ylim in the data CRS.
+#' @noRd
+.prepare_limits <- function(limits, sf_data) {
+  data_crs <- sf::st_crs(sf_data)
+
+  # Transform from lon/lat to data CRS
+  limit_pts <- sf::st_sfc(
+    sf::st_point(c(limits[1], limits[3])),
+    sf::st_point(c(limits[2], limits[4])),
+    crs = 4326
+  )
+
+  if (!is.na(data_crs) && data_crs != sf::st_crs(4326)) {
+    limit_pts <- sf::st_transform(limit_pts, data_crs)
+  }
+
+  coords <- sf::st_coordinates(limit_pts)
+  xlim <- sort(coords[, 1])
+  ylim <- sort(coords[, 2])
+
+  # Check overlap with data bbox
+  bbox <- sf::st_bbox(sf_data)
+  x_ok <- xlim[1] < bbox["xmax"] && xlim[2] > bbox["xmin"]
+  y_ok <- ylim[1] < bbox["ymax"] && ylim[2] > bbox["ymin"]
+  if (!x_ok || !y_ok) {
+    message(
+      "limits do not overlap with data extent. The map may appear empty.\n",
+      sprintf("  Your limits (lon/lat): x [%.4f, %.4f], y [%.4f, %.4f]\n",
+              limits[1], limits[2], limits[3], limits[4]),
+      "  Check coordinate signs (e.g., South/West = negative)."
+    )
+  }
+
+  list(xlim = xlim, ylim = ylim)
 }
 
 
