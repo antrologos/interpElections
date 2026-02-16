@@ -248,11 +248,11 @@ comparison <- data.frame(
 )
 comparison
 #>      zone analytical  numerical abs_diff
-#> 1 tract_1   2197.522   2197.522 9.02e-05
-#> 2 tract_2  17053.418  17053.418 5.83e-05
-#> 3 tract_3 -19866.714 -19866.714 1.61e-04
+#> 1 tract_1   2197.522   2197.522 8.52e-05
+#> 2 tract_2  17053.418  17053.418 6.84e-05
+#> 3 tract_3 -19866.714 -19866.714 2.23e-04
 #> 4 tract_4 -90542.702 -45262.292 4.53e+04
-#> 5 tract_5  86660.271  86660.271 6.38e-05
+#> 5 tract_5  86660.271  86660.271 7.27e-08
 ```
 
 The differences are at machine precision level (around $10^{- 8}$ or
