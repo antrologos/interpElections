@@ -71,6 +71,7 @@ to geocode polling stations (with Hidalgo fallback for missing
 coordinates), \code{\link[=interpElections_cache]{interpElections_cache()}} to manage cached downloads.
 
 Other Brazil downloads: 
+\code{\link{br_download_party_legends}()},
 \code{\link{br_download_turnout}()},
 \code{\link{br_download_votes}()}
 }

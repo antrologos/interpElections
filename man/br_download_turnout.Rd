@@ -69,6 +69,7 @@ municipality and/or state immediately after reading.
 
 Other Brazil downloads: 
 \code{\link{br_download_geocode}()},
+\code{\link{br_download_party_legends}()},
 \code{\link{br_download_votes}()}
 }
 \concept{Brazil downloads}

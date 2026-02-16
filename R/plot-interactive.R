@@ -13,9 +13,10 @@
 #'   (numeric), candidate name substring, or party abbreviation.
 #'   Multiple values create synchronized comparison panels.
 #'   If NULL, auto-selects the first candidate variable.
-#' @param type Quantity to map: `"absolute"` (default), `"pct_tract"`,
+#' @param type Quantity to map: `"pct_tract"` (default), `"absolute"`,
 #'   `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`, `"density"`.
-#' @param palette Color palette name. Default: `"YlOrRd"`.
+#' @param palette Color palette name. Default: `"RdYlBu"`
+#'   (diverging, colorblind-friendly).
 #' @param popup_vars Character vector of column names to show in
 #'   click popups. If NULL, auto-selects zone ID, the plotted variable,
 #'   turnout, and calibration columns (capped at 8).
@@ -49,8 +50,8 @@
 #'
 #' @export
 plot_interactive <- function(
-    result, variable = NULL, type = "absolute",
-    palette = "YlOrRd",
+    result, variable = NULL, type = "pct_tract",
+    palette = "RdYlBu",
     popup_vars = NULL,
     alpha = 0.7,
     legend = TRUE,
@@ -238,7 +239,7 @@ plot_interactive <- function(
     )
     max_n <- if (!is.null(pal_info)) pal_info$maxcolors else 9L
     base_colors <- RColorBrewer::brewer.pal(min(max_n, 9L), palette)
-    grDevices::colorRampPalette(base_colors)(n)
+    rev(grDevices::colorRampPalette(base_colors)(n))
   } else {
     grDevices::heat.colors(n)
   }

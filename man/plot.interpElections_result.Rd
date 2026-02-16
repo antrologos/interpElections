@@ -8,16 +8,19 @@
 \method{plot}{interpElections_result}(
   x,
   variable = NULL,
-  type = "absolute",
-  palette = "YlOrRd",
-  breaks = "continuous",
+  type = "pct_tract",
+  palette = "RdYlBu",
+  breaks = "quantile",
   n_breaks = 5L,
   title = NULL,
   subtitle = NULL,
   legend_title = NULL,
+  caption = NULL,
   show_sources = FALSE,
-  border_color = NA,
-  border_width = 0.1,
+  border_color = "white",
+  border_width = 0.05,
+  limits = NULL,
+  scale_bar = TRUE,
   ...
 )
 
@@ -32,35 +35,47 @@ substring (e.g., \code{"Lula"}), or party abbreviation (e.g., \code{"PT"}).
 Multiple values produce a faceted comparison.
 If NULL, auto-selects the first candidate variable.}
 
-\item{type}{Quantity to map: \code{"absolute"} (default), \code{"pct_tract"},
+\item{type}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
 \code{"pct_muni"}, \code{"pct_valid"}, \code{"pct_eligible"}, \code{"density"}.}
 
-\item{palette}{Color palette name. RColorBrewer sequential palettes
-(e.g., \code{"YlOrRd"}, \code{"Blues"}, \code{"Spectral"}) or viridis palettes
-(e.g., \code{"viridis"}, \code{"magma"}, \code{"plasma"}). Default: \code{"YlOrRd"}.}
+\item{palette}{Color palette name. RColorBrewer palettes
+(e.g., \code{"RdYlBu"}, \code{"YlGnBu"}, \code{"Spectral"}) or viridis palettes
+(e.g., \code{"viridis"}, \code{"magma"}, \code{"plasma"}). Default: \code{"RdYlBu"}
+(diverging, colorblind-friendly).}
 
-\item{breaks}{Scale breaks: \code{"continuous"} (default), \code{"quantile"},
+\item{breaks}{Scale breaks: \code{"quantile"} (default), \code{"continuous"},
 \code{"jenks"} (requires classInt), or a numeric vector of custom
 break points.}
 
 \item{n_breaks}{Number of breaks for \code{"quantile"} or \code{"jenks"}.
 Default: 5.}
 
-\item{title}{Plot title. NULL = auto-generated from dictionary.}
+\item{title}{Plot title. NULL = auto-generated from dictionary
+(title-cased candidate name with party).}
 
 \item{subtitle}{Plot subtitle. NULL = auto-generated from
-municipality/year metadata.}
+municipality/year/quantity metadata.}
 
 \item{legend_title}{Legend title. NULL = auto-generated from
 quantity type.}
+
+\item{caption}{Plot caption. NULL = auto-generated source note.
+Use \code{""} to suppress.}
 
 \item{show_sources}{Overlay source points (polling stations)
 on the map. Requires \code{sources_sf} in the result
 (use \code{keep = "sources_sf"} when interpolating). Default: FALSE.}
 
-\item{border_color}{Tract border color. Default: NA (no borders).}
+\item{border_color}{Tract border color. Default: \code{"white"}.}
 
-\item{border_width}{Tract border width. Default: 0.1.}
+\item{border_width}{Tract border width. Default: 0.05.}
+
+\item{limits}{Bounding box for the map extent as
+\code{c(xmin, xmax, ymin, ymax)} in the CRS of the data (typically
+longitude/latitude). NULL (default) shows the full extent.
+Use this to zoom into a region of interest.}
+
+\item{scale_bar}{Add a scale bar (requires ggspatial). Default: TRUE.}
 
 \item{...}{Ignored.}
 
@@ -79,18 +94,22 @@ candidate name, or party abbreviation.
 \dontrun{
 result <- interpolate_election_br(3304557, 2020, 2022)
 
-# By candidate name
+# By candidate name (default: \% of tract votes, quantile breaks)
 plot(result, variable = "Lula")
 
 # By ballot number
 plot(result, variable = 13)
 
-# Percentage of tract votes, quantile breaks
-plot(result, variable = "PT", type = "pct_tract",
-     breaks = "quantile", n_breaks = 5)
+# Absolute counts with continuous scale
+plot(result, variable = "PT", type = "absolute",
+     breaks = "continuous")
 
 # Faceted comparison
-plot(result, variable = c("Lula", "Bolsonaro"), type = "pct_tract")
+plot(result, variable = c("Lula", "Bolsonaro"))
+
+# Zoom into a region
+plot(result, variable = "Lula",
+     limits = c(-43.2, -43.1, -22.95, -22.85))
 
 # Composable with ggplot2
 library(ggplot2)

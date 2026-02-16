@@ -79,6 +79,7 @@ files. \code{\link[=br_prepare_electoral]{br_prepare_electoral()}} handles this 
 
 Other Brazil downloads: 
 \code{\link{br_download_geocode}()},
+\code{\link{br_download_party_legends}()},
 \code{\link{br_download_turnout}()}
 }
 \concept{Brazil downloads}

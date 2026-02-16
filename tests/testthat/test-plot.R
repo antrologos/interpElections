@@ -359,17 +359,19 @@ test_that("plot warns when show_sources but no sources_sf", {
   expect_warning(plot(obj, show_sources = TRUE), "sources_sf")
 })
 
-test_that("plot auto-generates title from dictionary", {
+test_that("plot auto-generates title-cased title with party and number", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_plot_result()
 
   p <- plot(obj, variable = "CAND_13")
-  # Title should contain the candidate name from dictionary
-  expect_true(grepl("JOAO", p$labels$title))
+  # Title should be title-cased with party and ballot number
+  expect_true(grepl("Joao", p$labels$title, ignore.case = FALSE))
+  expect_true(grepl("PT", p$labels$title))
+  expect_true(grepl("13", p$labels$title))
 })
 
-test_that("plot auto-generates subtitle from metadata", {
+test_that("plot auto-generates subtitle with type and breaks", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_plot_result()
@@ -377,16 +379,51 @@ test_that("plot auto-generates subtitle from metadata", {
   p <- plot(obj, variable = "CAND_13")
   expect_true(grepl("SAO PAULO", p$labels$subtitle))
   expect_true(grepl("2020", p$labels$subtitle))
+  # Default type pct_tract and breaks quantile appear in subtitle
+  expect_true(grepl("tract", p$labels$subtitle, ignore.case = TRUE))
+  expect_true(grepl("uantile", p$labels$subtitle, ignore.case = TRUE))
+})
+
+test_that("plot has auto-generated caption", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13")
+  expect_true(grepl("TSE", p$labels$caption))
+})
+
+test_that("plot caption can be suppressed", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13", caption = "")
+  expect_equal(p$labels$caption, "")
+})
+
+test_that("plot with limits crops the map", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+
+  p <- plot(obj, variable = "CAND_13", limits = c(0, 2, 0, 1))
+  expect_s3_class(p, "gg")
+  # coord_sf should be set with the specified limits
+  expect_true(inherits(p$coordinates, "CoordSf"))
 })
 
 
 # --- Label helper tests ---
 
-test_that(".auto_title returns dict label for known column", {
+test_that(".auto_title returns title-cased candidate with party and number", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
   label <- .auto_title("CAND_13", obj)
-  expect_true(grepl("JOAO", label))
+  expect_true(grepl("Joao", label))
+  expect_true(grepl("da Silva", label))
+  expect_true(grepl("PT", label))
+  expect_true(grepl("13", label))
 })
 
 test_that(".auto_title returns column name when no dictionary", {
@@ -404,12 +441,36 @@ test_that(".auto_subtitle returns municipality and year", {
   expect_true(grepl("2020", sub))
 })
 
+test_that(".auto_subtitle includes type and breaks when provided", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  sub <- .auto_subtitle(obj, type = "pct_tract", breaks = "quantile")
+  expect_true(grepl("SAO PAULO", sub))
+  expect_true(grepl("tract", sub, ignore.case = TRUE))
+  expect_true(grepl("uantile", sub, ignore.case = TRUE))
+})
+
+test_that(".auto_subtitle omits type for absolute and breaks for continuous", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  sub <- .auto_subtitle(obj, type = "absolute", breaks = "continuous")
+  expect_true(grepl("SAO PAULO", sub))
+  expect_false(grepl("Count", sub))
+  expect_false(grepl("ontinuous", sub, ignore.case = TRUE))
+})
+
 test_that(".auto_subtitle returns NULL for generic result", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
   obj$nome_municipio <- NULL
   obj$year <- NULL
   expect_null(.auto_subtitle(obj))
+})
+
+test_that(".auto_caption returns source string", {
+  cap <- .auto_caption()
+  expect_true(grepl("TSE", cap))
+  expect_true(grepl("interpolation", cap))
 })
 
 test_that(".quantity_label returns human-readable labels", {
@@ -528,4 +589,48 @@ test_that(".auto_popup_cols caps at 8", {
   obj <- .mock_plot_result()
   cols <- .auto_popup_cols(obj, "CAND_13")
   expect_true(length(cols) <= 8)
+})
+
+
+# --- .title_case_pt tests ---
+
+test_that(".title_case_pt converts all-caps to title case", {
+  expect_equal(.title_case_pt("JOAO DA SILVA"), "Joao da Silva")
+  expect_equal(.title_case_pt("MARIA SOUZA"), "Maria Souza")
+})
+
+test_that(".title_case_pt handles Portuguese particles", {
+  expect_equal(
+    .title_case_pt("LUIZ INACIO LULA DA SILVA"),
+    "Luiz Inacio Lula da Silva"
+  )
+  expect_equal(
+    .title_case_pt("JOSE DOS SANTOS"),
+    "Jose dos Santos"
+  )
+})
+
+
+# --- .scale_labels tests ---
+
+test_that(".scale_labels returns percentage formatter for pct types", {
+  fn <- .scale_labels("pct_tract")
+  expect_equal(fn(50), "50%")
+  expect_equal(fn(12.34), "12.3%")
+  expect_equal(fn(NA), "")
+})
+
+test_that(".scale_labels returns comma formatter for absolute", {
+  fn <- .scale_labels("absolute")
+  expect_equal(fn(1000), "1,000")
+  expect_equal(fn(NA), "")
+})
+
+
+# --- .map_theme tests ---
+
+test_that(".map_theme returns a ggplot theme", {
+  skip_if_not_installed("ggplot2")
+  th <- .map_theme()
+  expect_s3_class(th, "theme")
 })

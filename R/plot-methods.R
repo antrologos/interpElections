@@ -13,26 +13,35 @@
 #'   substring (e.g., `"Lula"`), or party abbreviation (e.g., `"PT"`).
 #'   Multiple values produce a faceted comparison.
 #'   If NULL, auto-selects the first candidate variable.
-#' @param type Quantity to map: `"absolute"` (default), `"pct_tract"`,
+#' @param type Quantity to map: `"pct_tract"` (default), `"absolute"`,
 #'   `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`, `"density"`.
-#' @param palette Color palette name. RColorBrewer sequential palettes
-#'   (e.g., `"YlOrRd"`, `"Blues"`, `"Spectral"`) or viridis palettes
-#'   (e.g., `"viridis"`, `"magma"`, `"plasma"`). Default: `"YlOrRd"`.
-#' @param breaks Scale breaks: `"continuous"` (default), `"quantile"`,
+#' @param palette Color palette name. RColorBrewer palettes
+#'   (e.g., `"RdYlBu"`, `"YlGnBu"`, `"Spectral"`) or viridis palettes
+#'   (e.g., `"viridis"`, `"magma"`, `"plasma"`). Default: `"RdYlBu"`
+#'   (diverging, colorblind-friendly).
+#' @param breaks Scale breaks: `"quantile"` (default), `"continuous"`,
 #'   `"jenks"` (requires classInt), or a numeric vector of custom
 #'   break points.
 #' @param n_breaks Number of breaks for `"quantile"` or `"jenks"`.
 #'   Default: 5.
-#' @param title Plot title. NULL = auto-generated from dictionary.
+#' @param title Plot title. NULL = auto-generated from dictionary
+#'   (title-cased candidate name with party).
 #' @param subtitle Plot subtitle. NULL = auto-generated from
-#'   municipality/year metadata.
+#'   municipality/year/quantity metadata.
 #' @param legend_title Legend title. NULL = auto-generated from
 #'   quantity type.
+#' @param caption Plot caption. NULL = auto-generated source note.
+#'   Use `""` to suppress.
 #' @param show_sources Overlay source points (polling stations)
 #'   on the map. Requires `sources_sf` in the result
 #'   (use `keep = "sources_sf"` when interpolating). Default: FALSE.
-#' @param border_color Tract border color. Default: NA (no borders).
-#' @param border_width Tract border width. Default: 0.1.
+#' @param border_color Tract border color. Default: `"white"`.
+#' @param border_width Tract border width. Default: 0.05.
+#' @param limits Bounding box for the map extent as
+#'   `c(xmin, xmax, ymin, ymax)` in the CRS of the data (typically
+#'   longitude/latitude). NULL (default) shows the full extent.
+#'   Use this to zoom into a region of interest.
+#' @param scale_bar Add a scale bar (requires ggspatial). Default: TRUE.
 #' @param ... Ignored.
 #'
 #' @return A `ggplot` object (invisibly). Can be further customized
@@ -42,18 +51,22 @@
 #' \dontrun{
 #' result <- interpolate_election_br(3304557, 2020, 2022)
 #'
-#' # By candidate name
+#' # By candidate name (default: % of tract votes, quantile breaks)
 #' plot(result, variable = "Lula")
 #'
 #' # By ballot number
 #' plot(result, variable = 13)
 #'
-#' # Percentage of tract votes, quantile breaks
-#' plot(result, variable = "PT", type = "pct_tract",
-#'      breaks = "quantile", n_breaks = 5)
+#' # Absolute counts with continuous scale
+#' plot(result, variable = "PT", type = "absolute",
+#'      breaks = "continuous")
 #'
 #' # Faceted comparison
-#' plot(result, variable = c("Lula", "Bolsonaro"), type = "pct_tract")
+#' plot(result, variable = c("Lula", "Bolsonaro"))
+#'
+#' # Zoom into a region
+#' plot(result, variable = "Lula",
+#'      limits = c(-43.2, -43.1, -22.95, -22.85))
 #'
 #' # Composable with ggplot2
 #' library(ggplot2)
@@ -62,11 +75,12 @@
 #'
 #' @exportS3Method
 plot.interpElections_result <- function(
-    x, variable = NULL, type = "absolute",
-    palette = "YlOrRd", breaks = "continuous", n_breaks = 5L,
+    x, variable = NULL, type = "pct_tract",
+    palette = "RdYlBu", breaks = "quantile", n_breaks = 5L,
     title = NULL, subtitle = NULL, legend_title = NULL,
-    show_sources = FALSE, border_color = NA, border_width = 0.1,
-    ...) {
+    caption = NULL,
+    show_sources = FALSE, border_color = "white", border_width = 0.05,
+    limits = NULL, scale_bar = TRUE, ...) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop(
@@ -88,8 +102,9 @@ plot.interpElections_result <- function(
   # Multi-variable: faceted plot
   if (length(variable) > 1L) {
     p <- .plot_faceted(x, variable, type, palette, breaks, n_breaks,
-                       title, subtitle, legend_title,
-                       show_sources, border_color, border_width)
+                       title, subtitle, legend_title, caption,
+                       show_sources, border_color, border_width,
+                       limits, scale_bar)
     print(p)
     return(invisible(p))
   }
@@ -103,8 +118,9 @@ plot.interpElections_result <- function(
 
   # Auto-generate labels
   if (is.null(title)) title <- .auto_title(col, x)
-  if (is.null(subtitle)) subtitle <- .auto_subtitle(x)
+  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, type, breaks)
   if (is.null(legend_title)) legend_title <- .quantity_label(type)
+  if (is.null(caption)) caption <- .auto_caption()
 
   # Compute breaks
   brk <- .compute_breaks(values, breaks, n_breaks)
@@ -116,14 +132,37 @@ plot.interpElections_result <- function(
       color = border_color,
       linewidth = border_width
     ) +
-    .build_fill_scale(palette, brk, n_breaks) +
-    ggplot2::labs(title = title, subtitle = subtitle, fill = legend_title) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      axis.text  = ggplot2::element_blank(),
-      axis.ticks = ggplot2::element_blank(),
-      panel.grid = ggplot2::element_blank()
+    .build_fill_scale(palette, brk, n_breaks, type = type) +
+    ggplot2::labs(title = title, subtitle = subtitle,
+                  fill = legend_title, caption = caption) +
+    .map_theme()
+
+  # Crop to limits
+  if (!is.null(limits)) {
+    p <- p + ggplot2::coord_sf(
+      xlim = limits[1:2], ylim = limits[3:4], expand = FALSE
     )
+  }
+
+  # Scale bar
+  if (scale_bar && requireNamespace("ggspatial", quietly = TRUE)) {
+    p <- p + ggspatial::annotation_scale(
+      location = "bl", width_hint = 0.25,
+      line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
+      text_cex = 0.6
+    )
+  }
+
+  # Legend guide for binned scales
+  if (!is.null(brk)) {
+    p <- p + ggplot2::guides(fill = ggplot2::guide_legend(
+      title.position = "top",
+      label.position = "bottom",
+      keywidth = ggplot2::unit(1.5, "cm"),
+      keyheight = ggplot2::unit(0.3, "cm"),
+      nrow = 1
+    ))
+  }
 
   # Overlay source points if requested
   if (show_sources) {
@@ -160,8 +199,9 @@ autoplot.interpElections_result <- function(object, ...) {
 #' @noRd
 .plot_faceted <- function(
     x, variables, type, palette, breaks, n_breaks,
-    title, subtitle, legend_title,
-    show_sources, border_color, border_width) {
+    title, subtitle, legend_title, caption,
+    show_sources, border_color, border_width,
+    limits, scale_bar) {
 
   cols <- .resolve_vars(variables, x)
 
@@ -188,8 +228,9 @@ autoplot.interpElections_result <- function(object, ...) {
   brk <- .compute_breaks(all_vals, breaks, n_breaks)
 
   if (is.null(title)) title <- NULL
-  if (is.null(subtitle)) subtitle <- .auto_subtitle(x)
+  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, type, breaks)
   if (is.null(legend_title)) legend_title <- .quantity_label(type)
+  if (is.null(caption)) caption <- .auto_caption()
 
   p <- ggplot2::ggplot(sf_long) +
     ggplot2::geom_sf(
@@ -198,14 +239,37 @@ autoplot.interpElections_result <- function(object, ...) {
       linewidth = border_width
     ) +
     ggplot2::facet_wrap(~ .facet_var) +
-    .build_fill_scale(palette, brk, n_breaks) +
-    ggplot2::labs(title = title, subtitle = subtitle, fill = legend_title) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      axis.text  = ggplot2::element_blank(),
-      axis.ticks = ggplot2::element_blank(),
-      panel.grid = ggplot2::element_blank()
+    .build_fill_scale(palette, brk, n_breaks, type = type) +
+    ggplot2::labs(title = title, subtitle = subtitle,
+                  fill = legend_title, caption = caption) +
+    .map_theme()
+
+  # Crop to limits
+  if (!is.null(limits)) {
+    p <- p + ggplot2::coord_sf(
+      xlim = limits[1:2], ylim = limits[3:4], expand = FALSE
     )
+  }
+
+  # Scale bar
+  if (scale_bar && requireNamespace("ggspatial", quietly = TRUE)) {
+    p <- p + ggspatial::annotation_scale(
+      location = "bl", width_hint = 0.25,
+      line_width = 0.5, height = ggplot2::unit(0.15, "cm"),
+      text_cex = 0.6
+    )
+  }
+
+  # Legend guide for binned scales
+  if (!is.null(brk)) {
+    p <- p + ggplot2::guides(fill = ggplot2::guide_legend(
+      title.position = "top",
+      label.position = "bottom",
+      keywidth = ggplot2::unit(1.5, "cm"),
+      keyheight = ggplot2::unit(0.3, "cm"),
+      nrow = 1
+    ))
+  }
 
   if (show_sources && !is.null(x$sources_sf)) {
     p <- p + ggplot2::geom_sf(
@@ -221,20 +285,33 @@ autoplot.interpElections_result <- function(object, ...) {
 
 # --- Label generators ---
 
-#' Auto-generate plot title from dictionary
+#' Auto-generate plot title from dictionary (title-cased)
 #' @noRd
 .auto_title <- function(col, result) {
   dict <- result$dictionary
   if (is.null(dict)) return(col)
   row <- dict[dict$column == col, , drop = FALSE]
   if (nrow(row) == 0L) return(col)
+  if (row$type[1L] == "candidate" && !is.na(row$candidate_name[1L])) {
+    name <- .title_case_pt(row$candidate_name[1L])
+    # Include party and ballot number: "Name (PT — 13)"
+    meta <- character(0)
+    if (!is.na(row$party[1L])) meta <- c(meta, row$party[1L])
+    if (!is.na(row$ballot_number[1L])) meta <- c(meta, row$ballot_number[1L])
+    suffix <- if (length(meta) > 0) {
+      paste0(" (", paste(meta, collapse = " \u2014 "), ")")
+    } else {
+      ""
+    }
+    return(paste0(name, suffix))
+  }
   label <- .format_dict_label(row[1L, ])
   if (nzchar(label)) label else col
 }
 
-#' Auto-generate subtitle from metadata
+#' Auto-generate subtitle from metadata, quantity type, and break method
 #' @noRd
-.auto_subtitle <- function(result) {
+.auto_subtitle <- function(result, type = NULL, breaks = NULL) {
   parts <- character(0)
   if (!is.null(result$nome_municipio)) {
     parts <- c(parts, sprintf("%s (%s)", result$nome_municipio, result$uf))
@@ -242,8 +319,38 @@ autoplot.interpElections_result <- function(object, ...) {
   if (!is.null(result$year)) {
     parts <- c(parts, as.character(result$year))
   }
+
+  if (!is.null(type) && type != "absolute") {
+    parts <- c(parts, .quantity_label(type))
+  }
+  if (is.character(breaks) && breaks != "continuous") {
+    parts <- c(parts, tools::toTitleCase(breaks))
+  }
   if (length(parts) == 0L) return(NULL)
-  paste(parts, collapse = " - ")
+  paste(parts, collapse = " \u2014 ")
+}
+
+#' Auto-generate caption with data source
+#' @noRd
+.auto_caption <- function() {
+  "Source: TSE | Spatial interpolation to census tracts"
+}
+
+#' Shared map theme for all plot methods
+#' @noRd
+.map_theme <- function() {
+  ggplot2::theme_void() +
+    ggplot2::theme(
+      axis.text        = ggplot2::element_text(size = 7, color = "grey40"),
+      axis.ticks       = ggplot2::element_line(color = "grey60", linewidth = 0.3),
+      axis.ticks.length = ggplot2::unit(0.1, "cm"),
+      plot.title    = ggplot2::element_text(size = 14, face = "bold", hjust = 0),
+      plot.subtitle = ggplot2::element_text(size = 10, color = "grey40", hjust = 0,
+                                             margin = ggplot2::margin(b = 8)),
+      plot.caption  = ggplot2::element_text(size = 9, hjust = 1, color = "grey50"),
+      legend.position = "bottom",
+      plot.margin   = ggplot2::margin(10, 10, 10, 10)
+    )
 }
 
 #' Human-readable label for quantity type
@@ -297,23 +404,28 @@ autoplot.interpElections_result <- function(object, ...) {
 
 #' Build the ggplot2 fill scale
 #' @noRd
-.build_fill_scale <- function(palette, breaks, n_breaks, direction = 1) {
+.build_fill_scale <- function(palette, breaks, n_breaks, direction = -1,
+                               type = "absolute") {
   viridis_names <- c("viridis", "magma", "plasma", "inferno",
                      "cividis", "mako", "rocket", "turbo")
   is_viridis <- tolower(palette) %in% viridis_names
+  labels_fn <- .scale_labels(type)
 
   if (is.null(breaks)) {
     # Continuous scale
     if (is_viridis) {
-      ggplot2::scale_fill_viridis_c(option = palette, direction = direction)
+      ggplot2::scale_fill_viridis_c(option = palette, direction = direction,
+                                     na.value = "grey90", labels = labels_fn)
     } else {
-      ggplot2::scale_fill_distiller(palette = palette, direction = direction)
+      ggplot2::scale_fill_distiller(palette = palette, direction = direction,
+                                     na.value = "grey90", labels = labels_fn)
     }
   } else {
     # Binned scale
     if (is_viridis) {
       ggplot2::scale_fill_viridis_b(option = palette, breaks = breaks,
-                                     direction = direction)
+                                     direction = direction,
+                                     na.value = "grey90", labels = labels_fn)
     } else {
       n_colors <- max(length(breaks) - 1L, 3L)
       pal_info <- tryCatch(
@@ -325,8 +437,23 @@ autoplot.interpElections_result <- function(object, ...) {
       if (n_colors > max_n) {
         colors <- grDevices::colorRampPalette(colors)(n_colors)
       }
-      ggplot2::scale_fill_stepsn(colours = colors, breaks = breaks)
+      if (direction == -1) colors <- rev(colors)
+      ggplot2::scale_fill_stepsn(colours = colors, breaks = breaks,
+                                  na.value = "grey90", labels = labels_fn)
     }
+  }
+}
+
+#' Build label formatting function based on quantity type
+#' @noRd
+.scale_labels <- function(type) {
+  pct_types <- c("pct_tract", "pct_muni", "pct_valid", "pct_eligible")
+  if (type %in% pct_types) {
+    function(x) ifelse(is.na(x), "", paste0(round(x, 1), "%"))
+  } else if (type == "density") {
+    function(x) ifelse(is.na(x), "", format(round(x, 1), big.mark = ","))
+  } else {
+    function(x) ifelse(is.na(x), "", format(round(x), big.mark = ","))
   }
 }
 

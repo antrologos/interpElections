@@ -517,6 +517,19 @@ br_prepare_electoral <- function(
       turnout_extra <- .br_extract_turnout(first_votos, id_cols)
     }
 
+    # Build party mapping if SG_PARTIDO is not available
+    party_map <- NULL
+    if (!("SG_PARTIDO" %in% names(tse_votos_all))) {
+      if (verbose) message("  SG_PARTIDO not in vote data; downloading party legends...")
+      party_map <- tryCatch(
+        .br_build_party_map(year, cache = cache, force = force, verbose = verbose),
+        error = function(e) {
+          if (verbose) message("  Could not download party legends: ", e$message)
+          NULL
+        }
+      )
+    }
+
     # Process each cargo
     dados_votos_list <- list()
     dados_partidos_list <- list()
@@ -549,7 +562,8 @@ br_prepare_electoral <- function(
 
           # Extract candidate metadata for dictionary
           dict_rows <- .br_extract_candidate_dict(
-            votos_filtered, prefix, cargo_label, dict_rows)
+            votos_filtered, prefix, cargo_label, dict_rows,
+            party_map = party_map)
         }
       }
 
@@ -565,7 +579,8 @@ br_prepare_electoral <- function(
 
           # Extract party metadata for dictionary
           dict_rows <- .br_extract_party_dict(
-            votos_for_parties, prefix, cargo_label, dict_rows)
+            votos_for_parties, prefix, cargo_label, dict_rows,
+            party_map = party_map)
         }
       }
     }
@@ -1124,9 +1139,21 @@ br_prepare_electoral <- function(
   result
 }
 
+#' Build a named vector mapping party number -> abbreviation from TSE legends
+#' @noRd
+.br_build_party_map <- function(year, cache = TRUE, force = FALSE,
+                                verbose = TRUE) {
+  legends <- br_download_party_legends(year, cache = cache, force = force,
+                                       verbose = verbose)
+  nr <- as.character(legends$NR_PARTIDO)
+  sg <- toupper(trimws(as.character(legends$SG_PARTIDO)))
+  map <- stats::setNames(sg, nr)
+  map[!duplicated(names(map))]
+}
+
 #' @noRd
 .br_extract_candidate_dict <- function(tse_votos, prefix, cargo_label,
-                                       dict_rows) {
+                                       dict_rows, party_map = NULL) {
   has_name <- "NM_VOTAVEL" %in% names(tse_votos)
   has_party <- "SG_PARTIDO" %in% names(tse_votos)
 
@@ -1156,6 +1183,13 @@ br_prepare_electoral <- function(
       sg <- unique(trimws(as.character(subset_i$SG_PARTIDO)))
       sg <- sg[!is.na(sg) & sg != ""]
       if (length(sg) > 0) toupper(sg[1]) else NA_character_
+    } else if (!is.null(party_map)) {
+      party_num <- substr(nr, 1, 2)
+      if (party_num %in% names(party_map)) {
+        unname(party_map[party_num])
+      } else {
+        NA_character_
+      }
     } else {
       NA_character_
     }
@@ -1175,7 +1209,7 @@ br_prepare_electoral <- function(
 
 #' @noRd
 .br_extract_party_dict <- function(tse_votos, prefix, cargo_label,
-                                   dict_rows) {
+                                   dict_rows, party_map = NULL) {
   # Exclude blank (95) and null (96) votes
   party_data <- tse_votos[
     !(as.character(tse_votos$NR_VOTAVEL) %in% c("95", "96")), ]
@@ -1193,13 +1227,19 @@ br_prepare_electoral <- function(
   }
 
   for (p in parties) {
+    # When using numeric party codes, try to resolve abbreviation from legends
+    party_label <- if (!has_sg && !is.null(party_map) && p %in% names(party_map)) {
+      unname(party_map[p])
+    } else {
+      p
+    }
     dict_rows[[length(dict_rows) + 1L]] <- data.frame(
       column         = paste0(prefix, "PARTY_", p),
       type           = "party",
       cargo          = cargo_label,
       ballot_number  = NA_character_,
       candidate_name = NA_character_,
-      party          = p,
+      party          = party_label,
       stringsAsFactors = FALSE
     )
   }

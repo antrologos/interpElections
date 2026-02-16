@@ -7,8 +7,8 @@
 plot_interactive(
   result,
   variable = NULL,
-  type = "absolute",
-  palette = "YlOrRd",
+  type = "pct_tract",
+  palette = "RdYlBu",
   popup_vars = NULL,
   alpha = 0.7,
   legend = TRUE,
@@ -25,10 +25,11 @@ plot_interactive(
 Multiple values create synchronized comparison panels.
 If NULL, auto-selects the first candidate variable.}
 
-\item{type}{Quantity to map: \code{"absolute"} (default), \code{"pct_tract"},
+\item{type}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
 \code{"pct_muni"}, \code{"pct_valid"}, \code{"pct_eligible"}, \code{"density"}.}
 
-\item{palette}{Color palette name. Default: \code{"YlOrRd"}.}
+\item{palette}{Color palette name. Default: \code{"RdYlBu"}
+(diverging, colorblind-friendly).}
 
 \item{popup_vars}{Character vector of column names to show in
 click popups. If NULL, auto-selects zone ID, the plotted variable,

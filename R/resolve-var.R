@@ -270,6 +270,21 @@
 }
 
 
+# --- Title case helper for Portuguese names ---
+
+#' Convert all-caps name to title case with Portuguese particles
+#' @noRd
+.title_case_pt <- function(x) {
+  particles <- c("de", "da", "do", "das", "dos", "e")
+  words <- strsplit(tolower(x), "\\s+")[[1]]
+  words <- vapply(words, function(w) {
+    if (w %in% particles) w
+    else paste0(toupper(substring(w, 1, 1)), substring(w, 2))
+  }, character(1), USE.NAMES = FALSE)
+  paste(words, collapse = " ")
+}
+
+
 # --- Auto-select variable ---
 
 #' Pick a sensible default variable for plotting

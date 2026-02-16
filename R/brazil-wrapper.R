@@ -705,6 +705,12 @@ interpolate_election_br <- function(
   # basic dictionary entries from column name patterns
   if (is.null(dict)) {
     dict <- .br_dict_from_colnames(interp_cols)
+    message(
+      "Note: Using basic dictionary from column names (party/candidate ",
+      "metadata may be incomplete).\n",
+      "Clear the electoral cache with clear_cache(type = 'electoral') ",
+      "and re-run for full metadata."
+    )
   }
 
   # Add calibration columns

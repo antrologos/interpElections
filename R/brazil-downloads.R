@@ -308,6 +308,104 @@ br_download_turnout <- function(
 }
 
 
+#' Download party legends from TSE
+#'
+#' Downloads the official party legend data (consulta de legendas) from the
+#' TSE open data portal for a given election year. This file maps party
+#' numbers (`NR_PARTIDO`) to abbreviations (`SG_PARTIDO`) and full names
+#' (`NM_PARTIDO`).
+#'
+#' @param year Integer. Election year (e.g., 2008, 2012, 2016, 2020, 2022).
+#' @param force Logical. Re-download even if cached file exists.
+#'   Default: FALSE.
+#' @param cache Logical. If TRUE (default), downloaded files are stored
+#'   persistently. See [get_interpElections_cache_dir()].
+#' @param verbose Logical. Default: TRUE.
+#'
+#' @return A data frame with TSE party legend data. Key columns:
+#'   \describe{
+#'     \item{NR_PARTIDO}{Party number (2-digit)}
+#'     \item{SG_PARTIDO}{Party abbreviation (e.g., "PT", "MDB")}
+#'     \item{NM_PARTIDO}{Full party name}
+#'   }
+#'
+#' @details
+#' Data is downloaded from
+#' `https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_legendas/`.
+#' Files are cached persistently by default and reused on subsequent
+#' calls unless `force = TRUE`.
+#'
+#' @family Brazil downloads
+#'
+#' @seealso [br_download_votes()] for candidate vote data,
+#'   [br_prepare_electoral()] which uses this function internally,
+#'   [interpElections_cache()] to manage cached downloads.
+#'
+#' @export
+br_download_party_legends <- function(
+    year,
+    force = FALSE,
+    cache = TRUE,
+    verbose = TRUE
+) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("The 'data.table' package is required for br_download_party_legends()",
+         call. = FALSE)
+  }
+
+  year <- as.integer(year)
+
+  url <- sprintf(
+    "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_legendas/consulta_legendas_%d.zip",
+    year
+  )
+
+  zip_name <- sprintf("consulta_legendas_%d.zip", year)
+
+  if (verbose) message(sprintf("  Party legends (%d)...", year))
+  zip_path <- .interpElections_download(
+    url = url, filename = zip_name, subdir = .cache_subdirs()$legends,
+    cache = cache, force = force, verbose = verbose
+  )
+
+  # Extract CSV from ZIP
+  csv_files <- utils::unzip(zip_path, list = TRUE)$Name
+  csv_file <- grep("\\.csv$", csv_files, value = TRUE, ignore.case = TRUE)
+  if (length(csv_file) == 0) {
+    stop("No CSV file found in ZIP archive: ", zip_path, call. = FALSE)
+  }
+
+  extract_dir <- tempfile("interpElections_legends_")
+  dir.create(extract_dir, recursive = TRUE)
+  on.exit(unlink(extract_dir, recursive = TRUE), add = TRUE)
+  csv_path <- file.path(extract_dir, csv_file[1])
+  utils::unzip(zip_path, files = csv_file[1], exdir = extract_dir,
+               overwrite = TRUE)
+
+  if (verbose) message("  Reading party legend data...")
+  dados <- data.table::fread(
+    csv_path, sep = ";", encoding = "Latin-1",
+    colClasses = "character",
+    showProgress = FALSE
+  )
+
+  required <- c("NR_PARTIDO", "SG_PARTIDO")
+  missing <- setdiff(required, names(dados))
+  if (length(missing) > 0) {
+    stop("Expected TSE columns not found: ",
+         paste(missing, collapse = ", "), call. = FALSE)
+  }
+
+  if (verbose) {
+    n_parties <- length(unique(dados$SG_PARTIDO))
+    message(sprintf("  %d party legend records loaded (%d unique parties)",
+                    nrow(dados), n_parties))
+  }
+
+  as.data.frame(dados)
+}
+
+
 #' Download geocoded polling station data from TSE
 #'
 #' Downloads the official polling station location data (eleitorado por

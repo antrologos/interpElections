@@ -8,6 +8,7 @@
     geocode      = file.path("downloads", "geocode"),
     profile      = file.path("downloads", "profile"),
     hidalgo      = file.path("downloads", "hidalgo"),
+    legends      = file.path("downloads", "legends"),
     osm          = file.path("downloads", "osm"),
     electoral    = file.path("processed", "electoral"),
     tracts       = file.path("processed", "tracts"),
