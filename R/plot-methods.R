@@ -90,6 +90,7 @@ plot.interpElections_result <- function(
     p <- .plot_faceted(x, variable, type, palette, breaks, n_breaks,
                        title, subtitle, legend_title,
                        show_sources, border_color, border_width)
+    print(p)
     return(invisible(p))
   }
 
@@ -141,6 +142,7 @@ plot.interpElections_result <- function(
     }
   }
 
+  print(p)
   invisible(p)
 }
 
