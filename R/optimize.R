@@ -25,13 +25,29 @@
 #' @param gpu_lr_init Numeric. Initial ADAM learning rate. Default: 0.1.
 #' @param gpu_lr_decay Numeric. Learning rate decay factor per outer iteration.
 #'   Default: 0.6.
+#' @param gpu_grad_tol Numeric. Gradient norm threshold for convergence
+#'   (first-order optimality condition). When the L2 norm of the gradient
+#'   falls below this value, optimization stops early. Default: 1e-4.
+#' @param gpu_grad_clip Numeric or NULL. Maximum gradient norm for gradient
+#'   clipping. Limits gradient magnitude to prevent large steps on steep
+#'   regions, leading to better convergence and lower final gradient norms.
+#'   `NULL` disables clipping. Default: 1.0.
+#' @param gpu_warmup_steps Integer. Number of linear learning rate warmup
+#'   steps at the start of phase 1. Prevents cold-start oscillations when
+#'   starting with a large LR + strong momentum. Default: 10.
 #' @param cpu_method Character. CPU optimization method: `"L-BFGS-B"`,
-#'   `"BFGS"`, or `"auto"`. `"auto"` tries parallel L-BFGS-B first, then
-#'   serial L-BFGS-B, then BFGS. Default: `"auto"`.
-#' @param cpu_parallel Logical or NULL. Use `optimParallel` for CPU? Default:
-#'   NULL (auto-detect based on package availability).
+#'   `"BFGS"`, or `"auto"`. `"auto"` tries parallel L-BFGS-B first (if
+#'   `cpu_parallel = TRUE`), then serial L-BFGS-B, then BFGS.
+#'   Default: `"auto"`.
+#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
+#'   optimization? Default: `FALSE`. **Not recommended:** when an
+#'   analytical gradient is provided (as here), `optimParallel` only
+#'   parallelizes `fn()` and `gr()` evaluation across 2 workers —
+#'   additional cores sit idle. In benchmarks this is ~10x **slower**
+#'   than serial L-BFGS-B. For large municipalities, use GPU
+#'   (`use_gpu = TRUE`) instead.
 #' @param cpu_ncores Integer or NULL. Number of cores for parallel optimization.
-#'   Default: NULL (auto = `max(1, detectCores() - 2)`).
+#'   Default: NULL (auto = 80%% of available cores).
 #' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.
 #' @param upper_bound Numeric. Upper bound for alpha values. Values above
 #'   ~10 produce nearly identical weights (the nearest source dominates),
@@ -51,6 +67,8 @@
 #'   \item{elapsed}{`difftime` object. Wall-clock time.}
 #'   \item{message}{Character. Additional information.}
 #'   \item{history}{Numeric vector. Objective values at each step (GPU only).}
+#'   \item{grad_norm_final}{Numeric. Final gradient norm (GPU only). Indicates
+#'     proximity to a stationary point.}
 #' }
 #'
 #' @examples
@@ -78,8 +96,11 @@ optimize_alpha <- function(
     gpu_iterations = 20L,
     gpu_lr_init = 0.1,
     gpu_lr_decay = 0.6,
+    gpu_grad_tol = 1e-4,
+    gpu_grad_clip = 1.0,
+    gpu_warmup_steps = 10L,
     cpu_method = "auto",
-    cpu_parallel = NULL,
+    cpu_parallel = FALSE,
     cpu_ncores = NULL,
     lower_bound = 0,
     upper_bound = 20,
@@ -150,22 +171,37 @@ optimize_alpha <- function(
       lr_decay = gpu_lr_decay,
       lower_bound = lower_bound,
       upper_bound = upper_bound,
+      grad_tol = gpu_grad_tol,
+      grad_clip = gpu_grad_clip,
+      warmup_steps = gpu_warmup_steps,
       verbose = verbose
     )
   } else {
     # CPU path
-    # Resolve parallel settings
-    if (is.null(cpu_parallel)) {
-      cpu_parallel <- requireNamespace("optimParallel", quietly = TRUE) &&
-        requireNamespace("parallel", quietly = TRUE)
-    }
-    if (is.null(cpu_ncores) && cpu_parallel) {
-      cpu_ncores <- max(1L, parallel::detectCores() - 2L)
+    # Resolve parallel settings: only enabled when explicitly requested
+    if (cpu_parallel) {
+      if (!requireNamespace("optimParallel", quietly = TRUE) ||
+          !requireNamespace("parallel", quietly = TRUE)) {
+        if (verbose) message("  optimParallel/parallel not installed; using serial.")
+        cpu_parallel <- FALSE
+      }
+      if (is.null(cpu_ncores) && cpu_parallel) {
+        cpu_ncores <- max(1L, floor(parallel::detectCores() * 0.8))
+      }
     }
 
     if (verbose) {
       message(sprintf("  CPU optimization: method=%s, parallel=%s",
                        cpu_method, cpu_parallel))
+    }
+
+    # Warn about serial CPU on large problems
+    if (!cpu_parallel && n >= 1000L) {
+      warning(sprintf(
+        paste0("Serial CPU optimization with %d tracts may be slow. ",
+               "Consider using GPU (use_gpu=TRUE) for large municipalities."),
+        n
+      ), call. = FALSE)
     }
 
     raw <- .optimize_cpu(
@@ -206,7 +242,8 @@ optimize_alpha <- function(
     iterations = raw$iterations,
     elapsed = elapsed,
     message = raw$message %||% "",
-    history = raw$history %||% NULL
+    history = raw$history %||% NULL,
+    grad_norm_final = raw$grad_norm_final %||% NULL
   )
   class(result) <- "interpElections_optim"
 
@@ -229,7 +266,7 @@ print.interpElections_optim <- function(x, ...) {
   cat(sprintf("  Objective:   %.4f\n", x$value))
   cat(sprintf("  Convergence: %d\n", x$convergence))
   cat(sprintf("  Alpha range: [%.3f, %.3f]\n", min(x$alpha), max(x$alpha)))
-  cat(sprintf("  N zones:     %d\n", length(x$alpha)))
+  cat(sprintf("  N tracts:    %d\n", length(x$alpha)))
   cat(sprintf("  Elapsed:     %.1f secs\n", as.numeric(x$elapsed, units = "secs")))
   invisible(x)
 }

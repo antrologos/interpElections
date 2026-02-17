@@ -2,14 +2,14 @@
 % Please edit documentation in R/interpolate-wrapper.R
 \name{interpolate_election}
 \alias{interpolate_election}
-\title{One-step IDW interpolation from source points to target zones}
+\title{One-step IDW interpolation from source points to census tracts}
 \usage{
 interpolate_election(
   tracts_sf,
   electoral_sf,
-  zone_id,
+  tract_id,
   point_id,
-  calib_zones,
+  calib_tracts,
   calib_sources,
   interp_sources = NULL,
   time_matrix = NULL,
@@ -21,6 +21,7 @@ interpolate_election(
   offset = 1,
   keep = NULL,
   use_gpu = NULL,
+  cpu_parallel = FALSE,
   verbose = TRUE,
   ...,
   .step_offset = 0L,
@@ -28,21 +29,21 @@ interpolate_election(
 )
 }
 \arguments{
-\item{tracts_sf}{An \code{sf} polygon object. Target zones (e.g., census tracts).}
+\item{tracts_sf}{An \code{sf} polygon object. Target census tracts.}
 
 \item{electoral_sf}{An \code{sf} point object. Source points (e.g., voting
 locations).}
 
-\item{zone_id}{Character. Name of the ID column in \code{tracts_sf}.}
+\item{tract_id}{Character. Name of the ID column in \code{tracts_sf}.}
 
 \item{point_id}{Character. Name of the ID column in \code{electoral_sf}.}
 
-\item{calib_zones}{Character vector. Column names in \code{tracts_sf} to use
+\item{calib_tracts}{Character vector. Column names in \code{tracts_sf} to use
 as the calibration population matrix. Must match \code{calib_sources} in
 length.}
 
 \item{calib_sources}{Character vector. Column names in \code{electoral_sf} to
-use as the source calibration matrix. Must match \code{calib_zones} in
+use as the source calibration matrix. Must match \code{calib_tracts} in
 length.}
 
 \item{interp_sources}{Character vector or NULL. Column names in
@@ -62,8 +63,8 @@ for r5r routing.}
 \item{osm_buffer_km}{Numeric. Buffer in kilometers to expand the
 bounding box when auto-downloading OSM data. Default: 10.}
 
-\item{min_pop}{Numeric. Minimum total population in \code{calib_zones} for a
-zone to be included. Default: 1.}
+\item{min_pop}{Numeric. Minimum total population in \code{calib_tracts} for a
+census tract to be included. Default: 1.}
 
 \item{alpha}{Numeric vector of length n, or NULL. Pre-computed decay
 parameters. If provided, optimization is skipped.}
@@ -79,6 +80,12 @@ These can be large for big municipalities. Travel times are
 cached on disk and can be reloaded without keeping them in memory.}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+
+\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
+optimization? Default: \code{FALSE}. \strong{Not recommended:} ~10x slower
+than serial L-BFGS-B in practice because \code{optimParallel} cannot
+parallelize the analytical gradient. For large municipalities,
+use GPU (\code{use_gpu = TRUE}). Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
@@ -96,16 +103,16 @@ A list of class \code{"interpElections_result"} with components:
 \describe{
 \item{interpolated}{Numeric matrix [n x p]. Interpolated values.}
 \item{alpha}{Numeric vector of length n. Decay parameters used.}
-\item{tracts_sf}{\code{sf} object with interpolated columns joined to zones.}
+\item{tracts_sf}{\code{sf} object with interpolated columns joined to census tracts.}
 \item{sources}{Data frame (no geometry) of source point data.}
 \item{optimization}{\code{interpElections_optim} object, or NULL if \code{alpha} was
 pre-supplied.}
 \item{offset}{Numeric. Offset value used.}
 \item{call}{The matched call.}
-\item{zone_id}{Character. Name of the ID column in zones.}
+\item{tract_id}{Character. Name of the census tract ID column.}
 \item{point_id}{Character. Name of the ID column in sources.}
 \item{interp_cols}{Character vector. Names of interpolated columns.}
-\item{calib_cols}{List with \verb{$zones} and \verb{$sources} calibration columns.}
+\item{calib_cols}{List with \verb{$tracts} and \verb{$sources} calibration columns.}
 \item{weights}{Numeric matrix [n x m] or NULL. Present only when
 \code{keep} includes \code{"weights"}.}
 \item{time_matrix}{Numeric matrix [n x m] or NULL. Present only when
@@ -126,9 +133,9 @@ downloaded and travel times are computed via r5r.
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  zone_id      = "code_tract",
+  tract_id     = "code_tract",
   point_id     = "id",
-  calib_zones  = c("pop_18_24", "pop_25_34"),
+  calib_tracts  = c("pop_18_24", "pop_25_34"),
   calib_sources = c("voters_18_24", "voters_25_34")
 )
 
@@ -136,9 +143,9 @@ result <- interpolate_election(
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  zone_id      = "code_tract",
+  tract_id     = "code_tract",
   point_id     = "id",
-  calib_zones  = c("pop_young", "pop_old"),
+  calib_tracts  = c("pop_young", "pop_old"),
   calib_sources = c("voters_young", "voters_old"),
   time_matrix  = my_tt_matrix
 )

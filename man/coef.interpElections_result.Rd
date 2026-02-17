@@ -12,7 +12,7 @@
 \item{...}{Ignored.}
 }
 \value{
-Numeric vector of length n (one alpha per zone).
+Numeric vector of length n (one alpha per census tract).
 }
 \description{
 Returns the alpha decay parameter vector, which plays the role of

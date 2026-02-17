@@ -34,13 +34,13 @@ summary.interpElections_result <- function(object, ...) {
   n <- nrow(x$interpolated)
   m <- nrow(x$sources)
   p <- ncol(x$interpolated)
-  cat(sprintf("Zones: %d | Sources: %d | Variables: %d\n\n", n, m, p))
+  cat(sprintf("Census tracts: %d | Sources: %d | Variables: %d\n\n", n, m, p))
 
   # Calibration info
   if (!is.null(x$calib_cols)) {
     cat("Calibration brackets:\n")
-    cat(sprintf("  Zones:   %s\n",
-                paste(x$calib_cols$zones, collapse = ", ")))
+    cat(sprintf("  Census tracts: %s\n",
+                paste(x$calib_cols$tracts, collapse = ", ")))
     cat(sprintf("  Sources: %s\n\n",
                 paste(x$calib_cols$sources, collapse = ", ")))
   }
@@ -149,7 +149,7 @@ summary.interpElections_result <- function(object, ...) {
 #' Convert result to data frame
 #'
 #' Drops geometry from `tracts_sf` and returns a plain data frame with
-#' zone IDs and interpolated values.
+#' census tract IDs and interpolated values.
 #'
 #' @param x An `interpElections_result` object.
 #' @param ... Ignored.
@@ -174,7 +174,7 @@ as.data.frame.interpElections_result <- function(x, ...) {
 #' @param object An `interpElections_result` object.
 #' @param ... Ignored.
 #'
-#' @return Numeric vector of length n (one alpha per zone).
+#' @return Numeric vector of length n (one alpha per census tract).
 #'
 #' @exportS3Method
 coef.interpElections_result <- function(object, ...) {
@@ -185,7 +185,7 @@ coef.interpElections_result <- function(object, ...) {
 #' Compute calibration residuals
 #'
 #' Returns the matrix of calibration residuals (fitted minus observed)
-#' for each zone and calibration bracket. Requires the weight matrix
+#' for each census tract and calibration bracket. Requires the weight matrix
 #' or travel time matrix to be present in the result (use
 #' `keep = "weights"` or `keep = "time_matrix"` when running the
 #' interpolation).
@@ -200,7 +200,7 @@ coef.interpElections_result <- function(object, ...) {
 #' @exportS3Method
 residuals.interpElections_result <- function(object, ...) {
   if (is.null(object$calib_cols) ||
-      length(object$calib_cols$zones) == 0 ||
+      length(object$calib_cols$tracts) == 0 ||
       length(object$calib_cols$sources) == 0) {
     message("No calibration columns available in result.")
     return(invisible(NULL))
@@ -226,7 +226,7 @@ residuals.interpElections_result <- function(object, ...) {
   )
   storage.mode(src_mat) <- "double"
 
-  # Zone calibration values
+  # Census tract calibration values
   if (is.null(object$tracts_sf)) {
     stop("Cannot compute residuals: tracts_sf not available", call. = FALSE)
   }
@@ -234,7 +234,7 @@ residuals.interpElections_result <- function(object, ...) {
     stop("The 'sf' package is required for residuals()", call. = FALSE)
   }
   tracts_df <- sf::st_drop_geometry(object$tracts_sf)
-  pop_mat <- as.matrix(tracts_df[, object$calib_cols$zones, drop = FALSE])
+  pop_mat <- as.matrix(tracts_df[, object$calib_cols$tracts, drop = FALSE])
   storage.mode(pop_mat) <- "double"
 
   # Fitted = W %*% source_matrix
@@ -242,6 +242,6 @@ residuals.interpElections_result <- function(object, ...) {
 
   # Residuals = fitted - observed
   resid <- fitted_vals - pop_mat
-  colnames(resid) <- object$calib_cols$zones
+  colnames(resid) <- object$calib_cols$tracts
   resid
 }

@@ -216,11 +216,11 @@ test_that(".br_match_calibration for census 2010 produces 7 matched groups", {
 
   result <- interpElections:::.br_match_calibration(2010, tracts, elec)
 
-  expect_equal(length(result$calib_zones), 7)
+  expect_equal(length(result$calib_tracts), 7)
   expect_equal(length(result$calib_sources), 7)
 
-  # 7 calibration zone columns
-  expect_equal(result$calib_zones, c(
+  # 7 calibration census tract columns
+  expect_equal(result$calib_tracts, c(
     "pop_18_20", "pop_21_24", "pop_25_29",
     "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
   ))
@@ -257,7 +257,7 @@ test_that(".br_match_calibration for census 2000 produces same groups as 2010", 
 
   result <- interpElections:::.br_match_calibration(2000, tracts, elec)
 
-  expect_equal(result$calib_zones, c(
+  expect_equal(result$calib_tracts, c(
     "pop_18_20", "pop_21_24", "pop_25_29",
     "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
   ))
@@ -273,10 +273,10 @@ test_that(".br_match_calibration for census 2022 splits 18-19 and 20-24 brackets
   result <- interpElections:::.br_match_calibration(2022, tracts, elec)
 
   # 7 groups for 2022 (pop_18_19 proxy + pop_20_24)
-  expect_equal(length(result$calib_zones), 7)
+  expect_equal(length(result$calib_tracts), 7)
   expect_equal(length(result$calib_sources), 7)
 
-  expect_equal(result$calib_zones, c(
+  expect_equal(result$calib_tracts, c(
     "pop_18_19", "pop_20_24", "pop_25_29",
     "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
   ))

@@ -56,10 +56,10 @@
     ),
     offset = 1,
     call = quote(interpolate_election()),
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
     interp_cols = interp_names,
-    calib_cols = list(zones = pop_cols, sources = src_cols),
+    calib_cols = list(tracts = pop_cols, sources = src_cols),
     weights = if (keep_weights) W else NULL,
     time_matrix = if (keep_time) tt else NULL,
     sources_sf = NULL,
@@ -123,9 +123,9 @@
     sources = sources,
     optimization = list(method = "cpu_lbfgsb", value = 50, convergence = 0L),
     offset = 1, call = quote(interpolate_election_br()),
-    zone_id = "id", point_id = "id",
+    tract_id = "id", point_id = "id",
     interp_cols = interp_names,
-    calib_cols = list(zones = "votantes_18_20", sources = "votantes_18_20"),
+    calib_cols = list(tracts = "votantes_18_20", sources = "votantes_18_20"),
     weights = NULL, time_matrix = NULL, sources_sf = NULL,
     code_muni = "3550308",
     nome_municipio = "SAO PAULO", code_muni_tse = "71072", uf = "SP",
@@ -148,7 +148,7 @@ test_that("summary.interpElections_result prints per-variable stats", {
   full <- paste(out, collapse = "\n")
 
   expect_match(full, "interpElections result summary")
-  expect_match(full, "Zones: 10")
+  expect_match(full, "Census tracts: 10")
   expect_match(full, "Sources: 5")
   expect_match(full, "Variables: 3")
   expect_match(full, "VAR_1")
@@ -276,12 +276,12 @@ test_that("residuals with weights matches manual computation", {
   storage.mode(src_mat) <- "double"
   tracts_df <- sf::st_drop_geometry(obj$tracts_sf)
   pop_mat <- as.matrix(
-    tracts_df[, obj$calib_cols$zones, drop = FALSE]
+    tracts_df[, obj$calib_cols$tracts, drop = FALSE]
   )
   storage.mode(pop_mat) <- "double"
 
   expected <- obj$weights %*% src_mat - pop_mat
-  colnames(expected) <- obj$calib_cols$zones
+  colnames(expected) <- obj$calib_cols$tracts
   actual <- residuals(obj)
 
   expect_equal(actual, expected, tolerance = 1e-10)
@@ -332,7 +332,7 @@ test_that("as.data.frame works for Brazilian result", {
   df <- as.data.frame(obj)
   expect_true(is.data.frame(df))
   expect_false(inherits(df, "sf"))
-  # Should have zone IDs and interpolated vars
+  # Should have census tract IDs and interpolated vars
   expect_true("zone_id" %in% names(df))
   expect_true("VAR_1" %in% names(df))
 })

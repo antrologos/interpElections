@@ -1,20 +1,20 @@
-#' One-step IDW interpolation from source points to target zones
+#' One-step IDW interpolation from source points to census tracts
 #'
 #' High-level wrapper that combines travel-time computation (optional),
 #' alpha optimization, and interpolation into a single call. If no travel
 #' time matrix is provided, OSM road network data is automatically
 #' downloaded and travel times are computed via r5r.
 #'
-#' @param tracts_sf An `sf` polygon object. Target zones (e.g., census tracts).
+#' @param tracts_sf An `sf` polygon object. Target census tracts.
 #' @param electoral_sf An `sf` point object. Source points (e.g., voting
 #'   locations).
-#' @param zone_id Character. Name of the ID column in `tracts_sf`.
+#' @param tract_id Character. Name of the ID column in `tracts_sf`.
 #' @param point_id Character. Name of the ID column in `electoral_sf`.
-#' @param calib_zones Character vector. Column names in `tracts_sf` to use
+#' @param calib_tracts Character vector. Column names in `tracts_sf` to use
 #'   as the calibration population matrix. Must match `calib_sources` in
 #'   length.
 #' @param calib_sources Character vector. Column names in `electoral_sf` to
-#'   use as the source calibration matrix. Must match `calib_zones` in
+#'   use as the source calibration matrix. Must match `calib_tracts` in
 #'   length.
 #' @param interp_sources Character vector or NULL. Column names in
 #'   `electoral_sf` to interpolate. Default NULL means all numeric columns
@@ -28,8 +28,8 @@
 #'   for r5r routing.
 #' @param osm_buffer_km Numeric. Buffer in kilometers to expand the
 #'   bounding box when auto-downloading OSM data. Default: 10.
-#' @param min_pop Numeric. Minimum total population in `calib_zones` for a
-#'   zone to be included. Default: 1.
+#' @param min_pop Numeric. Minimum total population in `calib_tracts` for a
+#'   census tract to be included. Default: 1.
 #' @param alpha Numeric vector of length n, or NULL. Pre-computed decay
 #'   parameters. If provided, optimization is skipped.
 #' @param offset Numeric. Travel time offset. Default: 1.
@@ -41,6 +41,11 @@
 #'   These can be large for big municipalities. Travel times are
 #'   cached on disk and can be reloaded without keeping them in memory.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
+#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
+#'   optimization? Default: `FALSE`. **Not recommended:** ~10x slower
+#'   than serial L-BFGS-B in practice because `optimParallel` cannot
+#'   parallelize the analytical gradient. For large municipalities,
+#'   use GPU (`use_gpu = TRUE`). Passed to [optimize_alpha()].
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Additional arguments forwarded to [optimize_alpha()],
 #'   [compute_travel_times()], and/or [download_r5r_data()].
@@ -53,16 +58,16 @@
 #' \describe{
 #'   \item{interpolated}{Numeric matrix \[n x p\]. Interpolated values.}
 #'   \item{alpha}{Numeric vector of length n. Decay parameters used.}
-#'   \item{tracts_sf}{`sf` object with interpolated columns joined to zones.}
+#'   \item{tracts_sf}{`sf` object with interpolated columns joined to census tracts.}
 #'   \item{sources}{Data frame (no geometry) of source point data.}
 #'   \item{optimization}{`interpElections_optim` object, or NULL if `alpha` was
 #'     pre-supplied.}
 #'   \item{offset}{Numeric. Offset value used.}
 #'   \item{call}{The matched call.}
-#'   \item{zone_id}{Character. Name of the ID column in zones.}
+#'   \item{tract_id}{Character. Name of the census tract ID column.}
 #'   \item{point_id}{Character. Name of the ID column in sources.}
 #'   \item{interp_cols}{Character vector. Names of interpolated columns.}
-#'   \item{calib_cols}{List with `$zones` and `$sources` calibration columns.}
+#'   \item{calib_cols}{List with `$tracts` and `$sources` calibration columns.}
 #'   \item{weights}{Numeric matrix \[n x m\] or NULL. Present only when
 #'     `keep` includes `"weights"`.}
 #'   \item{time_matrix}{Numeric matrix \[n x m\] or NULL. Present only when
@@ -77,9 +82,9 @@
 #' result <- interpolate_election(
 #'   tracts_sf    = census_tracts,
 #'   electoral_sf = voting_stations,
-#'   zone_id      = "code_tract",
+#'   tract_id     = "code_tract",
 #'   point_id     = "id",
-#'   calib_zones  = c("pop_18_24", "pop_25_34"),
+#'   calib_tracts  = c("pop_18_24", "pop_25_34"),
 #'   calib_sources = c("voters_18_24", "voters_25_34")
 #' )
 #'
@@ -87,9 +92,9 @@
 #' result <- interpolate_election(
 #'   tracts_sf    = census_tracts,
 #'   electoral_sf = voting_stations,
-#'   zone_id      = "code_tract",
+#'   tract_id     = "code_tract",
 #'   point_id     = "id",
-#'   calib_zones  = c("pop_young", "pop_old"),
+#'   calib_tracts  = c("pop_young", "pop_old"),
 #'   calib_sources = c("voters_young", "voters_old"),
 #'   time_matrix  = my_tt_matrix
 #' )
@@ -104,9 +109,9 @@
 interpolate_election <- function(
     tracts_sf,
     electoral_sf,
-    zone_id,
+    tract_id,
     point_id,
-    calib_zones,
+    calib_tracts,
     calib_sources,
     interp_sources = NULL,
     time_matrix    = NULL,
@@ -118,6 +123,7 @@ interpolate_election <- function(
     offset         = 1,
     keep           = NULL,
     use_gpu        = NULL,
+    cpu_parallel   = FALSE,
     verbose        = TRUE,
     ...,
     .step_offset   = 0L,
@@ -177,10 +183,10 @@ interpolate_election <- function(
   if (!inherits(electoral_sf, "sf")) {
     stop("'electoral_sf' must be an sf object", call. = FALSE)
   }
-  if (length(calib_zones) != length(calib_sources)) {
+  if (length(calib_tracts) != length(calib_sources)) {
     stop(sprintf(
-      "calib_zones (%d) and calib_sources (%d) must have the same length",
-      length(calib_zones), length(calib_sources)
+      "calib_tracts (%d) and calib_sources (%d) must have the same length",
+      length(calib_tracts), length(calib_sources)
     ), call. = FALSE)
   }
 
@@ -188,9 +194,9 @@ interpolate_election <- function(
   tracts_df <- sf::st_drop_geometry(tracts_sf)
   elec_df <- sf::st_drop_geometry(electoral_sf)
 
-  missing_z <- setdiff(calib_zones, names(tracts_df))
+  missing_z <- setdiff(calib_tracts, names(tracts_df))
   if (length(missing_z) > 0) {
-    stop("calib_zones columns not found in tracts_sf: ",
+    stop("calib_tracts columns not found in tracts_sf: ",
          paste(missing_z, collapse = ", "), call. = FALSE)
   }
   missing_s <- setdiff(calib_sources, names(elec_df))
@@ -221,16 +227,16 @@ interpolate_election <- function(
     )
   }
 
-  # --- Filter zones by min_pop ---
+  # --- Filter census tracts by min_pop ---
   if (min_pop > 0) {
-    pop_total <- rowSums(tracts_df[, calib_zones, drop = FALSE], na.rm = TRUE)
+    pop_total <- rowSums(tracts_df[, calib_tracts, drop = FALSE], na.rm = TRUE)
     keep_rows <- pop_total >= min_pop
     if (sum(keep_rows) < nrow(tracts_sf)) {
       n_removed <- sum(!keep_rows)
       tracts_sf <- tracts_sf[keep_rows, ]
       tracts_df <- sf::st_drop_geometry(tracts_sf)
       if (verbose) {
-        message(sprintf("  Filtered %d zones with pop < %g (%d remaining)",
+        message(sprintf("  Filtered %d census tracts with pop < %g (%d remaining)",
                         n_removed, min_pop, nrow(tracts_sf)))
       }
     }
@@ -247,7 +253,7 @@ interpolate_election <- function(
   if (is.null(time_matrix)) {
     # Check for cached travel time matrix
     # Use actual (unsorted) IDs — the matrix is positional, so row/col order matters
-    zone_ids <- as.character(tracts_df[[zone_id]])
+    zone_ids <- as.character(tracts_df[[tract_id]])
     point_ids <- as.character(elec_df[[point_id]])
     # Include routing params in cache key so different modes
     # don't collide
@@ -337,9 +343,9 @@ interpolate_election <- function(
 
       tt_args <- .extract_args(dots, compute_travel_times)
       time_matrix <- do.call(compute_travel_times, c(
-        list(zones_sf = tracts_sf, points_sf = electoral_sf,
+        list(tracts_sf = tracts_sf, points_sf = electoral_sf,
              network_path = network_path,
-             zone_id = zone_id, point_id = point_id,
+             tract_id = tract_id, point_id = point_id,
              verbose = verbose),
         tt_args
       ))
@@ -367,7 +373,7 @@ interpolate_election <- function(
   }
 
   # --- Step 2: Build calibration matrices ---
-  pop_matrix <- as.matrix(tracts_df[, calib_zones, drop = FALSE])
+  pop_matrix <- as.matrix(tracts_df[, calib_tracts, drop = FALSE])
   storage.mode(pop_matrix) <- "double"
 
   source_matrix <- as.matrix(elec_df[, calib_sources, drop = FALSE])
@@ -410,7 +416,8 @@ interpolate_election <- function(
     optim_result <- do.call(optimize_alpha, c(
       list(time_matrix = time_matrix, pop_matrix = pop_matrix,
            source_matrix = source_matrix, offset = offset,
-           use_gpu = use_gpu, verbose = verbose),
+           use_gpu = use_gpu, cpu_parallel = cpu_parallel,
+           verbose = verbose),
       opt_args
     ))
     alpha <- optim_result$alpha
@@ -443,10 +450,10 @@ interpolate_election <- function(
     optimization  = optim_result,
     offset        = offset,
     call          = cl,
-    zone_id       = zone_id,
+    tract_id      = tract_id,
     point_id      = point_id,
     interp_cols   = colnames(interpolated),
-    calib_cols    = list(zones = calib_zones, sources = calib_sources),
+    calib_cols    = list(tracts = calib_tracts, sources = calib_sources),
     # Heavy objects (opt-in)
     weights       = if ("weights" %in% keep) W_std else NULL,
     time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
@@ -465,7 +472,7 @@ interpolate_election <- function(
   class(result) <- "interpElections_result"
 
   if (verbose) {
-    message(sprintf("  Interpolated %d variables into %d zones",
+    message(sprintf("  Interpolated %d variables into %d census tracts",
                     ncol(interpolated), nrow(interpolated)))
   }
 
@@ -493,7 +500,7 @@ print.interpElections_result <- function(x, ...) {
   n <- nrow(x$interpolated)
   m <- nrow(x$sources)
   p <- ncol(x$interpolated)
-  cat(sprintf("  Zones: %d | Sources: %d\n", n, m))
+  cat(sprintf("  Census tracts: %d | Sources: %d\n", n, m))
 
   # Variable summary by type (from dictionary) or plain column names
   cat(sprintf("\n  Variables: %d\n", p))
@@ -521,7 +528,7 @@ print.interpElections_result <- function(x, ...) {
 
   # Contents
   cat("\n  Contents:\n")
-  cat(sprintf("    result$tracts_sf       sf with zones + interpolated columns\n"))
+  cat(sprintf("    result$tracts_sf       sf with census tracts + interpolated columns\n"))
   cat(sprintf("    result$interpolated    numeric matrix [%d x %d]\n", n, p))
   cat(sprintf("    result$alpha           decay parameters (length %d)\n", n))
   if (!is.null(x$dictionary)) {

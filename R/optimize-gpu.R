@@ -2,7 +2,8 @@
 
 .optimize_gpu <- function(time_matrix, pop_matrix, source_matrix, alpha_init,
                           device, dtype, iterations, lr_init, lr_decay,
-                          lower_bound, upper_bound, verbose) {
+                          lower_bound, upper_bound, grad_tol, grad_clip,
+                          warmup_steps, verbose) {
 
   if (lr_decay <= 0 || lr_decay >= 1) {
     stop("lr_decay must be in (0, 1), got ", lr_decay, call. = FALSE)
@@ -28,7 +29,8 @@
     result <- callr::r(
       function(time_matrix, pop_matrix, source_matrix, alpha_init,
                device, dtype, iterations, lr_init, lr_decay,
-               lower_bound, upper_bound, verbose, pkg_path) {
+               lower_bound, upper_bound, grad_tol, grad_clip,
+               warmup_steps, verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         # Load the package from the same location
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -48,6 +50,9 @@
           lr_decay = lr_decay,
           lower_bound = lower_bound,
           upper_bound = upper_bound,
+          grad_tol = grad_tol,
+          grad_clip = grad_clip,
+          warmup_steps = warmup_steps,
           verbose = verbose
         )
       },
@@ -63,6 +68,9 @@
         lr_decay = lr_decay,
         lower_bound = lower_bound,
         upper_bound = upper_bound,
+        grad_tol = grad_tol,
+        grad_clip = grad_clip,
+        warmup_steps = warmup_steps,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -149,34 +157,57 @@
     rate <- lr_init
     lb <- lower_bound
     ub <- upper_bound
+    grad_converged <- FALSE
+    last_grad_norm <- NA_real_
 
     optimizer <- torch::optim_adam(a_torch, lr = rate, amsgrad = TRUE)
     diff_val <- 1
     multiplier <- 1
 
-    loss_fn <- function() {
-      optimizer$zero_grad()
-      value <- f_torch(a_torch, t_torch, p_torch, v_torch)
-      value$backward()
-      value
-    }
-
     # Outer loop: each iteration reduces the LR and doubles the convergence
     # threshold (multiplier), creating a coarse-to-fine annealing schedule.
-    # A new optimizer is created at each outer iteration (resetting momentum),
-    # matching the original researchers' implementation.
-    # Inner loop: run ADAM steps until the change in objective < 1/multiplier.
+    # Momentum is preserved across phases (only LR changes), retaining
+    # Adam's curvature information from earlier steps.
+    # Inner loop: run ADAM steps until objective change or gradient norm
+    # indicates convergence.
     for (j in seq_len(iterations)) {
       inner_iter <- 0L
       while (abs(diff_val * multiplier) >= 1 &&
              inner_iter < max_inner_iter) {
-        loss_val <- optimizer$step(loss_fn)
+
+        # Linear LR warmup in phase 1 to prevent cold-start oscillations
+        if (j == 1L && warmup_steps > 0L && inner_iter < warmup_steps) {
+          warmup_lr <- lr_init * ((inner_iter + 1L) / warmup_steps)
+          for (pg in seq_along(optimizer$param_groups)) {
+            optimizer$param_groups[[pg]]$lr <- warmup_lr
+          }
+        } else if (j == 1L && warmup_steps > 0L &&
+                   inner_iter == warmup_steps) {
+          # Restore full LR after warmup completes
+          for (pg in seq_along(optimizer$param_groups)) {
+            optimizer$param_groups[[pg]]$lr <- rate
+          }
+        }
+
+        # Forward + backward pass (split from optimizer step so gradient
+        # clipping can be applied between backward() and step())
+        optimizer$zero_grad()
+        loss_val <- f_torch(a_torch, t_torch, p_torch, v_torch)
+        loss_val$backward()
+
+        # Gradient clipping (optional): limit gradient norm to prevent
+        # large steps on steep regions of the objective landscape.
+        if (!is.null(grad_clip)) {
+          torch::nn_utils_clip_grad_norm_(list(a_torch), grad_clip)
+        }
+
+        # ADAM parameter update (uses clipped gradients if enabled)
+        optimizer$step()
 
         # Project alpha back to feasible region [lower_bound, upper_bound].
         # Lower clamp prevents negative alphas that invert the weight-distance
         # relationship. Upper clamp prevents runaway alphas in flat landscape
         # regions (alpha > ~10 produces identical weights regardless of value).
-        # Use $set_data() to avoid in-place modification of the autograd leaf.
         torch::with_no_grad({
           a_torch$set_data(a_torch$clamp(min = lb, max = ub))
         })
@@ -193,22 +224,37 @@
           diff_val <- f_hist[hist_idx] - f_hist[hist_idx - 1L]
         }
 
+        # Gradient norm convergence check (first-order optimality)
+        last_grad_norm <- as.numeric(a_torch$grad$norm()$cpu())
+        if (last_grad_norm < grad_tol) {
+          grad_converged <- TRUE
+          k <- k + 1L
+          inner_iter <- inner_iter + 1L
+          break
+        }
+
         k <- k + 1L
         inner_iter <- inner_iter + 1L
       }
 
       # Log per-phase summary (first, every 5th, and last)
       if (verbose && (j == 1L || j %% 5L == 0L || j == iterations)) {
-        message(sprintf("  Phase %d/%d: %d steps, objective=%.0f",
-                        j, iterations, inner_iter, current))
+        message(sprintf(
+          "  Phase %d/%d: %d steps, objective=%.0f, grad_norm=%.2e",
+          j, iterations, inner_iter, current, last_grad_norm))
       }
+
+      # Early exit if gradient norm converged
+      if (grad_converged) break
 
       if (j < iterations) {
         rate <- lr_decay * rate
-        # Create a new optimizer at the reduced LR, resetting momentum
-        # buffers. This matches the original implementation's coarse-to-fine
-        # annealing: each phase starts fresh with a smaller step size.
-        optimizer <- torch::optim_adam(a_torch, lr = rate, amsgrad = TRUE)
+        # Update LR on existing optimizer, preserving Adam momentum buffers
+        # (exponential moving averages of gradients and squared gradients).
+        # This retains curvature information across phases.
+        for (pg in seq_along(optimizer$param_groups)) {
+          optimizer$param_groups[[pg]]$lr <- rate
+        }
         diff_val <- 1
         multiplier <- multiplier * 2
       }
@@ -228,9 +274,9 @@
     # Transfer clamped result back to CPU
     alpha_result <- as.numeric(a_torch$detach()$cpu())
 
-    # Use relative convergence: change < 1e-6 * |current|
-    converged <- hist_idx > 0L &&
-      abs(diff_val) < max(1, abs(current) * 1e-6)
+    # Convergence: gradient norm criterion OR relative objective change
+    converged <- grad_converged ||
+      (hist_idx > 0L && abs(diff_val) < max(1, abs(current) * 1e-6))
 
     list(
       alpha = alpha_result,
@@ -239,9 +285,10 @@
       convergence = if (converged) 0L else 1L,
       iterations = k - 1L,
       message = sprintf(
-        "ADAM optimizer on %s (%s), %d steps",
-        device, dtype, k - 1L),
-      history = f_hist
+        "ADAM optimizer on %s (%s), %d steps, final grad_norm=%.2e",
+        device, dtype, k - 1L, last_grad_norm),
+      history = f_hist,
+      grad_norm_final = last_grad_norm
     )
   }, error = function(e) {
     stop(sprintf(

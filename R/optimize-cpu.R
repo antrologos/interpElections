@@ -34,6 +34,14 @@
     if (verbose) message("optimParallel not installed; falling back to serial.")
     use_parallel <- FALSE
   }
+  # Skip parallel for small problems where cluster overhead exceeds gains
+  if (use_parallel && n < 50L) {
+    if (verbose) {
+      message(sprintf(
+        "  Skipping parallel: only %d tracts (< 50 threshold).", n))
+    }
+    use_parallel <- FALSE
+  }
   if (use_parallel && method %in% c("auto", "L-BFGS-B")) {
     if (verbose) message("Trying parallel L-BFGS-B optimization...")
 
@@ -60,7 +68,7 @@
         lower = lower,
         upper = upper,
         control = list(maxit = maxit),
-        parallel = list(cl = cl)
+        parallel = list(cl = cl, forward = TRUE, loginfo = FALSE)
       )
       opt
     }, error = function(e) {
@@ -160,7 +168,7 @@
     value = final_value,
     method = method_used,
     convergence = result$convergence,
-    iterations = result$counts,
+    iterations = unname(result$counts[["function"]]),
     message = result$message %||% ""
   )
 }

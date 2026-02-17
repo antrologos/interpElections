@@ -107,11 +107,11 @@ result <- structure(list(
   ),
   offset       = 1,
   call         = NULL,
-  zone_id      = "id",
+  tract_id     = "id",
   point_id     = "id",
   interp_cols  = c("Candidate_A", "Candidate_B"),
   calib_cols   = list(
-    zones   = c("pop_18_34", "pop_35_54", "pop_55_69"),
+    tracts  = c("pop_18_34", "pop_35_54", "pop_55_69"),
     sources = c("vot_18_34", "vot_35_54", "vot_55_69")
   ),
   weights      = W,
@@ -141,7 +141,7 @@ print(result)
 
 Key fields:
 
-- **Zones / Sources / Variables** -- dimensions of the interpolation.
+- **Census tracts / Sources / Variables** -- dimensions of the interpolation.
 - **Optimizer** -- which method converged and the final objective value
   (sum of squared errors between fitted and observed calibration
   populations).
@@ -167,7 +167,7 @@ The `plot()` method produces a choropleth map of an interpolated variable.
 By default it plots the first variable in `interp_cols`.
 
 ```{r plot-result, echo=FALSE, fig.width=6, fig.height=5}
-plot(result, "Candidate_A")
+plot(result, "Candidate_A", type = "absolute")
 ```
 
 <details>
@@ -201,7 +201,7 @@ The `coef()` method extracts the optimized alpha vector:
 
 ```{r extract-alpha}
 alpha <- coef(result)
-length(alpha)  # one per zone
+length(alpha)  # one per census tract
 summary(alpha)
 quantile(alpha, c(0.10, 0.25, 0.50, 0.75, 0.90))
 ```
@@ -209,12 +209,12 @@ quantile(alpha, c(0.10, 0.25, 0.50, 0.75, 0.90))
 **Interpretation of alpha values:**
 
 - **High alpha (e.g., > 5)**: Weights drop off steeply with distance.
-  The zone's population is almost entirely allocated to the nearest
+  The tract's population is almost entirely allocated to the nearest
   source. This occurs in areas where the closest polling location
   dominates.
 
 - **Low alpha (e.g., < 1)**: Weights decay slowly. Many sources
-  contribute to the zone. This occurs in densely served areas where
+  contribute to the tract. This occurs in densely served areas where
   several polling locations are nearby.
 
 - **Alpha near 0**: All sources are weighted nearly equally, regardless
@@ -328,7 +328,7 @@ Before using interpolated results in downstream analysis, check:
    per group are common; larger values warrant investigation.
 
 3. **Alpha distribution.** Look for extreme outliers. Alphas at the upper
-   bound (default 20) suggest the zone is effectively assigned to a single
+   bound (default 20) suggest the census tract is effectively assigned to a single
    source -- check whether that makes geographic sense. Alphas at 0
    suggest the optimizer could not distinguish nearby sources.
 

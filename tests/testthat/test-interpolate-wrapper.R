@@ -1,6 +1,6 @@
 # Tests for interpolate_election() wrapper
 
-# Helper: create mock sf polygon layer (zones) with population columns
+# Helper: create mock sf polygon layer (census tracts) with population columns
 .mock_tracts_sf <- function(n, pop_cols, seed = 42) {
   set.seed(seed)
   # Create simple square polygons
@@ -67,9 +67,9 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
@@ -88,10 +88,10 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   # New fields present
   expect_s3_class(result$tracts_sf, "sf")
   expect_true(is.data.frame(result$sources))
-  expect_equal(result$zone_id, "zone_id")
+  expect_equal(result$tract_id, "zone_id")
   expect_equal(result$point_id, "point_id")
   expect_equal(result$interp_cols, src_cols)
-  expect_equal(result$calib_cols$zones, pop_cols)
+  expect_equal(result$calib_cols$tracts, pop_cols)
   expect_equal(result$calib_cols$sources, src_cols)
 
   # Brazilian metadata NULL in generic call
@@ -117,9 +117,9 @@ test_that("interpolate_election() with keep includes heavy objects", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     keep = c("weights", "time_matrix"),
@@ -147,9 +147,9 @@ test_that("interpolate_election() keep sources_sf returns sf object", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     keep = "sources_sf",
@@ -179,9 +179,9 @@ test_that("interpolate_election() tracts_sf contains interpolated columns", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     interp_sources = extra,
     time_matrix = tt,
@@ -216,9 +216,9 @@ test_that("interpolate_election() with pre-supplied alpha skips optimization", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     alpha = alpha_fixed,
@@ -251,9 +251,9 @@ test_that("interpolate_election() with explicit interp_sources works", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     interp_sources = extra,
     time_matrix = tt,
@@ -281,9 +281,9 @@ test_that("interpolate_election() auto-detects interp columns as non-calib numer
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
@@ -294,7 +294,7 @@ test_that("interpolate_election() auto-detects interp columns as non-calib numer
   expect_true(all(c("votes", "turnout") %in% colnames(result$interpolated)))
 })
 
-test_that("interpolate_election() filters zones with min_pop", {
+test_that("interpolate_election() filters census tracts with min_pop", {
   skip_if_not_installed("sf")
 
   set.seed(99)
@@ -314,9 +314,9 @@ test_that("interpolate_election() filters zones with min_pop", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt[4:10, ],  # match filtered tracts
     min_pop = 1,
@@ -332,11 +332,11 @@ test_that("interpolate_election() errors on invalid inputs", {
   tracts <- .mock_tracts_sf(3, "pop_a")
   sources <- .mock_electoral_sf(2, "src_a")
 
-  # Missing calib_zones column
+  # Missing calib_tracts column
   expect_error(
     interpolate_election(
       tracts, sources, "zone_id", "point_id",
-      calib_zones = "nonexistent", calib_sources = "src_a",
+      calib_tracts = "nonexistent", calib_sources = "src_a",
       time_matrix = matrix(1, 3, 2), verbose = FALSE
     ),
     "not found"
@@ -346,7 +346,7 @@ test_that("interpolate_election() errors on invalid inputs", {
   expect_error(
     interpolate_election(
       tracts, sources, "zone_id", "point_id",
-      calib_zones = c("pop_a", "pop_a"), calib_sources = "src_a",
+      calib_tracts = c("pop_a", "pop_a"), calib_sources = "src_a",
       time_matrix = matrix(1, 3, 2), verbose = FALSE
     ),
     "same length"
@@ -356,7 +356,7 @@ test_that("interpolate_election() errors on invalid inputs", {
   expect_error(
     interpolate_election(
       data.frame(x = 1), sources, "zone_id", "point_id",
-      calib_zones = "pop_a", calib_sources = "src_a",
+      calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 1, 2), verbose = FALSE
     ),
     "sf object"
@@ -375,7 +375,7 @@ test_that("interpolate_election() errors on invalid inputs", {
   expect_error(
     interpolate_election(
       tracts, near_sources, "zone_id", "point_id",
-      calib_zones = "pop_a", calib_sources = "src_a",
+      calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 5, 2),  # 5 rows but 3 tracts
       verbose = FALSE
     ),
@@ -395,7 +395,7 @@ test_that("interpolate_election() errors on invalid inputs", {
   expect_error(
     interpolate_election(
       tracts, far_sources, "zone_id", "point_id",
-      calib_zones = "pop_a", calib_sources = "src_a",
+      calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 3, 2),
       verbose = FALSE
     ),
@@ -418,16 +418,16 @@ test_that("print.interpElections_result works", {
   result <- interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
-    zone_id = "zone_id",
+    tract_id = "zone_id",
     point_id = "point_id",
-    calib_zones = pop_cols,
+    calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
   )
 
   expect_output(print(result), "interpElections result")
-  expect_output(print(result), "Zones:")
+  expect_output(print(result), "Census tracts:")
   expect_output(print(result), "result\\$tracts_sf")
   expect_output(print(result), "Methods:")
 })

@@ -10,8 +10,10 @@
 #'
 #' @details
 #' The gradient is computed analytically using the chain rule through the
-#' column-standardized weight matrix. This avoids numerical differentiation
-#' and is significantly faster for large problems.
+#' column-standardized weight matrix. The computation is structured to avoid
+#' forming any n x n intermediate matrices, keeping the per-evaluation cost
+#' at O(n * m) rather than O(n^2 * m). This makes CPU optimization feasible
+#' even for large municipalities with thousands of census tracts.
 #'
 #' For k demographic groups, the total gradient is the sum of per-group
 #' gradients.
@@ -57,19 +59,39 @@ idw_gradient <- function(alpha, time_matrix, pop_matrix, source_matrix) {
   # W * log(t)
   tmA_logt <- tmA * log_t
 
-  # Sum gradient across demographic groups.
-  # For each group j, the gradient df/dalpha_i has two terms:
-  #   (1) Cross-term: how alpha_i changes other zones' standardized weights
-  #   (2) Direct term: how alpha_i changes zone i's own weight
-  # Both arise from differentiating the column-standardized W through the
+  # Precompute element-wise product used in diagonal term for every group
+  tmA_logt_tmA <- tmA_logt * tmA  # n x m
 
-  # quotient rule: d(W_ij/g_j)/dalpha_i = -W_ij*log(t_ij)/g_j + W_ij*(sum_k W_kj*log(t_kj))/g_j^2
+  # Sum gradient across demographic groups — O(nm) per group.
+  #
+  # The gradient for group j involves differentiating the column-standardized
+  # weight matrix via the quotient rule. The key identity that avoids forming
+  # an n x n intermediate matrix:
+  #
+  #   Let AB = tmA_logt %*% diag(v2) %*% t(tmA)  (would be n x n)
+  #   We only need colSums(t(AB) * r) and diag(t(AB) * r), which decompose:
+  #     colSums(t(AB) * r) = AB %*% r = tmA_logt %*% (v2 * crossprod(tmA, r))
+  #     diag(AB) * r       = ((tmA_logt * tmA) %*% v2) * r
+  #
+  # Both are O(nm) matrix-vector products instead of O(n^2 m) matrix-matrix.
   list_result <- lapply(seq_len(k), function(j) {
-    tmp1 <- t(tmA_logt %*% (t(tmA) * V_g2[, j])) * tmA_v_g_mp[, j]
-    tmp2 <- colSums(tmp1) - diag(tmp1)
-    2 * as.numeric(
-      tmp2 + (tmA_v_g_mp[, j] * (tmA_logt * (W_std - 1)) %*% V_g[, j])
-    )
+    r  <- tmA_v_g_mp[, j]   # n-vector (residual)
+    v2 <- V_g2[, j]          # m-vector
+    v1 <- V_g[, j]           # m-vector
+
+    # colSums(tmp1) via two matrix-vector products (avoids n x n)
+    tmA_r <- crossprod(tmA, r)            # m-vector: t(tmA) %*% r
+    cs <- as.numeric(tmA_logt %*% (v2 * tmA_r))  # n-vector
+
+    # diag(tmp1) via element-wise product
+    d <- as.numeric(tmA_logt_tmA %*% v2) * r  # n-vector
+
+    tmp2 <- cs - d
+
+    # Direct term (already O(nm))
+    term2 <- r * as.numeric((tmA_logt * (W_std - 1)) %*% v1)
+
+    2 * (tmp2 + term2)
   })
 
   Reduce("+", list_result)

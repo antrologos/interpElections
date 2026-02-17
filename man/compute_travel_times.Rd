@@ -2,13 +2,13 @@
 % Please edit documentation in R/travel-time.R
 \name{compute_travel_times}
 \alias{compute_travel_times}
-\title{Compute a travel-time matrix from zone centroids to source points}
+\title{Compute a travel-time matrix from census tract centroids to source points}
 \usage{
 compute_travel_times(
-  zones_sf,
+  tracts_sf,
   points_sf,
   network_path,
-  zone_id = "id",
+  tract_id = "id",
   point_id = "id",
   mode = "WALK",
   max_trip_duration = 300L,
@@ -19,14 +19,15 @@ compute_travel_times(
 )
 }
 \arguments{
-\item{zones_sf}{An \code{sf} object with polygon geometries. Target zones.}
+\item{tracts_sf}{An \code{sf} object with polygon geometries. Target census
+tracts.}
 
 \item{points_sf}{An \code{sf} object with point geometries. Source points.}
 
 \item{network_path}{Character. Path to the directory containing the
 OSM \code{.pbf} file for building the r5r network.}
 
-\item{zone_id}{Character. Name of the ID column in \code{zones_sf}.
+\item{tract_id}{Character. Name of the ID column in \code{tracts_sf}.
 Default: \code{"id"}.}
 
 \item{point_id}{Character. Name of the ID column in \code{points_sf}.
@@ -49,13 +50,13 @@ components. Default: NULL (ignored for WALK/BICYCLE modes).}
 \item{verbose}{Logical. Default: TRUE.}
 }
 \value{
-A numeric matrix [n_zones x n_points]. Travel times in minutes.
-Row names = zone IDs, column names = point IDs. Unreachable pairs
-are filled with \code{fill_missing}.
+A numeric matrix [n_tracts x n_points]. Travel times in minutes.
+Row names = census tract IDs, column names = point IDs. Unreachable
+pairs are filled with \code{fill_missing}.
 }
 \description{
 Builds a travel-time matrix using the r5r routing engine. Computes
-travel times from the centroids of target zones (e.g., census tracts)
+travel times from the centroids of target census tracts
 to geolocated source points (e.g., polling locations).
 }
 \details{
@@ -65,9 +66,9 @@ Use \code{\link[=download_r5r_data]{download_r5r_data()}} to obtain the OSM data
 \examples{
 \dontrun{
 tt <- compute_travel_times(
-  zones_sf = tracts, points_sf = stations,
+  tracts_sf = tracts, points_sf = stations,
   network_path = "path/to/osm_data",
-  zone_id = "code_tract", point_id = "id"
+  tract_id = "code_tract", point_id = "id"
 )
 }
 

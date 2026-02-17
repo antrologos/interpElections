@@ -15,8 +15,11 @@ optimize_alpha(
   gpu_iterations = 20L,
   gpu_lr_init = 0.1,
   gpu_lr_decay = 0.6,
+  gpu_grad_tol = 1e-04,
+  gpu_grad_clip = 1,
+  gpu_warmup_steps = 10L,
   cpu_method = "auto",
-  cpu_parallel = NULL,
+  cpu_parallel = FALSE,
   cpu_ncores = NULL,
   lower_bound = 0,
   upper_bound = 20,
@@ -56,15 +59,34 @@ loss for this optimization problem.}
 \item{gpu_lr_decay}{Numeric. Learning rate decay factor per outer iteration.
 Default: 0.6.}
 
-\item{cpu_method}{Character. CPU optimization method: \code{"L-BFGS-B"},
-\code{"BFGS"}, or \code{"auto"}. \code{"auto"} tries parallel L-BFGS-B first, then
-serial L-BFGS-B, then BFGS. Default: \code{"auto"}.}
+\item{gpu_grad_tol}{Numeric. Gradient norm threshold for convergence
+(first-order optimality condition). When the L2 norm of the gradient
+falls below this value, optimization stops early. Default: 1e-4.}
 
-\item{cpu_parallel}{Logical or NULL. Use \code{optimParallel} for CPU? Default:
-NULL (auto-detect based on package availability).}
+\item{gpu_grad_clip}{Numeric or NULL. Maximum gradient norm for gradient
+clipping. Limits gradient magnitude to prevent large steps on steep
+regions, leading to better convergence and lower final gradient norms.
+\code{NULL} disables clipping. Default: 1.0.}
+
+\item{gpu_warmup_steps}{Integer. Number of linear learning rate warmup
+steps at the start of phase 1. Prevents cold-start oscillations when
+starting with a large LR + strong momentum. Default: 10.}
+
+\item{cpu_method}{Character. CPU optimization method: \code{"L-BFGS-B"},
+\code{"BFGS"}, or \code{"auto"}. \code{"auto"} tries parallel L-BFGS-B first (if
+\code{cpu_parallel = TRUE}), then serial L-BFGS-B, then BFGS.
+Default: \code{"auto"}.}
+
+\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
+optimization? Default: \code{FALSE}. \strong{Not recommended:} when an
+analytical gradient is provided (as here), \code{optimParallel} only
+parallelizes \code{fn()} and \code{gr()} evaluation across 2 workers —
+additional cores sit idle. In benchmarks this is ~10x \strong{slower}
+than serial L-BFGS-B. For large municipalities, use GPU
+(\code{use_gpu = TRUE}) instead.}
 
 \item{cpu_ncores}{Integer or NULL. Number of cores for parallel optimization.
-Default: NULL (auto = \code{max(1, detectCores() - 2)}).}
+Default: NULL (auto = 80\%\% of available cores).}
 
 \item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.}
 
@@ -90,6 +112,8 @@ A list of class \code{"interpElections_optim"} with components:
 \item{elapsed}{\code{difftime} object. Wall-clock time.}
 \item{message}{Character. Additional information.}
 \item{history}{Numeric vector. Objective values at each step (GPU only).}
+\item{grad_norm_final}{Numeric. Final gradient norm (GPU only). Indicates
+proximity to a stationary point.}
 }
 }
 \description{

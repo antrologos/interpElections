@@ -30,7 +30,7 @@ Use `interpElections` when you have:
   calibrated against the known totals.
 
 The calibration step is what distinguishes IDW interpolation from naive
-spatial allocation: the package finds per-zone decay parameters that minimize
+spatial allocation: the package finds per-census-tract decay parameters that minimize
 the discrepancy between interpolated and observed totals.
 
 ## Preparing Your Data
@@ -119,9 +119,9 @@ Now call `interpolate_election()`:
 result <- interpolate_election(
   tracts_sf     = districts_sf,
   electoral_sf  = schools_sf,
-  zone_id       = "id",
+  tract_id      = "id",
   point_id      = "id",
-  calib_zones   = c("pop_young", "pop_old"),
+  calib_tracts  = c("pop_young", "pop_old"),
   calib_sources = c("enroll_young", "enroll_old"),
   interp_sources = "budget",
   time_matrix   = dist_matrix
@@ -131,7 +131,7 @@ summary(result)
 ```
 
 ```{r plot-budget, echo=FALSE, fig.width=7, fig.height=5}
-plot(result, "budget")
+plot(result, "budget", type = "absolute")
 ```
 
 <details>
@@ -148,13 +148,13 @@ alpha vector, and optimization diagnostics.
 ## Supplying a Pre-Computed Distance Matrix
 
 The `time_matrix` parameter accepts any numeric matrix with dimensions
-`n_zones x m_points`. Values must be positive (they represent distances or
+`n_tracts x m_points`. Values must be positive (they represent distances or
 travel times). The matrix can come from any source -- Euclidean distances,
 network distances, travel times from Google Maps, or custom cost surfaces.
 
 Requirements:
 
-- Rows correspond to target zones (same order as `tracts_sf`).
+- Rows correspond to target polygons (same order as `tracts_sf`).
 - Columns correspond to source points (same order as `electoral_sf`).
 - Values must be positive numeric (no NA, NaN, or Inf).
 
@@ -183,7 +183,7 @@ cat("Source matrix:     ", nrow(src), "sources x", ncol(src), "groups\n")
 
 ### Optimize alpha
 
-`optimize_alpha()` finds per-zone decay parameters that minimize the squared
+`optimize_alpha()` finds per-census-tract decay parameters that minimize the squared
 error between IDW-interpolated and observed population:
 
 ```{r optimize}
@@ -201,7 +201,7 @@ optim_result
 ### Interpolate new data
 
 Once you have the optimal alpha, you can interpolate any source-level data
-into the target zones. The alpha vector is reusable across variables -- you
+into the target polygons. The alpha vector is reusable across variables -- you
 do not need to re-optimize for each one:
 
 ```{r interpolate}

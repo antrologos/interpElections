@@ -52,7 +52,7 @@ W_{ij} = (t_{ij} + 1)^{-\alpha_i}
 $$
 
 where $t_{ij}$ is the travel time in minutes and $\alpha_i \geq 0$ is a
-decay parameter specific to zone $i$. The "+1" offset prevents division
+decay parameter specific to census tract $i$. The "+1" offset prevents division
 by zero when a polling location falls inside its own tract ($t = 0$).
 
 This formulation has three features that distinguish it from standard
@@ -60,7 +60,7 @@ IDW:
 
 1. **Travel time, not Euclidean distance.** Road networks, rivers, and
    topography create asymmetries that straight-line distance ignores.
-2. **One alpha per zone.** Each tract gets its own decay parameter,
+2. **One alpha per census tract.** Each tract gets its own decay parameter,
    reflecting local spatial structure. A tract in a dense urban core may
    need a different alpha than one on the rural fringe.
 3. **Column standardization** (discussed next).
@@ -261,7 +261,7 @@ grad_numerical <- numDeriv::grad(
 
 # Compare
 comparison <- data.frame(
-  zone = paste0("tract_", 1:5),
+  tract = paste0("tract_", 1:5),
   analytical = round(grad_analytical, 6),
   numerical  = round(grad_numerical, 6),
   abs_diff   = format(abs(grad_analytical - grad_numerical),

@@ -555,16 +555,25 @@ autoplot.interpElections_result <- function(object, ...) {
     ""
   }
 
-  fmt <- if (type %in% c(pct_types, "density")) {
-    # Percentages / density: 2 significant digits, no scientific notation
-    function(x) {
-      if (x == 0) return("0")
-      format(signif(x, 2), scientific = FALSE, big.mark = ",",
-             drop0trailing = TRUE, trim = TRUE)
+  is_pct <- type %in% c(pct_types, "density")
+
+  if (is_pct) {
+    # At least 1 decimal place; increase until all finite breaks are distinct
+    finite_brks <- breaks[is.finite(breaks)]
+    digits <- 1L
+    for (d in seq_len(6L)) {
+      digits <- d
+      fmtd <- format(round(finite_brks, d), nsmall = d,
+                      scientific = FALSE, trim = TRUE)
+      if (length(unique(fmtd)) == length(finite_brks)) break
+    }
+    fmt <- function(x) {
+      format(round(x, digits), nsmall = digits, scientific = FALSE,
+             big.mark = ",", trim = TRUE)
     }
   } else {
     # Absolute: no decimal places
-    function(x) format(round(x), big.mark = ",", trim = TRUE)
+    fmt <- function(x) format(round(x), big.mark = ",", trim = TRUE)
   }
 
   labels <- character(n)

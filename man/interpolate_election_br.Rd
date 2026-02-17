@@ -27,6 +27,7 @@ interpolate_election_br(
   alpha = NULL,
   offset = 1,
   use_gpu = NULL,
+  cpu_parallel = FALSE,
   cache = TRUE,
   force = FALSE,
   verbose = TRUE,
@@ -185,6 +186,12 @@ alpha.}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
+\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
+optimization? Default: \code{FALSE}. \strong{Not recommended:} ~10x slower
+than serial L-BFGS-B in practice because \code{optimParallel} cannot
+parallelize the analytical gradient. For large municipalities,
+use GPU (\code{use_gpu = TRUE}). Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+
 \item{cache}{Logical. If TRUE (default), downloaded files (TSE data,
 OSM networks, census tracts) are stored persistently across R sessions.
 See \code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}. Subsequent calls reuse cached files,
@@ -213,10 +220,10 @@ per voting location), without geometry.}
 pre-supplied).}
 \item{offset}{Numeric. Offset value used.}
 \item{call}{The matched call.}
-\item{zone_id}{Character. Name of zone ID column.}
+\item{tract_id}{Character. Name of census tract ID column.}
 \item{point_id}{Character. Name of source point ID column.}
 \item{interp_cols}{Character vector. Names of interpolated columns.}
-\item{calib_cols}{List with \verb{$zones} and \verb{$sources} calibration columns.}
+\item{calib_cols}{List with \verb{$tracts} and \verb{$sources} calibration columns.}
 \item{weights}{Numeric matrix or NULL. Present only when
 \code{keep} includes \code{"weights"}.}
 \item{time_matrix}{Numeric matrix or NULL. Present only when

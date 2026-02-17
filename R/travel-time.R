@@ -1,14 +1,15 @@
-#' Compute a travel-time matrix from zone centroids to source points
+#' Compute a travel-time matrix from census tract centroids to source points
 #'
 #' Builds a travel-time matrix using the r5r routing engine. Computes
-#' travel times from the centroids of target zones (e.g., census tracts)
+#' travel times from the centroids of target census tracts
 #' to geolocated source points (e.g., polling locations).
 #'
-#' @param zones_sf An `sf` object with polygon geometries. Target zones.
+#' @param tracts_sf An `sf` object with polygon geometries. Target census
+#'   tracts.
 #' @param points_sf An `sf` object with point geometries. Source points.
 #' @param network_path Character. Path to the directory containing the
 #'   OSM `.pbf` file for building the r5r network.
-#' @param zone_id Character. Name of the ID column in `zones_sf`.
+#' @param tract_id Character. Name of the ID column in `tracts_sf`.
 #'   Default: `"id"`.
 #' @param point_id Character. Name of the ID column in `points_sf`.
 #'   Default: `"id"`.
@@ -23,9 +24,9 @@
 #'   components. Default: NULL (ignored for WALK/BICYCLE modes).
 #' @param verbose Logical. Default: TRUE.
 #'
-#' @return A numeric matrix \[n_zones x n_points\]. Travel times in minutes.
-#'   Row names = zone IDs, column names = point IDs. Unreachable pairs
-#'   are filled with `fill_missing`.
+#' @return A numeric matrix \[n_tracts x n_points\]. Travel times in minutes.
+#'   Row names = census tract IDs, column names = point IDs. Unreachable
+#'   pairs are filled with `fill_missing`.
 #'
 #' @details
 #' Requires the `r5r` and `sf` packages. r5r requires Java/JDK 21+.
@@ -34,9 +35,9 @@
 #' @examples
 #' \dontrun{
 #' tt <- compute_travel_times(
-#'   zones_sf = tracts, points_sf = stations,
+#'   tracts_sf = tracts, points_sf = stations,
 #'   network_path = "path/to/osm_data",
-#'   zone_id = "code_tract", point_id = "id"
+#'   tract_id = "code_tract", point_id = "id"
 #' )
 #' }
 #'
@@ -46,10 +47,10 @@
 #'
 #' @export
 compute_travel_times <- function(
-    zones_sf,
+    tracts_sf,
     points_sf,
     network_path,
-    zone_id = "id",
+    tract_id = "id",
     point_id = "id",
     mode = "WALK",
     max_trip_duration = 300L,
@@ -91,20 +92,20 @@ compute_travel_times <- function(
   }
 
   # Validate inputs
-  if (!inherits(zones_sf, "sf")) {
-    stop("'zones_sf' must be an sf object", call. = FALSE)
+  if (!inherits(tracts_sf, "sf")) {
+    stop("'tracts_sf' must be an sf object", call. = FALSE)
   }
   if (!inherits(points_sf, "sf")) {
     stop("'points_sf' must be an sf object", call. = FALSE)
   }
-  if (nrow(zones_sf) == 0) {
-    stop("zones_sf must not be empty", call. = FALSE)
+  if (nrow(tracts_sf) == 0) {
+    stop("tracts_sf must not be empty", call. = FALSE)
   }
   if (nrow(points_sf) == 0) {
     stop("points_sf must not be empty", call. = FALSE)
   }
-  if (!zone_id %in% names(zones_sf)) {
-    stop(sprintf("zone_id column '%s' not found in zones_sf", zone_id),
+  if (!tract_id %in% names(tracts_sf)) {
+    stop(sprintf("tract_id column '%s' not found in tracts_sf", tract_id),
          call. = FALSE)
   }
   if (!point_id %in% names(points_sf)) {
@@ -113,25 +114,25 @@ compute_travel_times <- function(
   }
 
   # Check for duplicate IDs
-  z_ids <- as.character(zones_sf[[zone_id]])
+  z_ids <- as.character(tracts_sf[[tract_id]])
   p_ids <- as.character(points_sf[[point_id]])
   if (anyDuplicated(z_ids)) {
-    stop("Duplicate IDs found in zones_sf[[zone_id]]", call. = FALSE)
+    stop("Duplicate IDs found in tracts_sf[[tract_id]]", call. = FALSE)
   }
   if (anyDuplicated(p_ids)) {
     stop("Duplicate IDs found in points_sf[[point_id]]", call. = FALSE)
   }
 
   # Project to equal-area CRS for centroid computation, then to WGS84
-  if (verbose) message("  Computing zone centroids...")
-  zones_proj <- sf::st_transform(zones_sf, "EPSG:5880")
-  centroids_proj <- suppressWarnings(sf::st_centroid(zones_proj))
+  if (verbose) message("  Computing census tract centroids...")
+  tracts_proj <- sf::st_transform(tracts_sf, "EPSG:5880")
+  centroids_proj <- suppressWarnings(sf::st_centroid(tracts_proj))
   centroids <- sf::st_transform(centroids_proj, 4326)
   points_sf <- sf::st_transform(points_sf, 4326)
 
   # Prepare origin/destination data for r5r
   origins <- data.frame(
-    id = as.character(centroids[[zone_id]]),
+    id = as.character(centroids[[tract_id]]),
     lon = sf::st_coordinates(centroids)[, 1],
     lat = sf::st_coordinates(centroids)[, 2]
   )
@@ -170,32 +171,32 @@ compute_travel_times <- function(
   tt <- suppressMessages(do.call(r5r::travel_time_matrix, tt_args))
 
   # Vectorized pivot to wide matrix
-  zone_ids <- origins$id
+  tract_ids <- origins$id
   point_ids <- destinations$id
 
   mat <- matrix(fill_missing,
-                nrow = length(zone_ids),
+                nrow = length(tract_ids),
                 ncol = length(point_ids),
-                dimnames = list(zone_ids, point_ids))
+                dimnames = list(tract_ids, point_ids))
 
   # Detect whether r5r swapped origins and destinations.
   # r5r may internally route from the smaller set for efficiency,
   # returning from_id = original destinations and to_id = original origins.
   from_ids <- as.character(tt$from_id)
   to_ids   <- as.character(tt$to_id)
-  fwd_zone <- sum(from_ids %in% zone_ids)
-  rev_zone <- sum(to_ids   %in% zone_ids)
+  fwd_tract <- sum(from_ids %in% tract_ids)
+  rev_tract <- sum(to_ids   %in% tract_ids)
 
-  if (fwd_zone >= rev_zone) {
-    # Normal: from_id = zones, to_id = points
-    row_idx <- match(from_ids, zone_ids)
+  if (fwd_tract >= rev_tract) {
+    # Normal: from_id = tracts, to_id = points
+    row_idx <- match(from_ids, tract_ids)
     col_idx <- match(to_ids, point_ids)
   } else {
-    # Swapped: from_id = points, to_id = zones
+    # Swapped: from_id = points, to_id = tracts
     if (verbose) {
       message("  Note: r5r swapped origins/destinations; adjusting ID mapping")
     }
-    row_idx <- match(to_ids, zone_ids)
+    row_idx <- match(to_ids, tract_ids)
     col_idx <- match(from_ids, point_ids)
   }
   valid <- !is.na(row_idx) & !is.na(col_idx)
@@ -213,7 +214,7 @@ compute_travel_times <- function(
   tt_values <- tt[[tt_col[1]]]
 
   n_valid <- sum(valid)
-  n_total <- length(zone_ids) * length(point_ids)
+  n_total <- length(tract_ids) * length(point_ids)
 
   if (n_valid == 0) {
     warning(

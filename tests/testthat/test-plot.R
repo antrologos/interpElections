@@ -50,9 +50,9 @@
     sources = sources,
     optimization = list(method = "cpu_lbfgsb", value = 50, convergence = 0L),
     offset = 1, call = quote(interpolate_election_br()),
-    zone_id = "zone_id", point_id = "point_id",
+    tract_id = "zone_id", point_id = "point_id",
     interp_cols = interp_names,
-    calib_cols = list(zones = "votantes_18_20", sources = "votantes_18_20"),
+    calib_cols = list(tracts = "votantes_18_20", sources = "votantes_18_20"),
     weights = NULL, time_matrix = NULL, sources_sf = NULL,
     code_muni = "3550308",
     nome_municipio = "SAO PAULO", code_muni_tse = "71072", uf = "SP",
@@ -608,9 +608,42 @@ test_that("plot_interactive sync with breaks uses shared scale", {
 })
 
 
+# --- .build_detail_popup tests ---
+
+test_that(".build_detail_popup returns HTML vector with all tracts", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("leafpop")
+  obj <- .mock_plot_result()
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Test"]] <- .cut_values(
+    .compute_quantity(obj, "CAND_13", "pct_tract"),
+    c(0, 20, 50, 100), "pct_tract"
+  )
+  popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
+  expect_equal(length(popup), nrow(obj$tracts_sf))
+  # Check that popup HTML contains expected fields
+  expect_true(grepl("Votes", popup[1]))
+  expect_true(grepl("% of tract", popup[1]))
+  expect_true(grepl("% of municipality", popup[1]))
+  expect_true(grepl("Tract rank", popup[1]))
+  expect_true(grepl("Category", popup[1]))
+})
+
+test_that(".build_detail_popup formats numbers without scientific notation", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("leafpop")
+  obj <- .mock_plot_result()
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Test"]] <- .compute_quantity(obj, "CAND_13", "pct_tract")
+  popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
+  # No scientific notation in any popup
+  expect_false(any(grepl("[0-9]e[+-]", popup)))
+})
+
+
 # --- .auto_popup_cols tests ---
 
-test_that(".auto_popup_cols includes zone_id and plot col", {
+test_that(".auto_popup_cols includes tract_id and plot col", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
   cols <- .auto_popup_cols(obj$tracts_sf, obj, "CAND_13")
@@ -680,21 +713,20 @@ test_that(".scale_labels returns comma formatter for absolute", {
 
 # --- .make_bin_labels tests ---
 
-test_that(".make_bin_labels generates interval labels for pct type", {
+test_that(".make_bin_labels generates interval labels with at least 1 decimal", {
   labels <- .make_bin_labels(c(0, 5, 10, 20), "pct_tract")
   expect_equal(length(labels), 3)
-  # en-dash separator and % suffix
-  expect_true(grepl("\u2013", labels[1]))
-  expect_true(grepl("%", labels[1]))
-  expect_true(grepl("0", labels[1]))
-  expect_true(grepl("5", labels[1]))
+  # en-dash separator and % suffix, at least 1 decimal place
+  expect_equal(labels[1], "0.0\u20135.0%")
+  expect_equal(labels[2], "5.0\u201310.0%")
+  expect_equal(labels[3], "10.0\u201320.0%")
 })
 
 test_that(".make_bin_labels handles Inf in last break", {
   labels <- .make_bin_labels(c(0, 5, 10, Inf), "pct_tract")
   expect_equal(length(labels), 3)
-  expect_true(grepl("^>", labels[3]))
-  expect_true(grepl("10", labels[3]))
+  expect_true(grepl("^>10", labels[3]))
+  expect_true(grepl("%$", labels[3]))
 })
 
 test_that(".make_bin_labels handles -Inf in first break", {
@@ -715,9 +747,20 @@ test_that(".make_bin_labels density suffix", {
 
 test_that(".make_bin_labels uses sufficient precision for small breaks", {
   labels <- .make_bin_labels(c(0, 0.01, 0.025, 0.05, Inf), "pct_tract")
-  # 0.01 and 0.025 must be distinguishable (not both "0%")
-  expect_true(grepl("0.010", labels[1]) || grepl("0.01", labels[1]))
-  expect_true(grepl("0.025", labels[2]))
+  # All 4 labels must be distinct (adaptive decimals ensure no collisions)
+  expect_equal(length(labels), 4)
+  expect_equal(length(unique(labels)), 4)
+  # Must show more than 1 decimal place (since 0, 0.01, 0.025 collide at 1dp)
+  expect_true(grepl("0\\.01", labels[1]))
+  expect_true(grepl("0\\.0[2-3]", labels[2]))  # 0.025 rounds to 0.02 or 0.03
+})
+
+test_that(".make_bin_labels increases decimals when bounds collide", {
+  # 34.21, 34.22 round to same at 1 decimal -> must increase to 2
+  labels <- .make_bin_labels(c(34.21, 34.22, 34.8), "pct_tract")
+  expect_equal(length(labels), 2)
+  expect_true(grepl("34\\.21", labels[1]))
+  expect_true(grepl("34\\.22", labels[1]))
 })
 
 

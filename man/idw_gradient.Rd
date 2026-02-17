@@ -29,8 +29,10 @@ of the alpha vector. Used by the CPU optimizer for faster convergence.
 }
 \details{
 The gradient is computed analytically using the chain rule through the
-column-standardized weight matrix. This avoids numerical differentiation
-and is significantly faster for large problems.
+column-standardized weight matrix. The computation is structured to avoid
+forming any n x n intermediate matrices, keeping the per-evaluation cost
+at O(n * m) rather than O(n^2 * m). This makes CPU optimization feasible
+even for large municipalities with thousands of census tracts.
 
 For k demographic groups, the total gradient is the sum of per-group
 gradients.

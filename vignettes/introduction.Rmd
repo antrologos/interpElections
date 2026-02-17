@@ -28,7 +28,7 @@ weighting** (IDW) approach that accounts for the spatial proximity
 between census tracts and polling locations.
 
 In one sentence: interpElections computes travel-time-based IDW weights
-with **per-zone optimized decay parameters**, calibrated so that the
+with **per-census-tract optimized decay parameters**, calibrated so that the
 interpolated values match known demographic totals at the tract level.
 
 
@@ -127,7 +127,7 @@ interpElections provides functions at three levels of abstraction:
 | Category | Functions | Purpose |
 |---|---|---|
 | Core IDW | `idw_weights()`, `idw_interpolate()`, `idw_objective()`, `idw_gradient()` | Low-level building blocks for computing weights, interpolating data, and evaluating the objective/gradient |
-| Optimization | `optimize_alpha()` | Finds optimal per-zone decay parameters (CPU or GPU) |
+| Optimization | `optimize_alpha()` | Finds optimal per-census-tract decay parameters (CPU or GPU) |
 | Wrappers | `interpolate_election()`, `interpolate_election_br()` | High-level one-call workflows that handle data prep, travel times, optimization, and interpolation |
 | Brazilian data | `br_prepare_population()`, `br_prepare_electoral()`, `br_prepare_tracts()`, `br_download_votes()`, `br_download_turnout()`, `br_download_geocode()`, `compute_travel_times()` | Download and prepare Brazilian census and electoral data |
 | Areal | `areal_weights()`, `areal_interpolate()` | Secondary aggregation from tracts into arbitrary polygons |
@@ -156,8 +156,8 @@ the same workflow but takes user-supplied `sf` objects:
 ```r
 result <- interpolate_election(
   tracts_sf = my_zones, electoral_sf = my_points,
-  zone_id = "id", point_id = "id",
-  calib_zones = c("pop_young", "pop_old"),
+  tract_id = "id", point_id = "id",
+  calib_tracts = c("pop_young", "pop_old"),
   calib_sources = c("voters_young", "voters_old")
 )
 ```

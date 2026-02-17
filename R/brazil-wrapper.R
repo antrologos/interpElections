@@ -130,6 +130,11 @@
 #'   alpha.
 #' @param offset Numeric. Travel time offset. Default: 1.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
+#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
+#'   optimization? Default: `FALSE`. **Not recommended:** ~10x slower
+#'   than serial L-BFGS-B in practice because `optimParallel` cannot
+#'   parallelize the analytical gradient. For large municipalities,
+#'   use GPU (`use_gpu = TRUE`). Passed to [optimize_alpha()].
 #' @param cache Logical. If TRUE (default), downloaded files (TSE data,
 #'   OSM networks, census tracts) are stored persistently across R sessions.
 #'   See [get_interpElections_cache_dir()]. Subsequent calls reuse cached files,
@@ -154,10 +159,10 @@
 #'     pre-supplied).}
 #'   \item{offset}{Numeric. Offset value used.}
 #'   \item{call}{The matched call.}
-#'   \item{zone_id}{Character. Name of zone ID column.}
+#'   \item{tract_id}{Character. Name of census tract ID column.}
 #'   \item{point_id}{Character. Name of source point ID column.}
 #'   \item{interp_cols}{Character vector. Names of interpolated columns.}
-#'   \item{calib_cols}{List with `$zones` and `$sources` calibration columns.}
+#'   \item{calib_cols}{List with `$tracts` and `$sources` calibration columns.}
 #'   \item{weights}{Numeric matrix or NULL. Present only when
 #'     `keep` includes `"weights"`.}
 #'   \item{time_matrix}{Numeric matrix or NULL. Present only when
@@ -373,6 +378,7 @@ interpolate_election_br <- function(
     alpha               = NULL,
     offset              = 1,
     use_gpu             = NULL,
+    cpu_parallel        = FALSE,
     cache               = TRUE,
     force               = FALSE,
     verbose             = TRUE,
@@ -580,9 +586,9 @@ interpolate_election_br <- function(
   ie_result <- interpolate_election(
     tracts_sf = tracts_sf,
     electoral_sf = electoral_sf,
-    zone_id = "id",
+    tract_id = "id",
     point_id = "id",
-    calib_zones = calib$calib_zones,
+    calib_tracts = calib$calib_tracts,
     calib_sources = calib$calib_sources,
     interp_sources = interp_sources,
     time_matrix = time_matrix,
@@ -593,6 +599,7 @@ interpolate_election_br <- function(
     offset = offset,
     keep = keep,
     use_gpu = use_gpu,
+    cpu_parallel = cpu_parallel,
     verbose = verbose,
     osm_provider = osm_provider,
     ...,
@@ -838,7 +845,7 @@ interpolate_election_br <- function(
     # TSE produces: votantes_18_19, votantes_20, ..., votantes_65_69 (12 fine groups)
     # Need to aggregate TSE's fine groups to match census coarser groups
 
-    calib_zones <- c("pop_18_20", "pop_21_24", "pop_25_29",
+    calib_tracts <- c("pop_18_20", "pop_21_24", "pop_25_29",
                      "pop_30_39", "pop_40_49", "pop_50_59",
                      "pop_60_69")
 
@@ -879,7 +886,7 @@ interpolate_election_br <- function(
     electoral_sf$votantes_60_69 <- .safe_sum(
       elec_df, c("votantes_60_64", "votantes_65_69"))
 
-    calib_zones <- c("pop_18_19", "pop_20_24", "pop_25_29",
+    calib_tracts <- c("pop_18_19", "pop_20_24", "pop_25_29",
                      "pop_30_39", "pop_40_49", "pop_50_59",
                      "pop_60_69")
     calib_sources <- c("votantes_18_19", "votantes_20_24",
@@ -892,7 +899,7 @@ interpolate_election_br <- function(
   tracts_df2 <- sf::st_drop_geometry(tracts_sf)
   elec_df2 <- sf::st_drop_geometry(electoral_sf)
 
-  missing_z <- setdiff(calib_zones, names(tracts_df2))
+  missing_z <- setdiff(calib_tracts, names(tracts_df2))
   if (length(missing_z) > 0) {
     stop("Missing calibration pop columns: ",
          paste(missing_z, collapse = ", "), call. = FALSE)
@@ -904,7 +911,7 @@ interpolate_election_br <- function(
   }
 
   list(
-    calib_zones = calib_zones,
+    calib_tracts = calib_tracts,
     calib_sources = calib_sources,
     tracts_sf = tracts_sf,
     electoral_sf = electoral_sf

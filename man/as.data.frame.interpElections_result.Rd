@@ -16,5 +16,5 @@ A data frame.
 }
 \description{
 Drops geometry from \code{tracts_sf} and returns a plain data frame with
-zone IDs and interpolated values.
+census tract IDs and interpolated values.
 }

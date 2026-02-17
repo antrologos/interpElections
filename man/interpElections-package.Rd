@@ -7,7 +7,7 @@
 \title{interpElections: Spatial Interpolation of Electoral Data via Inverse Distance Weighting}
 \description{
 Spatial interpolation of electoral data via inverse distance weighting
-with per-zone optimized decay parameters. Designed for disaggregating
+with per-census-tract optimized decay parameters. Designed for disaggregating
 voting results from polling locations into census tracts using
 travel-time-based IDW, with optional GPU acceleration via torch.
 }

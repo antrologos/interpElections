@@ -111,9 +111,9 @@ point-to-polygon disaggregation problem works:
 result <- interpolate_election(
   tracts_sf     = my_districts,
   electoral_sf  = my_schools,
-  zone_id       = "district_id",
+  tract_id      = "district_id",
   point_id      = "school_id",
-  calib_zones   = c("pop_young", "pop_old"),
+  calib_tracts  = c("pop_young", "pop_old"),
   calib_sources = c("enroll_young", "enroll_old"),
   interp_sources = "budget",
   time_matrix   = my_distance_matrix

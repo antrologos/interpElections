@@ -9,6 +9,8 @@ plot_interactive(
   variable = NULL,
   type = "pct_tract",
   palette = "RdYlBu",
+  breaks = "quantile",
+  n_breaks = 5L,
   popup_vars = NULL,
   alpha = 0.7,
   legend = TRUE,
@@ -31,8 +33,15 @@ If NULL, auto-selects the first candidate variable.}
 \item{palette}{Color palette name. Default: \code{"RdYlBu"}
 (diverging, colorblind-friendly).}
 
+\item{breaks}{Scale breaks: \code{"quantile"} (default), \code{"continuous"},
+\code{"jenks"} (requires classInt), or a numeric vector of custom
+break points.}
+
+\item{n_breaks}{Number of breaks for \code{"quantile"} or \code{"jenks"}.
+Default: 5.}
+
 \item{popup_vars}{Character vector of column names to show in
-click popups. If NULL, auto-selects zone ID, the plotted variable,
+click popups. If NULL, auto-selects census tract ID, the plotted variable,
 turnout, and calibration columns (capped at 8).}
 
 \item{alpha}{Fill opacity (0 to 1). Default: 0.7.}
