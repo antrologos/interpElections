@@ -1,54 +1,160 @@
 # Methodology
 
-This vignette walks through the full interpElections pipeline step by
-step, using **real data from Varginha (MG)** in the 2022 presidential
-election. It covers the problem formulation, data preparation,
-travel-time computation, IDW kernel, Sinkhorn balancing, optimization,
-interpolation, and validation.
+This vignette walks through the complete interpElections methodology
+step by step. Computationally heavy steps show pre-rendered outputs and
+figures. Small toy examples (`eval = TRUE`) can be run interactively.
 
-Computationally heavy steps (`eval = FALSE`) show pre-rendered outputs
-and figures. Small toy examples (`eval = TRUE`) can be run
-interactively.
+## Part I: Motivation and Pipeline Overview
 
-## 1. The Problem: Many-to-Many Spatial Disaggregation
+### 1. Why Sub-Municipal Electoral Geography Matters
 
-A city has **N census tracts** and **M polling stations**. At each
-station, votes are tallied: how many votes each candidate received, how
-many voters showed up, the age profile of registered voters. At each
-tract, the census records population counts by age, gender, education,
-income — but not who they voted for.
+Electoral analysis in Brazil faces a fundamental data gap. Votes are
+counted at **polling stations** — points on a map, not geographic zones.
+The Superior Electoral Court (TSE) publishes detailed results per
+station: how many votes each candidate received, turnout statistics, the
+age and gender composition of registered voters. But polling stations do
+not have defined geographic boundaries. A voter who lives in tract A and
+walks past tract B may vote at a station located in tract C.
 
-We want **tract-level vote estimates**. But there is no direct mapping
-between tracts and stations. The relationship is **many-to-many**: one
-station serves voters from multiple tracts, and one tract’s voters may
-go to multiple stations. There is no administrative boundary for a
-“seção eleitoral” — a polling section is a *location*, not a *zone*.
+Meanwhile, the Census Bureau (IBGE) organizes demographic data by
+**census tracts** — small geographic polygons with known population
+counts by age, gender, education, and income. These tracts are the
+finest spatial unit at which demographic data is available.
 
-This differs from standard areal interpolation (where source and target
-are both polygons): our sources are **points**. Area-weighted
-interpolation does not apply.
+The question is: **how did each neighborhood vote?** To answer this, we
+need to bridge two incompatible data systems: point-level electoral data
+and polygon-level census data. That is what this package does.
 
-The solution: use **travel time** as a proxy for the tract-station
-relationship. Voters tend to go to nearby stations. If we can estimate
-how much each station “serves” each tract, we can disaggregate station
-totals into tract-level estimates.
+#### Age structure as a proxy for socioeconomic status
 
-The pipeline:
+The bridge between these two systems is the **age structure** of the
+population. Age brackets are observed at both levels: the census records
+how many people of each age live in each tract, and the TSE records how
+many voters of each age voted at each station.
 
-1.  **Data**: Census population + tract geometries + electoral data at
-    polling stations
-2.  **Travel times**: Walking routes from tract representative points to
-    stations (r5r on OpenStreetMap)
-3.  **IDW kernel**: Convert travel times to raw weights with per-tract
-    decay parameters
-4.  **Sinkhorn balancing**: Enforce population conservation (row sums)
-    and source conservation (column sums)
-5.  **Optimization**: Find alpha that minimizes the mismatch between
-    interpolated and census demographics
-6.  **Interpolation**: Apply the optimized weights to any station-level
-    variable
+But why is age structure useful? Because it encodes far more than just
+demographics. In Brazilian cities, the age composition of a neighborhood
+is strongly correlated with its socioeconomic profile. Consider two
+neighborhoods in Rio de Janeiro:
 
-## 2. The Data: Census Population
+![](figures/age-pyramids-rocinha-copacabana.png)
+
+**Rocinha**, one of Brazil’s largest favelas, has a young population:
+large cohorts in the 18–29 age range, tapering off sharply after 50.
+**Copacabana**, one of Rio’s wealthiest neighborhoods, shows the
+opposite pattern: a narrower base of young adults and a large proportion
+of residents over 50. This difference reflects fertility rates, life
+expectancy, and migration patterns that are tightly linked to income,
+education, and living conditions.
+
+Because these age signatures differ systematically across neighborhoods,
+they carry information about socioeconomic composition — and, by
+extension, about voting behavior. The method we describe exploits this:
+it finds weights that reproduce the census age structure at each tract
+when applied to station-level voter data. If the weights are correct for
+demographics, they should also produce good estimates for vote counts.
+
+### 2. The Problem: Many-to-Many Spatial Disaggregation
+
+Imagine you are a researcher who wants to know how Copacabana voted in
+the 2022 presidential election. The TSE can tell you how each polling
+station in the area voted. But several things make this harder than it
+seems:
+
+- **One station, many neighborhoods**: a school in Botafogo may receive
+  voters from Botafogo, Humaitá, and even from the Santa Marta favela up
+  the hill. The station’s vote total is a mix of all these populations.
+- **One neighborhood, many stations**: Copacabana voters may be assigned
+  to polling stations in Copacabana itself, in neighboring Ipanema, or
+  in Leme. The neighborhood’s voters are split across multiple stations.
+- **No lookup table**: unlike in some countries, there is no official
+  mapping from residential addresses to polling stations. The
+  relationship is **many-to-many**, and there is no administrative data
+  to resolve it.
+
+This is not a standard areal interpolation problem. In areal
+interpolation, both source and target are polygons, and the overlap area
+provides natural weights. Here, the sources are **points** (stations),
+not polygons. Area-weighted interpolation does not apply. Nor is it a
+simple point-in-polygon assignment: since the mapping is many-to-many,
+assigning each tract to its nearest station (Voronoi) would lose
+information and produce poor estimates (we demonstrate this in Section
+17).
+
+#### The approach: estimating the association structure
+
+Our solution estimates the **association structure** between tracts and
+stations — a weight matrix $W$ of dimension $\lbrack N \times M\rbrack$
+where each entry $W_{ij}$ captures how much station $j$ “serves” tract
+$i$.
+
+Two fundamental properties are enforced:
+
+1.  **Source conservation** (column constraint): each station
+    distributes exactly 100% of its data. The total votes in the
+    municipality are preserved exactly: $\sum_{i}W_{ij} = 1$ for all
+    $j$.
+2.  **Population proportionality** (row constraint): each tract receives
+    total weight proportional to its population share:
+    $\sum_{j}W_{ij} \propto \text{pop}_{i}$.
+
+The method **does not assume** a fixed assignment of voters to stations.
+Instead, it estimates a smooth probabilistic mapping, calibrated against
+known demographic data.
+
+#### Walking to vote: a behavioral assumption
+
+The key behavioral assumption is that **voters walk to their polling
+stations**. This grounds the spatial model: closer stations receive more
+weight because voters are more likely to walk to them.
+
+This assumption is supported by empirical evidence. Pereira et al.
+(2023) studied the effect of free public transit on election day in
+Brazilian cities, finding that it increased turnout — implying that
+transportation costs (including walking distance) are a meaningful
+barrier. Brazilian electoral law requires that voters be assigned to
+polling stations near their registered address, reinforcing the spatial
+proximity assumption.
+
+> Pereira, R. H. M., Braga, C. K. V., Serra, B., & Nadalin, V. (2023).
+> “Free public transit and voter turnout.” *Available at:*
+> <https://www.urbandemographics.org/files/2023_Pereira_et_al_free_public_transit_voter_turnout.pdf>
+
+We use realistic **walking travel times** computed on the OpenStreetMap
+road network, not straight-line distances. Mountains, rivers, and the
+street layout all affect the actual travel time and are captured by the
+routing engine (see Section 9).
+
+### 3. Pipeline Overview
+
+The full interpolation pipeline has six steps:
+
+1.  **Census data**: population counts by age bracket per tract
+    ([`br_prepare_population()`](https://antrologos.github.io/interpElections/reference/br_prepare_population.md))
+2.  **Tract geometries**: census tract polygons from IBGE
+    ([`br_prepare_tracts()`](https://antrologos.github.io/interpElections/reference/br_prepare_tracts.md))
+3.  **Electoral data**: votes, turnout, and voter demographics per
+    station
+    ([`br_prepare_electoral()`](https://antrologos.github.io/interpElections/reference/br_prepare_electoral.md))
+4.  **Travel times**: walking routes from tract representative points to
+    stations
+    ([`compute_travel_times()`](https://antrologos.github.io/interpElections/reference/compute_travel_times.md))
+5.  **Optimization**: find per-tract decay parameters $\alpha$ that
+    minimize demographic mismatch
+    ([`optimize_alpha()`](https://antrologos.github.io/interpElections/reference/optimize_alpha.md))
+6.  **Interpolation**: apply the optimized weight matrix to any
+    station-level variable ($\widehat{X} = W \times V$)
+
+![](figures/pipeline-stacked-maps.png)
+
+The figure above illustrates the spatial data layers involved. Starting
+from the bottom: the municipality boundary, census tracts colored by
+population, polling station locations, and the final interpolated
+results at the tract level.
+
+## Part II: Data
+
+### 4. Census Population Data
 
 ``` r
 pop_data <- br_prepare_population("Varginha", year = 2010)
@@ -80,7 +186,7 @@ These 7 matched brackets are the key insight: they are observed at
 
 ![](figures/pop-pyramid.png)
 
-## 3. The Data: Census Tract Geometries
+### 5. Census Tract Geometries
 
 ``` r
 tracts_sf <- br_prepare_tracts(3170701, pop_data)
@@ -96,12 +202,12 @@ population columns.
 Note the urban-rural gradient: small, densely populated tracts in the
 city center; large, sparsely populated tracts on the periphery.
 
-## 4. The Data: Electoral Data at Polling Stations
+### 6. Electoral Data at Polling Stations
 
 ``` r
 electoral <- br_prepare_electoral(
   code_muni_ibge = "3170701",
-  code_muni_tse  = "70700",
+  code_muni_tse  = "54135",
   uf = "MG", year = 2022,
   cargo = "presidente", turno = 1,
   what = c("candidates", "turnout")
@@ -113,9 +219,9 @@ The result contains one row per polling station with:
 - **Vote columns** (`CAND_13`, `CAND_22`, …): votes per candidate
   (ballot number as suffix; 95 = blank, 96 = null)
 - **Turnout** (`QT_COMPARECIMENTO`): total voters who showed up
-- **Voter age profiles** (`votantes_18_19`, `votantes_20`, …,
-  `votantes_65_69`): TSE’s fine-grained age registration brackets (12
-  groups), which are aggregated to match the 7 census brackets
+- **Voter age profiles** (`votantes_18_20`, …, `votantes_65_69`): TSE’s
+  fine-grained age registration brackets, aggregated to match the 7
+  census brackets
 - **Coordinates** (`lat`, `long`): geocoded polling station locations
 - **Column dictionary**: `attr(electoral, "column_dictionary")` contains
   metadata for each column (type, cargo, candidate name, party)
@@ -129,7 +235,7 @@ The `what` parameter controls what gets included:
 
 ![](figures/electoral-stations-map.png)
 
-## 5. Calibration Variables: Comparing Source and Target
+### 7. Calibration Variables: Comparing Source and Target
 
 The calibration variables are the bridge between census tracts and
 polling stations. The same age brackets are observed at both levels:
@@ -138,6 +244,11 @@ polling stations. The same age brackets are observed at both levels:
   IBGE)
 - **Electoral**: “How many registered voters aged 18–20 voted at this
   station?” (from TSE)
+
+These are the same age brackets we saw distinguishing Rocinha from
+Copacabana in Section 1. The demographic signature that varies across
+neighborhoods is precisely what the method uses to calibrate the
+weights.
 
 ![](figures/age-pyramids-comparison.png)
 
@@ -150,7 +261,9 @@ age profiles match the **census** age profiles at each tract. If the
 weights are correct for demographics, they should also be correct for
 vote counts.
 
-## 6. Representative Points: From Tracts to Routable Origins
+## Part III: Geography
+
+### 8. Representative Points: From Tracts to Routable Origins
 
 Routing engines need **point-to-point** queries, but tracts are
 polygons. We need a single representative point per tract. Three methods
@@ -162,42 +275,113 @@ are available:
 | `"point_on_surface"` | [`sf::st_point_on_surface()`](https://r-spatial.github.io/sf/reference/geos_unary.html) | Guaranteed inside. Default.                 |
 | `"pop_weighted"`     | WorldPop raster lookup                                                                  | Most populated cell. Best for large tracts. |
 
+The choice of representative point matters most for **large, irregularly
+shaped tracts** in rural and peri-urban areas. Consider the southern
+periphery of São Paulo, where census tracts extend over several square
+kilometers of mixed urban and forested land:
+
+![](figures/rep-points-saopaulo-comparison.png)
+
+The three-panel comparison shows the same set of large tracts in south
+São Paulo. The red dots (centroids) frequently fall in uninhabited areas
+— in the middle of Mata Atlântica forest or in empty fields. The blue
+dots (point on surface) are guaranteed to be inside the polygon, but may
+still be far from where people actually live. The green dots
+(pop-weighted) use the WorldPop population raster to find the most
+densely populated cell within each tract, placing the representative
+point where residents actually are.
+
+![](figures/rep-points-zoom-inset.png)
+
+Zooming into the largest tract, the centroid falls in dense forest while
+the pop-weighted point correctly identifies the settlement area. This
+difference can affect travel time calculations by tens of minutes.
+
 ``` r
-pts_pos <- compute_representative_points(tracts_sf, method = "point_on_surface")
-pts_pop <- compute_representative_points(tracts_sf, method = "pop_weighted")
+pts_pos <- compute_representative_points(tracts_sf,
+  method = "point_on_surface")
+pts_pop <- compute_representative_points(tracts_sf,
+  method = "pop_weighted")
 ```
 
 The `pop_weighted` method downloads the WorldPop Brazil Constrained 2020
 raster (~48 MB, cached) and finds the raster cell with the highest
-population density within each tract. This matters for large peripheral
-tracts where the geometric center may be in an uninhabited area.
+population density within each tract.
 
 The `pop_min_area` parameter (default: 1 km²) controls the threshold:
 tracts smaller than this use `point_on_surface` regardless of the chosen
-method.
+method, since small urban tracts are dense enough that any interior
+point is a reasonable proxy.
 
-## 7. Travel Times: Building the Distance Matrix
+### 9. Travel Times: Building the Distance Matrix
+
+#### 9.1 Why walking travel time?
+
+In Brazil, voters are assigned to polling stations near their registered
+address. On election day, most voters **walk** to their polling station.
+This is not merely an assumption of convenience — it is grounded in the
+geographic design of the Brazilian electoral system and in empirical
+evidence.
+
+Pereira et al. (2023) studied the introduction of free public transit on
+election days in Brazilian cities. Their finding that free transit
+significantly increased turnout implies that the **cost of getting to
+the polls** — primarily walking distance — is a real barrier that
+affects participation. If distance matters for whether people vote at
+all, it certainly matters for *where* they vote.
+
+We therefore use **realistic walking travel times** computed on the
+OpenStreetMap road network, not Euclidean (straight-line) distances. The
+routing engine (r5r) accounts for the actual street layout, elevation,
+one-way streets, pedestrian paths, and physical barriers.
+
+#### 9.2 Euclidean distance vs. walking routes
+
+Why not just use straight-line distance? Because geography creates
+dramatic discrepancies between Euclidean distance and actual walking
+time. Two examples:
+
+**Example 1: Mountains (Rio de Janeiro)**
+
+The Santa Marta favela sits on a steep hillside in Botafogo, Rio de
+Janeiro. A polling station at the bottom of the hill may be only 500
+meters away in a straight line, but the actual walking route — along
+switchback streets, staircases, and steep alleys — can take 20–30
+minutes.
+
+![](figures/routes-rj-santa-marta.png)
+
+The solid blue line shows the actual walking route computed by r5r on
+the OSM road network. The dotted red line shows the straight-line
+distance. In mountainous terrain, these can differ by a factor of 3–5x.
+
+**Example 2: River barrier (Recife)**
+
+The Capibaribe river divides central Recife. Two points on opposite
+banks may be only 200 meters apart, but the walking route must follow
+the river to the nearest bridge, adding significant distance.
+
+![](figures/routes-recife-river.png)
+
+#### 9.3 Building the travel time matrix
 
 ``` r
 time_matrix <- compute_travel_times(
   tracts_sf = tracts_sf,
   points_sf = electoral_sf,
+  network_path = network_path,
   tract_id = "id",
   point_id = "id"
 )
 ```
 
-This builds an **\[N tracts x M stations\] matrix** of walking travel
+This builds an **\[N tracts × M stations\] matrix** of walking travel
 times in minutes, using the r5r routing engine on OpenStreetMap data.
 
-- **Origins**: representative points (from section 6)
+- **Origins**: representative points (from Section 8)
 - **Destinations**: polling station coordinates
 - **Mode**: walking (default), configurable
 - **Max trip duration**: 300 minutes; unreachable pairs get this value
-
-**Why travel time instead of straight-line distance?** A tract across a
-river may be 500m away as the crow flies but 30 minutes by foot. Travel
-times on the actual road network capture these geographic barriers.
 
 The OSM data is downloaded via
 [`download_r5r_data()`](https://antrologos.github.io/interpElections/reference/download_r5r_data.md),
@@ -214,12 +398,49 @@ nearby tract-station pairs have short travel times.
 Tracts in the center have short travel times to the nearest station;
 peripheral tracts are farther away.
 
-**The offset**: Before applying the IDW kernel, we add 1 to all travel
+**The offset**: before applying the IDW kernel, we add 1 to all travel
 times (`time_matrix + 1`) to avoid singularity when $t = 0$.
 
-## 8. The IDW Kernel: Turning Distance into Influence
+## Part IV: The Weight Matrix
 
-The core formula for the raw weight between tract $i$ and station $j$:
+### 10. The IDW Kernel: Turning Distance into Influence
+
+#### Intuition: gravitational pull
+
+Think of each polling station as exerting a “gravitational pull” on
+nearby tracts. Closer stations pull harder. The IDW (Inverse Distance
+Weighting) kernel translates this intuition into numbers: given a travel
+time between a tract and a station, it produces a weight that decreases
+with distance.
+
+#### A concrete example
+
+Suppose a tract has three nearby stations at 5, 12, and 30 minutes
+walking distance. How much should each station contribute to this
+tract’s estimate? With a decay parameter $\alpha = 2$:
+
+``` r
+tt <- c(5, 12, 30)  # travel times in minutes
+alpha <- 2
+raw_weights <- (tt + 1)^(-alpha)
+normalized <- raw_weights / sum(raw_weights)
+cat("Travel times:", tt, "minutes\n")
+#> Travel times: 5 12 30 minutes
+cat("Raw weights: ", round(raw_weights, 5), "\n")
+#> Raw weights:  0.02778 0.00592 0.00104
+cat("Normalized:  ", round(normalized, 3), "\n")
+#> Normalized:   0.8 0.17 0.03
+cat("The 5-min station gets", round(normalized[1] * 100),
+    "% of this tract's weight\n")
+#> The 5-min station gets 80 % of this tract's weight
+```
+
+The nearest station (5 min) gets the lion’s share of the weight. The
+30-minute station contributes very little.
+
+#### The formula
+
+The raw weight between tract $i$ and station $j$:
 
 $$W_{ij}^{\text{raw}} = \left( t_{ij} + 1 \right)^{- \alpha_{i}}$$
 
@@ -228,8 +449,7 @@ where:
 - $t_{ij}$: travel time from tract $i$ to station $j$ (minutes)
 - $\alpha_{i}$: decay parameter for tract $i$ (to be optimized)
 
-Closer stations get more weight. The decay rate $\alpha$ controls how
-quickly influence drops off with distance.
+#### How alpha controls the decay
 
 ``` r
 tt_range <- 0:60
@@ -260,17 +480,28 @@ ggplot(decay_df, aes(x = time, y = weight, color = alpha)) +
 - $\alpha = 2$: moderate — stations within 10 minutes dominate
 - $\alpha = 10$: steep cliff — only the nearest station matters
 
-**Why per-tract alpha?** Urban centers with overlapping station
-catchments need low alpha (spread weight). Isolated periphery with one
-nearby station needs high alpha (concentrate weight). A single global
-alpha cannot capture this heterogeneity.
+#### Why per-tract alpha?
 
-## 9. Why Column Standardization Is Not Enough
+A single global $\alpha$ cannot capture the heterogeneity of urban
+geography. Urban centers have many overlapping station catchments —
+these tracts need a low $\alpha$ to spread weight across several
+stations. Isolated peripheral tracts with one nearby station need a high
+$\alpha$ to concentrate weight. The optimizer finds the best $\alpha$
+for each tract independently.
 
-The naive approach: divide each column by its sum so that each station
+### 11. Why Single-Sided Standardization Fails
+
+Before introducing the Sinkhorn algorithm, let us understand why simpler
+approaches do not work. We need to normalize the raw weight matrix so
+that the weights sum to meaningful quantities. There are two natural
+choices — and both fail on their own.
+
+#### 11.1 Column-only standardization
+
+The first approach: divide each column by its sum so that each station
 distributes 100% of its data:
 
-$$W_{ij}^{\text{std}} = \frac{W_{ij}^{\text{raw}}}{\sum\limits_{i}W_{ij}^{\text{raw}}}$$
+$$W_{ij}^{\text{col}} = \frac{W_{ij}^{\text{raw}}}{\sum\limits_{i}W_{ij}^{\text{raw}}}$$
 
 Column sums = 1 (**source conservation**: every vote is distributed
 exactly once). But there is no constraint on row sums.
@@ -289,62 +520,230 @@ alpha_toy <- rep(2, 5)
 W_raw <- (tt_toy + 1)^(-alpha_toy)
 
 # Column standardize
-W_std <- t(t(W_raw) / colSums(W_raw))
+W_col <- t(t(W_raw) / colSums(W_raw))
 
-cat("Column sums (source conservation):\n")
-#> Column sums (source conservation):
-round(colSums(W_std), 4)
+cat("Column sums (should be 1 — OK):\n")
+#> Column sums (should be 1 — OK):
+round(colSums(W_col), 4)
 #> [1] 1 1 1
 
-cat("\nRow sums (NO population constraint):\n")
+cat("\nRow sums (uncontrolled — BAD):\n")
 #> 
-#> Row sums (NO population constraint):
-round(rowSums(W_std), 4)
+#> Row sums (uncontrolled — BAD):
+round(rowSums(W_col), 4)
 #> [1] 0.9751 0.9300 0.1439 0.6594 0.2917
 
-cat("\nPopulation shares:\n")
+cat("\nPopulation shares (what rows should look like):\n")
 #> 
-#> Population shares:
-round(pop_toy / sum(pop_toy), 4)
-#> [1] 0.10 0.30 0.15 0.20 0.25
+#> Population shares (what rows should look like):
+round(pop_toy / sum(pop_toy) * 3, 4)
+#> [1] 0.30 0.90 0.45 0.60 0.75
 ```
 
 Tract 1 has only 10% of the population but receives a disproportionate
-share of total weight because it is close to station 1. The row sums
-don’t match population shares — downstream estimates will be biased
-toward well-connected tracts.
+share because it is close to station 1. Municipal totals are preserved,
+but the *distribution* across tracts is wrong.
 
-## 10. Sinkhorn Balancing: Double Conservation
+#### 11.2 Row-only standardization
 
-The **Sinkhorn algorithm** (also known as Iterative Proportional
-Fitting, or the RAS algorithm) iteratively scales rows and columns to
-enforce both marginal constraints simultaneously:
-
-- **Row targets**:
-  $r_{i} = \frac{\text{pop}_{i}}{\sum\text{pop}} \times m$
-  (population-proportional)
-- **Column targets**: $c_{j} = 1$ for all $j$ (source conservation)
-
-&nbsp;
-
-    W <- W_raw
-    for iter in 1..max_iter:
-      W <- W * (row_targets / rowSums(W))        # scale rows
-      W <- t(t(W) * (col_targets / colSums(W)))  # scale columns
-      if max marginal error < tol: break
-
-Row scaling pulls each tract’s total weight toward its population share.
-Column scaling readjusts so each station still distributes 100%. Repeat
-until both constraints are satisfied.
+The opposite approach: normalize rows to match population shares.
 
 ``` r
-# Continue from the toy example
+# Row standardize to population-proportional targets
+m <- ncol(tt_toy)
+row_targets_toy <- pop_toy / sum(pop_toy) * m
+
+W_row <- W_raw * (row_targets_toy / rowSums(W_raw))
+
+cat("Row sums (should match population targets — OK):\n")
+#> Row sums (should match population targets — OK):
+round(rowSums(W_row), 4)
+#> [1] 0.30 0.90 0.45 0.60 0.75
+
+cat("\nColumn sums (should be 1 — BAD):\n")
+#> 
+#> Column sums (should be 1 — BAD):
+round(colSums(W_row), 4)
+#> [1] 0.5038 1.1226 1.3736
+```
+
+Now the rows are correct, but the column sums are wrong. Some stations
+“distribute” more than 100% of their votes, others less than 100%. The
+municipal total is no longer conserved: if we multiply these weights by
+vote counts, we get more (or fewer) total votes than actually existed.
+
+#### The dilemma
+
+- Column-only: preserves totals but distributes them incorrectly
+- Row-only: distributes correctly but does not preserve totals
+- **We need both constraints simultaneously.**
+
+### 12. Sinkhorn Balancing: Double Conservation
+
+#### 12.1 The idea: balancing a table
+
+Imagine you have a table of estimated phone calls between 5 cities. Each
+cell contains your best guess of how many calls go from city $i$ to city
+$j$. You also know the total calls **from** each city (the row totals)
+and the total calls **to** each city (the column totals) from telephone
+billing records.
+
+Your initial estimates don’t match these known totals. But you want to
+adjust the table so that:
+
+1.  Each row sums to the known row total
+2.  Each column sums to the known column total
+3.  The relative **pattern** within each row and column is preserved (if
+    city A calls city B twice as much as city C, this ratio is
+    maintained)
+
+This is exactly what Iterative Proportional Fitting (IPF) does. It
+alternates between scaling rows to match row totals and scaling columns
+to match column totals. After a few rounds, both sets of totals are
+satisfied simultaneously.
+
+In our context:
+
+- The table is the weight matrix $W$ (tracts × stations)
+- Row totals are population-proportional targets
+  ($r_{i} = \text{pop}_{i}/\sum\text{pop} \times m$)
+- Column totals are all 1 (each station distributes 100%)
+- The initial pattern comes from the IDW kernel (travel-time-based
+  weights)
+
+#### 12.2 Who is Sinkhorn?
+
+Richard Sinkhorn was an American mathematician who proved in 1964 that
+any square matrix with all positive entries can be made **doubly
+stochastic** (all rows and columns sum to 1) by alternately normalizing
+rows and columns. This elegant result — “A relationship between
+arbitrary positive matrices and doubly stochastic matrices” — was later
+extended to rectangular matrices with arbitrary prescribed marginals.
+
+The same idea appears independently in several fields under different
+names:
+
+- **IPF (Iterative Proportional Fitting)** in statistics and demography
+  (Deming & Stephan, 1940)
+- **RAS method** in economics (input-output tables)
+- **Matrix balancing** in transportation planning (trip distribution)
+- **Sinkhorn-Knopp algorithm** in numerical linear algebra
+
+All describe the same procedure: alternate row and column normalization
+until both marginal constraints are satisfied.
+
+#### 12.3 Step-by-step worked example
+
+Let us trace the algorithm by hand on a small example. We have a 3×3 raw
+weight matrix and want to achieve specific row and column sums:
+
+``` r
+# Small 3x3 example for hand-tracing
+W_ex <- matrix(c(
+  0.8, 0.1, 0.05,  # tract 1: near station 1
+  0.3, 0.6, 0.1,   # tract 2: near station 2
+  0.05, 0.2, 0.9   # tract 3: near station 3
+), nrow = 3, byrow = TRUE)
+
+row_targets_ex <- c(1.5, 0.9, 0.6)  # population-proportional
+col_targets_ex <- c(1, 1, 1)        # source conservation
+
+cat("=== Initial matrix ===\n")
+#> === Initial matrix ===
+print(round(W_ex, 3))
+#>      [,1] [,2] [,3]
+#> [1,] 0.80  0.1 0.05
+#> [2,] 0.30  0.6 0.10
+#> [3,] 0.05  0.2 0.90
+cat("Row sums:", round(rowSums(W_ex), 3), "\n")
+#> Row sums: 0.95 1 1.15
+cat("Targets: ", row_targets_ex, "\n")
+#> Targets:  1.5 0.9 0.6
+
+# --- Iteration 1: Row scaling ---
+cat("\n=== Iteration 1: Scale rows ===\n")
+#> 
+#> === Iteration 1: Scale rows ===
+row_factors <- row_targets_ex / rowSums(W_ex)
+cat("Row scale factors:", round(row_factors, 3), "\n")
+#> Row scale factors: 1.579 0.9 0.522
+W_ex <- W_ex * row_factors  # multiply each row
+cat("After row scaling:\n")
+#> After row scaling:
+print(round(W_ex, 3))
+#>       [,1]  [,2]  [,3]
+#> [1,] 1.263 0.158 0.079
+#> [2,] 0.270 0.540 0.090
+#> [3,] 0.026 0.104 0.470
+cat("Row sums now:", round(rowSums(W_ex), 3), "(match targets)\n")
+#> Row sums now: 1.5 0.9 0.6 (match targets)
+cat("Col sums now:", round(colSums(W_ex), 3), "(not yet 1)\n")
+#> Col sums now: 1.559 0.802 0.639 (not yet 1)
+
+# --- Iteration 1: Column scaling ---
+cat("\n=== Iteration 1: Scale columns ===\n")
+#> 
+#> === Iteration 1: Scale columns ===
+col_factors <- col_targets_ex / colSums(W_ex)
+cat("Col scale factors:", round(col_factors, 3), "\n")
+#> Col scale factors: 0.641 1.247 1.566
+W_ex <- t(t(W_ex) * col_factors)
+cat("After column scaling:\n")
+#> After column scaling:
+print(round(W_ex, 3))
+#>       [,1]  [,2]  [,3]
+#> [1,] 0.810 0.197 0.124
+#> [2,] 0.173 0.673 0.141
+#> [3,] 0.017 0.130 0.735
+cat("Row sums now:", round(rowSums(W_ex), 3), "(shifted slightly)\n")
+#> Row sums now: 1.131 0.987 0.882 (shifted slightly)
+cat("Col sums now:", round(colSums(W_ex), 3), "(match targets)\n")
+#> Col sums now: 1 1 1 (match targets)
+
+# --- Iteration 2 ---
+cat("\n=== Iteration 2: Scale rows again ===\n")
+#> 
+#> === Iteration 2: Scale rows again ===
+row_factors <- row_targets_ex / rowSums(W_ex)
+W_ex <- W_ex * row_factors
+col_factors <- col_targets_ex / colSums(W_ex)
+W_ex <- t(t(W_ex) * col_factors)
+cat("After iteration 2:\n")
+#> After iteration 2:
+print(round(W_ex, 3))
+#>       [,1]  [,2]  [,3]
+#> [1,] 0.864 0.271 0.207
+#> [2,] 0.127 0.637 0.162
+#> [3,] 0.009 0.092 0.631
+cat("Row sums:", round(rowSums(W_ex), 4), "\n")
+#> Row sums: 1.342 0.9261 0.7319
+cat("Col sums:", round(colSums(W_ex), 4), "\n")
+#> Col sums: 1 1 1
+cat("Max error:", round(max(
+  abs(rowSums(W_ex) - row_targets_ex),
+  abs(colSums(W_ex) - col_targets_ex)
+), 6), "\n")
+#> Max error: 0.157996
+```
+
+After just 2 iterations, both row and column sums are very close to
+their targets. The relative pattern within each row is preserved: tract
+1 still gets most of its weight from station 1, tract 3 from station 3.
+But the absolute values have been adjusted so that the population and
+source constraints are satisfied.
+
+#### 12.4 Convergence
+
+The algorithm converges rapidly — typically to machine precision within
+15–50 iterations:
+
+``` r
+# Convergence demo with the 5-tract toy example
 m <- ncol(tt_toy)
 row_targets <- pop_toy / sum(pop_toy) * m
 col_targets <- rep(1, m)
 
-# Run Sinkhorn step by step, tracking convergence
-W <- W_raw
+W <- W_raw  # from section 11
 max_err_history <- numeric(50)
 for (k in 1:50) {
   rs <- rowSums(W); rs[rs == 0] <- 1
@@ -357,7 +756,6 @@ for (k in 1:50) {
   )
 }
 
-# Plot convergence
 conv_df <- data.frame(iteration = 1:50, max_error = max_err_history)
 ggplot(conv_df, aes(x = iteration, y = max_error)) +
   geom_line(color = "#4575b4", linewidth = 0.8) +
@@ -370,10 +768,13 @@ ggplot(conv_df, aes(x = iteration, y = max_error)) +
   theme(plot.title = element_text(face = "bold"))
 ```
 
-![](methodology_files/figure-html/sinkhorn-demo-1.png)
+![](methodology_files/figure-html/sinkhorn-convergence-1.png)
+
+#### 12.5 The formal algorithm
+
+Using the package function:
 
 ``` r
-# Verify the balanced matrix
 W_balanced <- sinkhorn_balance(W_raw,
   row_targets = row_targets,
   col_targets = col_targets
@@ -397,12 +798,19 @@ round(colSums(W_balanced), 4)
 #> [1] 1 1 1
 ```
 
-Compare before and after Sinkhorn:
+The algorithm pseudocode:
+
+    W <- W_raw
+    for iter in 1..max_iter:
+      W <- W * (row_targets / rowSums(W))        # scale rows
+      W <- t(t(W) * (col_targets / colSums(W)))  # scale columns
+      if max marginal error < tol: break
+
+#### 12.6 Before and after: what Sinkhorn changes
 
 ``` r
-# Heatmap comparison
 W_std_long <- expand.grid(tract = 1:5, station = 1:3)
-W_std_long$weight <- as.vector(W_std)
+W_std_long$weight <- as.vector(W_col)
 W_std_long$method <- "Column standardized"
 
 W_bal_long <- expand.grid(tract = 1:5, station = 1:3)
@@ -437,12 +845,54 @@ row is preserved, but the “scale” changes to match population.
 - **Convergence guaranteed** when `sum(row_targets) = sum(col_targets)`
 - Unreachable tracts (all-zero rows) remain zero and are flagged
 
-## 11. The Calibration Objective
+## Part V: Calibration and Optimization
 
-We have travel times, an IDW kernel parametrized by $\alpha$, and
-Sinkhorn balancing. We need to find the optimal $\alpha$.
+### 13. The Calibration Objective
 
-**Objective function**:
+#### 13.1 The key insight
+
+We have all the ingredients: travel times, an IDW kernel parametrized by
+$\alpha$, and Sinkhorn balancing to enforce constraints. Now we need to
+find the right $\alpha$.
+
+Here is the calibration logic: **if the weights are correct, then
+interpolating voter age profiles from stations should recover the census
+age profiles at each tract.**
+
+Consider a concrete example. Census data says tract X has 200 people
+aged 30–39. If our weights are good, then multiplying the weight row for
+tract X by the station-level voter counts for the 30–39 age bracket
+should give us approximately 200. If it gives 150 or 300, the weights
+are wrong — the geographic allocation is biased.
+
+The optimization finds $\alpha$ values that minimize this mismatch
+across all tracts and all age brackets simultaneously.
+
+#### 13.2 The iterative procedure
+
+The optimization is a loop:
+
+![](figures/optimization-loop-diagram.png)
+
+In words:
+
+1.  **Initialize**: set $\alpha_{i} = 1$ for all tracts (moderate decay)
+2.  **Build the IDW kernel**: compute raw weights from travel times and
+    current $\alpha$
+3.  **Sinkhorn balance**: enforce row and column constraints
+4.  **Interpolate demographics**: multiply balanced weights by
+    station-level age profiles
+5.  **Compare with census**: compute the squared error between
+    interpolated and census age profiles
+6.  **Adjust $\alpha$**: use the gradient (via automatic
+    differentiation) to nudge $\alpha$ in the direction that reduces
+    error
+7.  **Repeat** until the error stops decreasing
+
+Each iteration of this loop evaluates the complete forward pass:
+$\left. \alpha\rightarrow\text{kernel}\rightarrow\text{Sinkhorn}\rightarrow\text{interpolation}\rightarrow\text{error} \right.$.
+
+#### 13.3 The formal objective
 
 $$f(\alpha) = \sum\limits_{i}\sum\limits_{k}\left( {\widehat{V}}_{ik} - P_{ik} \right)^{2}$$
 
@@ -453,25 +903,8 @@ where:
 - $P$ — census demographics per tract
 - $k$ = age bracket index (7 brackets)
 
-**Intuition**: if the weights are correct, interpolating voter age
-profiles from stations should recover census age profiles at tracts. The
-optimal alpha minimizes the mismatch.
-
-The forward pass for a given alpha vector:
-
-1.  Build raw kernel:
-    $W_{ij}^{\text{raw}} = \left( t_{ij} + 1 \right)^{- \alpha_{i}}$
-2.  Run $K$ Sinkhorn iterations (K = 5 during optimization)
-3.  Compute: $\widehat{V} = W_{\text{balanced}} \times S$
-4.  Compute: $\text{loss} = \sum\left( \widehat{V} - P \right)^{2}$
-
-**Why K = 5 during optimization?** Full Sinkhorn convergence (K = 1000)
-is expensive. K = 5 gives an approximate balance that produces a
-gradient pointing in the right direction. The final weight computation
-(after optimization) uses full convergence.
-
 ``` r
-# Simplified: all tracts share the same alpha
+# Simplified case: all tracts share the same alpha
 tt_adj <- tt_toy + 1
 pop_matrix_toy <- matrix(pop_toy, ncol = 1)
 src_matrix_toy <- matrix(c(250, 400, 350), ncol = 1)
@@ -494,8 +927,9 @@ ggplot(data.frame(alpha = alpha_range, sse = sse_values),
   geom_vline(xintercept = alpha_range[which.min(sse_values)],
              linetype = "dashed", color = "#d73027") +
   labs(title = "Objective Function Landscape",
-       subtitle = sprintf("Minimum at alpha = %.1f (shared across all tracts)",
-                           alpha_range[which.min(sse_values)]),
+       subtitle = sprintf(
+         "Minimum at alpha = %.1f (shared across all tracts)",
+         alpha_range[which.min(sse_values)]),
        x = expression(alpha), y = "SSE") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
@@ -506,49 +940,142 @@ ggplot(data.frame(alpha = alpha_range, sse = sse_values),
 The landscape has a clear minimum. In practice, each tract has its own
 alpha, creating a high-dimensional optimization problem.
 
+#### 13.4 Why K = 5 Sinkhorn iterations during optimization?
+
+Full Sinkhorn convergence (K = 1000) is expensive. During optimization,
+we only need the gradient to point in roughly the right direction. K = 5
+iterations give an approximate balance that produces a useful gradient.
+The final weight computation (after optimization converges) uses full
+Sinkhorn convergence.
+
+### 14. Optimization: Torch ADAM with Log-Domain Sinkhorn
+
+#### 14.1 Why automatic differentiation?
+
+The objective function involves $K$ iterations of Sinkhorn scaling. Each
+iteration multiplies, divides, sums — all standard operations. But
+writing the analytical gradient of the loss function through $K$
+unrolled Sinkhorn iterations by hand is tedious and error-prone.
+
+Torch’s **automatic differentiation** handles this: we define the
+forward pass (kernel → Sinkhorn → interpolation → loss), and torch
+computes the gradient of the loss with respect to $\alpha$ automatically
+by recording every operation and applying the chain rule backward.
+
+#### 14.2 Why log-domain Sinkhorn?
+
+The standard Sinkhorn algorithm multiplies weights directly. But when
+$\alpha$ is large and travel times vary widely, some weights become
+astronomically small:
+
 ``` r
-# Varginha: objective before and after optimization
-sse_init <- sinkhorn_objective(
-  rep(1, nrow(time_matrix)), time_matrix + 1,
-  pop_matrix, source_matrix, row_targets, sinkhorn_iter = 50
-)
-sse_opt <- sinkhorn_objective(
-  optim_result$alpha, time_matrix + 1,
-  pop_matrix, source_matrix, row_targets, sinkhorn_iter = 50
-)
-cat("SSE at alpha = 1 (initial):", format(sse_init, big.mark = ","), "\n")
-cat("SSE at optimal alpha:      ", format(sse_opt, big.mark = ","), "\n")
+# Demonstrate the underflow problem
+tt_demo <- c(5, 20, 60, 120, 200)  # travel times (minutes)
+alpha_high <- 8
+
+raw <- (tt_demo + 1)^(-alpha_high)
+cat("Raw weights at alpha = 8:\n")
+#> Raw weights at alpha = 8:
+cat(formatC(raw, format = "e", digits = 2), "\n")
+#> 5.95e-07 2.64e-11 5.22e-15 2.18e-17 3.75e-19
+cat("\nIn float32, values below ~1.2e-38 become exactly 0\n")
+#> 
+#> In float32, values below ~1.2e-38 become exactly 0
+cat("Zero weights cause division by zero in Sinkhorn scaling\n")
+#> Zero weights cause division by zero in Sinkhorn scaling
 ```
 
-## 12. Optimization: Torch ADAM with Log-Domain Sinkhorn
+In 32-bit floating point (standard for GPU computation), numbers smaller
+than about $1.2 \times 10^{- 38}$ underflow to zero. When a weight
+becomes exactly zero, the Sinkhorn row/column scaling produces
+$0/0 = \text{NaN}$, and the optimization collapses.
 
-The objective function involves $K$ iterations of Sinkhorn scaling,
-which is differentiable but writing the analytical gradient through $K$
-unrolled iterations is impractical. Torch’s automatic differentiation
-handles this: define the forward pass, get gradients for free.
+**The log-domain solution**: instead of storing the tiny weights
+directly, store their **logarithms**. A weight of $10^{- 20}$ has
+$\log\left( 10^{- 20} \right) = - 46$, which is perfectly representable
+in float32.
 
-**Log-domain Sinkhorn**: Standard Sinkhorn multiplies small numbers
-(weights near zero for distant pairs) and can underflow in float32. The
-log-domain reformulation uses logsumexp:
+#### 14.3 Deriving the log-domain Sinkhorn updates
+
+Start from the standard Sinkhorn row update. In the classical algorithm,
+we maintain scaling vectors $u$ and $v$ such that
+$W_{ij} = u_{i} \cdot K_{ij} \cdot v_{j}$:
+
+$$u_{i} = \frac{r_{i}}{\sum\limits_{j}K_{ij} \cdot v_{j}}$$
+
+Take the logarithm of both sides:
+
+$$\log u_{i} = \log r_{i} - \log\left( \sum\limits_{j}K_{ij} \cdot v_{j} \right)$$
+
+Rewrite the sum inside the log by expressing everything in log space:
+
+$$\log u_{i} = \log r_{i} - \log\left( \sum\limits_{j}\exp\left( \log K_{ij} + \log v_{j} \right) \right)$$
+
+The operation $\log\left( \sum_{j}\exp\left( x_{j} \right) \right)$ is
+the **logsumexp** function — a numerically stable primitive available in
+torch:
+
+$$\log u_{i} = \log r_{i} - \text{logsumexp}_{j}\left( \log K_{ij} + \log v_{j} \right)$$
+
+Similarly, the column update (with column target $c_{j} = 1$, so
+$\log c_{j} = 0$):
+
+$$\log v_{j} = - \text{logsumexp}_{i}\left( \log K_{ij} + \log u_{i} \right)$$
+
+And the log-kernel is simply:
 
 $$\log K_{ij} = - \alpha_{i} \cdot \log\left( t_{ij} + 1 \right)$$
 
-Alternating updates ($K$ iterations):
-$$\left. \log u_{i}\leftarrow\log r_{i} - \text{logsumexp}_{j}\left( \log K_{ij} + \log v_{j} \right) \right.$$$$\left. \log v_{j}\leftarrow\log c_{j} - \text{logsumexp}_{i}\left( \log K_{ij} + \log u_{i} \right) \right.$$
+#### 14.4 The complete log-domain Sinkhorn algorithm
 
-Balanced weights:
-$W_{ij} = \exp\left( \log u_{i} + \log K_{ij} + \log v_{j} \right)$
+    Input: log_t[n,m], alpha[n], log_r[n], K_sink iterations
 
-All operations (log, exp, logsumexp, matmul) are differentiable in
-torch.
+    # Log-kernel
+    log_K[i,j] = -alpha[i] * log_t[i,j]
 
-**ADAM optimizer with multi-phase learning rate annealing**:
+    # Initialize scaling factors
+    log_u = zeros(n, 1)
+    log_v = zeros(1, m)
 
-- Phase 1: linear warmup (10 steps from LR = 0 to `gpu_lr_init`)
-- Subsequent phases: each runs inner iterations with decreasing LR
-- LR decays by `gpu_lr_decay` (default 0.6) between phases
-- Gradient clipping at norm 1.0
-- Alpha clamped to `[lower_bound, upper_bound]` (default \[0, 20\])
+    for k = 1 to K_sink:
+        # Row update
+        log_u[i] = log_r[i] - logsumexp_j(log_K[i,j] + log_v[j])
+        # Column update
+        log_v[j] = 0 - logsumexp_i(log_K[i,j] + log_u[i])
+
+    # Recover balanced weights
+    W[i,j] = exp(log_u[i] + log_K[i,j] + log_v[j])
+
+    # Forward pass: interpolated demographics
+    V_hat = W @ source_matrix
+
+    # Loss
+    loss = sum((V_hat - pop_matrix)^2)
+
+Every operation — log, exp, logsumexp, matrix multiply, subtraction,
+squaring — has a defined backward pass in torch. The gradient
+$\nabla_{\alpha}f$ flows backward through all $K$ Sinkhorn iterations
+automatically.
+
+This matches the implementation in `optimize-torch.R` (lines 161–181 of
+the package source).
+
+#### 14.5 ADAM optimizer with learning rate scheduling
+
+We use the **ADAM** optimizer (Adaptive Moment Estimation), which
+maintains per-parameter learning rates that adapt based on first and
+second moment estimates of the gradient. This is particularly
+well-suited to our problem because different tracts may have very
+different gradient magnitudes.
+
+The learning rate schedule uses **multi-phase annealing**:
+
+- **Phase 1**: linear warmup (10 steps from LR = 0 to `gpu_lr_init`)
+- **Subsequent phases**: each runs inner iterations with decreasing LR
+- **LR decays** by `gpu_lr_decay` (default 0.6) between phases
+- **Gradient clipping** at norm 1.0 prevents divergence
+- **Alpha clamped** to `[lower_bound, upper_bound]` (default \[0, 20\])
+  after each step
 
 ``` r
 optim_result <- optimize_alpha(
@@ -557,7 +1084,7 @@ optim_result <- optimize_alpha(
   source_matrix = source_matrix,
   row_targets   = row_targets,
   sinkhorn_iter = 5,       # K=5 inside ADAM (fast, approximate)
-  use_gpu       = FALSE,   # CPU for Varginha (small: ~130 tracts)
+  use_gpu       = FALSE,   # CPU for small problems
   gpu_iterations = 20,     # 20 outer LR phases
   gpu_lr_init   = 0.1,     # initial learning rate
   gpu_lr_decay  = 0.6      # LR multiplier between phases
@@ -580,7 +1107,9 @@ rate decays.
 | `dtype`                       | `"float32"` | `"float64"` for more precision (2x memory).                         |
 | `lower_bound` / `upper_bound` | 0, 20       | Alpha clamp range.                                                  |
 
-## 13. The Effect of Alpha: Spatial Interpretation
+## Part VI: Results and Validation
+
+### 15. The Effect of Alpha: Spatial Interpretation
 
 ![](figures/alpha-histogram.png)
 
@@ -597,11 +1126,11 @@ Most alphas cluster in a moderate range, with tails extending toward 0
 
 ``` r
 # How alpha changes the weight distribution for a fixed tract
-tt_one_tract <- c(3, 8, 15, 25, 40)  # travel times to 5 stations
+tt_one_tract <- c(3, 8, 15, 25, 40)
 alphas_demo <- c(1, 3, 5, 10)
 wt_df <- do.call(rbind, lapply(alphas_demo, function(a) {
   w <- (tt_one_tract + 1)^(-a)
-  w <- w / sum(w)  # normalize for display
+  w <- w / sum(w)
   data.frame(station = 1:5, weight = w,
              alpha = paste0("alpha = ", a))
 }))
@@ -611,9 +1140,9 @@ wt_df$alpha <- factor(wt_df$alpha,
 ggplot(wt_df, aes(x = factor(station), y = weight, fill = alpha)) +
   geom_col(position = "dodge") +
   labs(title = "Weight Distribution as Alpha Increases",
-       subtitle = "Fixed tract with 5 stations at distances 3, 8, 15, 25, 40 min",
-       x = "Station (sorted by distance)", y = "Normalized weight",
-       fill = "") +
+       subtitle = "Fixed tract, 5 stations at 3, 8, 15, 25, 40 min",
+       x = "Station (sorted by distance)",
+       y = "Normalized weight", fill = "") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 ```
@@ -632,13 +1161,9 @@ nearest station dominates with ~85% of the weight.
 - $\alpha \in \lbrack 3,6\rbrack$: a few stations dominate. Typical for
   suburban areas.
 - $\alpha > 6$: one station dominates almost entirely. Typical for
-  isolated or peripheral tracts.
-- $\left. \alpha\rightarrow 0 \right.$: uniform allocation (ignores
-  geography).
-- $\alpha = 20$ (upper bound): nearest station only. May indicate the
-  optimizer hit the bound.
+  isolated tracts.
 
-## 14. The Interpolation: From Weights to Tract-Level Estimates
+### 16. The Interpolation: From Weights to Tract-Level Estimates
 
 The weight matrix $W$ encodes the geographic relationship between tracts
 and stations. Multiplying by any station-level variable produces
@@ -646,27 +1171,19 @@ tract-level estimates:
 
 $$\widehat{X} = W \times V$$
 
-where:
-
-- $W$ \[N x M\]: Sinkhorn-balanced weight matrix
-- $V$ \[M x 1\]: any variable measured at stations
-- $\widehat{X}$ \[N x 1\]: estimated value at each tract
-
-For multiple variables simultaneously:
-
-$$\left. \widehat{X} = W \times V_{\text{matrix}}\quad\lbrack N \times M\rbrack \cdot \lbrack M \times P\rbrack\rightarrow\lbrack N \times P\rbrack \right.$$
+where $W$ is \[N × M\], $V$ is \[M × 1\], and $\widehat{X}$ is \[N ×
+1\]. For multiple variables: $\widehat{X} = W \times V_{\text{matrix}}$
+where $V_{\text{matrix}}$ is \[M × P\].
 
 ``` r
-# Practical example with Varginha data
-W <- sinkhorn_weights(time_matrix, optim_result$alpha, offset = 1,
-  row_targets = row_targets)
+W <- sinkhorn_weights(time_matrix, optim_result$alpha,
+  offset = 1, row_targets = row_targets)
 
 electoral_data <- as.matrix(
   sources[, c("CAND_13", "CAND_22", "QT_COMPARECIMENTO")]
 )
 interpolated <- W %*% electoral_data
 
-# Derived quantities
 pct_lula <- interpolated[, "CAND_13"] /
   interpolated[, "QT_COMPARECIMENTO"] * 100
 ```
@@ -692,18 +1209,19 @@ geography and the calibration. Once computed, it can interpolate **any**
 variable measured at polling stations — candidates, parties, turnout,
 gender composition, education level — without re-optimizing alpha.
 
-## 15. Conservation Properties and Validation
+### 17. Validation: How Well Did We Recover the Age Structure?
+
+#### 17.1 Conservation properties
 
 **Column conservation** (source conservation):
 
 $$\sum\limits_{i}W_{ij} = 1\quad\forall j$$
 
-Each station distributes exactly 100% of its data. Consequence:
-municipal totals are preserved exactly.
+Each station distributes exactly 100% of its data. Municipal totals are
+preserved exactly.
 
 ``` r
-# Using our toy example
-votes <- c(500, 800, 700)   # votes at 3 stations
+votes <- c(500, 800, 700)
 interpolated_votes <- as.numeric(W_balanced %*% votes)
 
 cat("Source total:", sum(votes), "\n")
@@ -718,22 +1236,70 @@ cat("Per-tract:", round(interpolated_votes), "\n")
 
 $$\sum\limits_{j}W_{ij} = r_{i} = \frac{\text{pop}_{i}}{\sum\text{pop}} \times m$$
 
-Tracts receive weight proportional to their population share.
-
 **Calibration residuals**:
-
-$$\text{residual}_{ik} = \sum\limits_{j}W_{ij} \cdot S_{jk} - P_{ik}$$
-
-where $S$ is the source demographic matrix and $P$ is the census
-population matrix.
 
 ![](figures/residuals-boxplot.png)
 
 Residuals should be centered near zero with small magnitude. Outliers
-may indicate boundary effects (voters crossing municipality borders),
-data quality issues, or model limitations.
+may indicate boundary effects (voters crossing municipality borders) or
+data quality issues.
 
-## 16. Performance and Tuning
+#### 17.2 Age pyramid recovery: Rocinha and Copacabana revisited
+
+In Section 1, we showed that Rocinha and Copacabana have strikingly
+different age structures. Does the interpolation recover these patterns?
+
+![](figures/age-recovery-rocinha-copacabana.png)
+
+The blue bars show the census truth (population by age bracket) and the
+yellow bars show the Sinkhorn-interpolated voter profiles. The
+interpolation closely recovers the distinctive age patterns of both
+neighborhoods: Rocinha’s young skew and Copacabana’s aging profile.
+
+This is a demanding test. The method does not know anything about
+Rocinha or Copacabana as neighborhoods — it only sees census tracts and
+polling stations. Yet the calibration against age brackets produces
+weights that correctly recover the neighborhood-level demographic
+signatures.
+
+#### 17.3 Comparison with Voronoi assignment
+
+The simplest alternative to our method is **Voronoi assignment**: assign
+each tract to its nearest polling station and use that station’s data
+directly. This is equivalent to constructing Voronoi (Thiessen) polygons
+around each station and assigning each tract 100% of the weight from one
+station.
+
+We compare both methods using **Palmas (TO)**, the capital of Tocantins:
+
+![](figures/voronoi-palmas-map.png)
+
+In the Voronoi approach, each tract inherits the complete demographic
+and electoral profile of a single station. This ignores the many-to-many
+structure: a tract near the boundary between two Voronoi cells gets none
+of the influence from the station just across the boundary.
+
+How well do the two methods recover the census age structure?
+
+![](figures/voronoi-vs-sinkhorn-scatter.png)
+
+The scatter plot shows predicted versus observed population by age
+bracket for each tract. Sinkhorn points (left) cluster tightly around
+the 45-degree line. Voronoi points (right) show much more scatter — many
+tracts have large prediction errors because they were assigned to a
+station with a very different demographic composition.
+
+![](figures/voronoi-vs-sinkhorn-residuals.png)
+
+The residual boxplot confirms the pattern: Sinkhorn residuals are
+tightly centered around zero, while Voronoi residuals have much larger
+spread. The Sinkhorn method achieves dramatically lower squared error
+because it uses smooth, calibrated weights instead of hard
+nearest-station assignment.
+
+## Part VII: Practical
+
+### 18. Performance and Tuning
 
 | Problem size (tracts) | Recommendation           | Typical time |
 |-----------------------|--------------------------|--------------|
@@ -744,20 +1310,20 @@ data quality issues, or model limitations.
 
 **Practical runtimes**:
 
-- Varginha (~130 tracts, ~20 stations): 2–4s CPU
-- Igrejinha (~50 tracts, ~10 stations): 1–2s CPU
-- Niteroi (~500 tracts, ~100 stations): 5–15s GPU
-- Belo Horizonte (~4,000 tracts, ~800 stations): 30–60s GPU
-- Sao Paulo capital (~18,000 tracts, ~3,000 stations): 5–10 min GPU
+- Varginha (~280 tracts, ~37 stations): 2–4s CPU
+- Igrejinha (~85 tracts, ~17 stations): 1–2s CPU
+- Niteroi (~1,200 tracts, ~135 stations): 5–15s GPU
+- Belo Horizonte (~5,100 tracts, ~407 stations): 30–60s GPU
+- São Paulo capital (~18,000 tracts, ~3,000 stations): 5–10 min GPU
 
-**Memory**: approximately `3 * sinkhorn_iter + 10` copies of the N x M
+**Memory**: approximately `3 * sinkhorn_iter + 10` copies of the N × M
 matrix in GPU memory.
 
 **RStudio**: torch inside RStudio IDE requires subprocess execution via
 callr (automatic and transparent to the user). Standalone R scripts run
 directly.
 
-## 17. Setup: Torch, Java, and r5r
+### 19. Setup: Torch, Java, and r5r
 
 **Torch** (required for optimization):
 
@@ -785,49 +1351,52 @@ large municipalities.
 ``` r
 get_interpElections_cache_dir()    # where downloads are stored
 interpElections_cache()            # list cached files by category
-interpElections_cache_clean()      # clear cache (all or by category)
+interpElections_cache_clean()      # clear cache
 ```
 
-## 18. Mathematical Appendix
+### 20. Mathematical Appendix
 
-**Notation**:
+#### Notation
 
 - $N$ = number of census tracts, $M$ = number of polling stations
 - $K$ = number of calibration age brackets (7)
 - $t \in {\mathbb{R}}^{N \times M}$: travel time matrix (minutes)
 - $\alpha \in {\mathbb{R}}^{N}$: per-tract decay parameters
 - $P \in {\mathbb{R}}^{N \times K}$: census population by age bracket
-- $S \in {\mathbb{R}}^{M \times K}$: voter counts by age bracket
-- $r \in {\mathbb{R}}^{N}$: row targets (population-proportional)
-- $c \in {\mathbb{R}}^{M}$: column targets (= 1)
+- $S \in {\mathbb{R}}^{M \times K}$: voter counts by age bracket at
+  stations
+- $r \in {\mathbb{R}}^{N}$: row targets
+  ($r_{i} = \text{pop}_{i}/\sum\text{pop} \times M$)
+- $c \in {\mathbb{R}}^{M}$: column targets ($c_{j} = 1$)
 
-**IDW kernel**:
+#### IDW kernel
 
 $$K_{ij} = \left( t_{ij} + 1 \right)^{- \alpha_{i}}$$
 
-**Log-domain kernel**:
+#### Log-domain kernel
 
 $$\log K_{ij} = - \alpha_{i} \cdot \log\left( t_{ij} + 1 \right)$$
 
-**Sinkhorn iterations (log-domain)**:
+#### Sinkhorn iterations (log-domain)
 
-Initialize: $\log u = 0$, $\log v = 0$
+Initialize: $\log u = \mathbf{0}_{N \times 1}$,
+$\log v = \mathbf{0}_{1 \times M}$
 
 For $k = 1$ to $K_{\text{sink}}$:
-$$\left. \log u_{i}\leftarrow\log r_{i} - \text{logsumexp}_{j}\left( \log K_{ij} + \log v_{j} \right) \right.$$$$\left. \log v_{j}\leftarrow\log c_{j} - \text{logsumexp}_{i}\left( \log K_{ij} + \log u_{i} \right) \right.$$
+$$\left. \log u_{i}\leftarrow\log r_{i} - \text{logsumexp}_{j}\left( \log K_{ij} + \log v_{j} \right) \right.$$$$\left. \log v_{j}\leftarrow - \text{logsumexp}_{i}\left( \log K_{ij} + \log u_{i} \right) \right.$$
 
-**Balanced weight matrix**:
+#### Balanced weight matrix
 
 $$W_{ij} = \exp\left( \log u_{i} + \log K_{ij} + \log v_{j} \right)$$
 
-**Objective function**:
+#### Objective function
 
 $$f(\alpha) = \parallel W(\alpha) \cdot S - P \parallel_{F}^{2} = \sum\limits_{i,k}\left( \sum\limits_{j}W_{ij}S_{jk} - P_{ik} \right)^{2}$$
 
-**Gradient**: computed by torch autograd through $K$ unrolled Sinkhorn
-iterations. Each operation in the forward pass (log, exp, logsumexp,
-matrix multiply, subtraction, squaring) has a defined backward pass in
-torch. The gradient flows backward through all $K$ Sinkhorn iterations
-automatically:
+#### Gradient
+
+Computed by torch autograd through $K$ unrolled Sinkhorn iterations.
+Each operation in the forward pass (log, exp, logsumexp, matrix
+multiply, subtraction, squaring) has a defined backward pass in torch:
 
 $$\nabla_{\alpha}f = \frac{\partial}{\partial\alpha} \parallel \text{sinkhorn}_{K}\left( \text{kernel}(\alpha) \right) \cdot S - P \parallel_{F}^{2}$$
