@@ -14,6 +14,7 @@
     tracts       = file.path("processed", "tracts"),
     r5r          = file.path("networks", "r5r"),
     travel_times = "travel_times",
+    pop_raster   = file.path("downloads", "pop_raster"),
     bin          = "bin"
   )
 }
@@ -256,8 +257,8 @@ interpElections_cache <- function(
 #' @export
 interpElections_cache_clean <- function(
     category = c("all", "downloads", "processed", "networks",
-                 "travel_times", "votes", "turnout", "geocode",
-                 "profile", "hidalgo", "osm", "electoral",
+                 "travel_times", "pop_raster", "votes", "turnout",
+                 "geocode", "profile", "hidalgo", "osm", "electoral",
                  "tracts", "r5r"),
     verbose = TRUE
 ) {
@@ -283,6 +284,7 @@ interpElections_cache_clean <- function(
     processed    = file.path(cache_dir, "processed"),
     networks     = file.path(cache_dir, "networks"),
     travel_times = file.path(cache_dir, subdirs$travel_times),
+    pop_raster   = file.path(cache_dir, subdirs$pop_raster),
     votes        = file.path(cache_dir, subdirs$votes),
     turnout      = file.path(cache_dir, subdirs$turnout),
     geocode      = file.path(cache_dir, subdirs$geocode),

@@ -1,7 +1,7 @@
-#' Compute a travel-time matrix from census tract centroids to source points
+#' Compute a travel-time matrix from census tract representative points to source points
 #'
 #' Builds a travel-time matrix using the r5r routing engine. Computes
-#' travel times from the centroids of target census tracts
+#' travel times from representative points of target census tracts
 #' to geolocated source points (e.g., polling locations).
 #'
 #' @param tracts_sf An `sf` object with polygon geometries. Target census
@@ -13,6 +13,15 @@
 #'   Default: `"id"`.
 #' @param point_id Character. Name of the ID column in `points_sf`.
 #'   Default: `"id"`.
+#' @param point_method Character. Method for computing representative points
+#'   for census tracts. One of `"point_on_surface"` (default),
+#'   `"centroid"`, or `"pop_weighted"`. See [compute_representative_points()]
+#'   for details.
+#' @param pop_raster A [terra::SpatRaster] object, a file path to a GeoTIFF,
+#'   or `NULL`. Population density raster for `point_method = "pop_weighted"`.
+#'   If `NULL`, WorldPop data is auto-downloaded. Ignored for other methods.
+#' @param pop_min_area Numeric. Minimum tract area in km² for applying the
+#'   population-weighted method. Default: 1.
 #' @param mode Character. Routing mode. Default: `"WALK"`.
 #' @param max_trip_duration Integer. Maximum trip duration in minutes.
 #'   Default: 300.
@@ -52,6 +61,9 @@ compute_travel_times <- function(
     network_path,
     tract_id = "id",
     point_id = "id",
+    point_method = "point_on_surface",
+    pop_raster = NULL,
+    pop_min_area = 1,
     mode = "WALK",
     max_trip_duration = 300L,
     fill_missing = max_trip_duration,
@@ -123,18 +135,23 @@ compute_travel_times <- function(
     stop("Duplicate IDs found in points_sf[[point_id]]", call. = FALSE)
   }
 
-  # Project to equal-area CRS for centroid computation, then to WGS84
-  if (verbose) message("  Computing census tract centroids...")
-  tracts_proj <- sf::st_transform(tracts_sf, "EPSG:5880")
-  centroids_proj <- suppressWarnings(sf::st_centroid(tracts_proj))
-  centroids <- sf::st_transform(centroids_proj, 4326)
+  # Compute representative points for tracts
+  rep_points <- compute_representative_points(
+    tracts_sf = tracts_sf,
+    method = point_method,
+    pop_raster = pop_raster,
+    pop_min_area = pop_min_area,
+    tract_id = tract_id,
+    verbose = verbose
+  )
+  # rep_points already in WGS84 (guaranteed by compute_representative_points)
   points_sf <- sf::st_transform(points_sf, 4326)
 
   # Prepare origin/destination data for r5r
   origins <- data.frame(
-    id = as.character(centroids[[tract_id]]),
-    lon = sf::st_coordinates(centroids)[, 1],
-    lat = sf::st_coordinates(centroids)[, 2]
+    id = as.character(rep_points[[tract_id]]),
+    lon = sf::st_coordinates(rep_points)[, 1],
+    lat = sf::st_coordinates(rep_points)[, 2]
   )
   destinations <- data.frame(
     id = as.character(points_sf[[point_id]]),
@@ -241,6 +258,36 @@ compute_travel_times <- function(
 
   # Replace any remaining NA with fill_missing
   mat[is.na(mat)] <- fill_missing
+
+  # Diagnostic: detect tracts where ALL travel times equal fill_missing
+  all_filled <- rowSums(mat == fill_missing) == ncol(mat)
+  n_unreachable <- sum(all_filled)
+  if (n_unreachable > 0) {
+    unreachable_ids <- tract_ids[all_filled]
+    warning(
+      sprintf(
+        "%d tract(s) have ALL travel times equal to fill_missing (%g min). ",
+        n_unreachable, fill_missing
+      ),
+      "These tracts will receive near-zero interpolation weight. ",
+      "This usually means their representative point is not routable ",
+      "(e.g., falls in a park, river, or area without OSM road coverage). ",
+      "Consider using point_method = 'pop_weighted' or 'point_on_surface'.",
+      call. = FALSE
+    )
+    attr(mat, "unreachable_tracts") <- unreachable_ids
+  }
+
+  # Propagate attributes from representative points
+  rp_raster <- attr(rep_points, "pop_raster")
+  if (!is.null(rp_raster)) {
+    attr(mat, "pop_raster") <- rp_raster
+  }
+  no_pop <- attr(rep_points, "no_pop_tracts")
+  if (!is.null(no_pop)) {
+    attr(mat, "no_pop_tracts") <- no_pop
+  }
+  attr(mat, "rep_points") <- rep_points
 
   if (verbose) {
     pct <- 100 * n_valid / n_total

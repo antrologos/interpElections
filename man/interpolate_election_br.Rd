@@ -23,6 +23,9 @@ interpolate_election_br(
   remove_unpopulated = TRUE,
   osm_buffer_km = 10,
   osm_provider = "openstreetmap_fr",
+  point_method = "point_on_surface",
+  pop_raster = NULL,
+  pop_min_area = 1,
   keep = NULL,
   alpha = NULL,
   offset = 1,
@@ -172,10 +175,23 @@ Default: \code{"openstreetmap_fr"} (has state-level extracts for Brazil).
 Alternatives: \code{"geofabrik"}, \code{"bbbike"}. Only used when OSM data is
 auto-downloaded (no \code{network_path} or \code{time_matrix} provided).}
 
+\item{point_method}{Character. Method for computing representative points
+for census tracts. One of \code{"point_on_surface"} (default, guaranteed
+inside polygon), \code{"centroid"}, or \code{"pop_weighted"} (uses WorldPop
+raster for large tracts). See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
+
+\item{pop_raster}{A \link[terra:SpatRaster-class]{terra::SpatRaster}, file path, or \code{NULL}. Population
+density raster for \code{point_method = "pop_weighted"}. If \code{NULL}, WorldPop
+Brazil Constrained 2020 (~48 MB) is auto-downloaded.}
+
+\item{pop_min_area}{Numeric. Minimum tract area (km²) for applying the
+population-weighted method. Smaller tracts use \code{point_on_surface}.
+Default: 1.}
+
 \item{keep}{Character vector or NULL. Names of heavy intermediate
 objects to include in the result. Default NULL (lightweight).
-Options: \code{"weights"}, \code{"time_matrix"}, \code{"sources_sf"}.
-See \code{\link[=interpolate_election]{interpolate_election()}} for details.}
+Options: \code{"weights"}, \code{"time_matrix"}, \code{"sources_sf"},
+\code{"pop_raster"}, \code{"rep_points"}. See \code{\link[=interpolate_election]{interpolate_election()}} for details.}
 
 \item{alpha}{Numeric vector or NULL. Pre-computed decay parameters
 (one per tract). If provided, the optimization step is skipped

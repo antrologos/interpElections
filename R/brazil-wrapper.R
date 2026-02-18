@@ -120,10 +120,20 @@
 #'   Default: `"openstreetmap_fr"` (has state-level extracts for Brazil).
 #'   Alternatives: `"geofabrik"`, `"bbbike"`. Only used when OSM data is
 #'   auto-downloaded (no `network_path` or `time_matrix` provided).
+#' @param point_method Character. Method for computing representative points
+#'   for census tracts. One of `"point_on_surface"` (default, guaranteed
+#'   inside polygon), `"centroid"`, or `"pop_weighted"` (uses WorldPop
+#'   raster for large tracts). See [compute_representative_points()].
+#' @param pop_raster A [terra::SpatRaster], file path, or `NULL`. Population
+#'   density raster for `point_method = "pop_weighted"`. If `NULL`, WorldPop
+#'   Brazil Constrained 2020 (~48 MB) is auto-downloaded.
+#' @param pop_min_area Numeric. Minimum tract area (km²) for applying the
+#'   population-weighted method. Smaller tracts use `point_on_surface`.
+#'   Default: 1.
 #' @param keep Character vector or NULL. Names of heavy intermediate
 #'   objects to include in the result. Default NULL (lightweight).
-#'   Options: `"weights"`, `"time_matrix"`, `"sources_sf"`.
-#'   See [interpolate_election()] for details.
+#'   Options: `"weights"`, `"time_matrix"`, `"sources_sf"`,
+#'   `"pop_raster"`, `"rep_points"`. See [interpolate_election()] for details.
 #' @param alpha Numeric vector or NULL. Pre-computed decay parameters
 #'   (one per tract). If provided, the optimization step is skipped
 #'   entirely. Useful for re-interpolating with a previously optimized
@@ -374,6 +384,9 @@ interpolate_election_br <- function(
     remove_unpopulated  = TRUE,
     osm_buffer_km       = 10,
     osm_provider        = "openstreetmap_fr",
+    point_method        = "point_on_surface",
+    pop_raster          = NULL,
+    pop_min_area        = 1,
     keep                = NULL,
     alpha               = NULL,
     offset              = 1,
@@ -602,6 +615,9 @@ interpolate_election_br <- function(
     cpu_parallel = cpu_parallel,
     verbose = verbose,
     osm_provider = osm_provider,
+    point_method = point_method,
+    pop_raster = pop_raster,
+    pop_min_area = pop_min_area,
     ...,
     .step_offset = .outer_steps,
     .step_total = .total_steps

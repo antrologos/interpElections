@@ -5,8 +5,9 @@
 \title{Delete cached files by category}
 \usage{
 interpElections_cache_clean(
-  category = c("all", "downloads", "processed", "networks", "travel_times", "votes",
-    "turnout", "geocode", "profile", "hidalgo", "osm", "electoral", "tracts", "r5r"),
+  category = c("all", "downloads", "processed", "networks", "travel_times", "pop_raster",
+    "votes", "turnout", "geocode", "profile", "hidalgo", "osm", "electoral", "tracts",
+    "r5r"),
   verbose = TRUE
 )
 }

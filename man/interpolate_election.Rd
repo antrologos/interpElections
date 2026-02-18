@@ -75,7 +75,9 @@ parameters. If provided, optimization is skipped.}
 objects to include in the result. Default NULL (lightweight).
 Options: \code{"weights"} (column-standardized weight matrix [n x m]),
 \code{"time_matrix"} (travel time matrix [n x m]),
-\code{"sources_sf"} (source points as \code{sf} object with geometry).
+\code{"sources_sf"} (source points as \code{sf} object with geometry),
+\code{"pop_raster"} (population density raster, when \code{point_method = "pop_weighted"}),
+\code{"rep_points"} (representative points \code{sf} object used for routing).
 These can be large for big municipalities. Travel times are
 cached on disk and can be reloaded without keeping them in memory.}
 
@@ -90,7 +92,11 @@ use GPU (\code{use_gpu = TRUE}). Passed to \code{\link[=optimize_alpha]{optimize
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
 \item{...}{Additional arguments forwarded to \code{\link[=optimize_alpha]{optimize_alpha()}},
-\code{\link[=compute_travel_times]{compute_travel_times()}}, and/or \code{\link[=download_r5r_data]{download_r5r_data()}}.}
+\code{\link[=compute_travel_times]{compute_travel_times()}}, and/or \code{\link[=download_r5r_data]{download_r5r_data()}}.
+Notable forwarded arguments: \code{point_method} (representative point
+method), \code{pop_raster} (population density raster),
+\code{pop_min_area} (area threshold for pop-weighted points).
+See \code{\link[=compute_travel_times]{compute_travel_times()}} for details.}
 
 \item{.step_offset}{Integer. Internal: offset added to step numbers
 when called from \code{\link[=interpolate_election_br]{interpolate_election_br()}}. Do not set manually.}
@@ -119,6 +125,12 @@ pre-supplied.}
 \code{keep} includes \code{"time_matrix"}.}
 \item{sources_sf}{\code{sf} point object or NULL. Source points with
 geometry. Present only when \code{keep} includes \code{"sources_sf"}.}
+\item{pop_raster}{\link[terra:SpatRaster-class]{terra::SpatRaster} or NULL. Population density
+raster (cropped to municipality). Present only when \code{keep} includes
+\code{"pop_raster"} and \code{point_method = "pop_weighted"} was used.}
+\item{rep_points}{\code{sf} POINT object or NULL. Representative points
+used for travel time routing. Present only when \code{keep} includes
+\code{"rep_points"}.}
 }
 }
 \description{

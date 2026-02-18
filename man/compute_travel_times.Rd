@@ -2,7 +2,7 @@
 % Please edit documentation in R/travel-time.R
 \name{compute_travel_times}
 \alias{compute_travel_times}
-\title{Compute a travel-time matrix from census tract centroids to source points}
+\title{Compute a travel-time matrix from census tract representative points to source points}
 \usage{
 compute_travel_times(
   tracts_sf,
@@ -10,6 +10,9 @@ compute_travel_times(
   network_path,
   tract_id = "id",
   point_id = "id",
+  point_method = "point_on_surface",
+  pop_raster = NULL,
+  pop_min_area = 1,
   mode = "WALK",
   max_trip_duration = 300L,
   fill_missing = max_trip_duration,
@@ -32,6 +35,18 @@ Default: \code{"id"}.}
 
 \item{point_id}{Character. Name of the ID column in \code{points_sf}.
 Default: \code{"id"}.}
+
+\item{point_method}{Character. Method for computing representative points
+for census tracts. One of \code{"point_on_surface"} (default),
+\code{"centroid"}, or \code{"pop_weighted"}. See \code{\link[=compute_representative_points]{compute_representative_points()}}
+for details.}
+
+\item{pop_raster}{A \link[terra:SpatRaster-class]{terra::SpatRaster} object, a file path to a GeoTIFF,
+or \code{NULL}. Population density raster for \code{point_method = "pop_weighted"}.
+If \code{NULL}, WorldPop data is auto-downloaded. Ignored for other methods.}
+
+\item{pop_min_area}{Numeric. Minimum tract area in km² for applying the
+population-weighted method. Default: 1.}
 
 \item{mode}{Character. Routing mode. Default: \code{"WALK"}.}
 
@@ -56,7 +71,7 @@ pairs are filled with \code{fill_missing}.
 }
 \description{
 Builds a travel-time matrix using the r5r routing engine. Computes
-travel times from the centroids of target census tracts
+travel times from representative points of target census tracts
 to geolocated source points (e.g., polling locations).
 }
 \details{

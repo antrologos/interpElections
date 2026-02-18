@@ -37,7 +37,10 @@
 #'   objects to include in the result. Default NULL (lightweight).
 #'   Options: `"weights"` (column-standardized weight matrix \[n x m\]),
 #'   `"time_matrix"` (travel time matrix \[n x m\]),
-#'   `"sources_sf"` (source points as `sf` object with geometry).
+#'   `"sources_sf"` (source points as `sf` object with geometry),
+#'   `"pop_raster"` (population density raster, when `point_method =
+#'   "pop_weighted"`),
+#'   `"rep_points"` (representative points `sf` object used for routing).
 #'   These can be large for big municipalities. Travel times are
 #'   cached on disk and can be reloaded without keeping them in memory.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
@@ -49,6 +52,10 @@
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Additional arguments forwarded to [optimize_alpha()],
 #'   [compute_travel_times()], and/or [download_r5r_data()].
+#'   Notable forwarded arguments: `point_method` (representative point
+#'   method), `pop_raster` (population density raster),
+#'   `pop_min_area` (area threshold for pop-weighted points).
+#'   See [compute_travel_times()] for details.
 #' @param .step_offset Integer. Internal: offset added to step numbers
 #'   when called from [interpolate_election_br()]. Do not set manually.
 #' @param .step_total Integer or NULL. Internal: total step count for
@@ -74,6 +81,12 @@
 #'     `keep` includes `"time_matrix"`.}
 #'   \item{sources_sf}{`sf` point object or NULL. Source points with
 #'     geometry. Present only when `keep` includes `"sources_sf"`.}
+#'   \item{pop_raster}{[terra::SpatRaster] or NULL. Population density
+#'     raster (cropped to municipality). Present only when `keep` includes
+#'     `"pop_raster"` and `point_method = "pop_weighted"` was used.}
+#'   \item{rep_points}{`sf` POINT object or NULL. Representative points
+#'     used for travel time routing. Present only when `keep` includes
+#'     `"rep_points"`.}
 #' }
 #'
 #' @examples
@@ -249,19 +262,22 @@ interpolate_election <- function(
   #   Auto-download OSM:    5 steps (+ download OSM + compute travel times)
   step_num <- 1L + .step_offset
   total_steps <- if (!is.null(.step_total)) .step_total else 3L
+  pop_raster_obj <- NULL   # populated on cache miss when pop_weighted
+  rep_points_obj <- NULL   # populated on cache miss
 
   if (is.null(time_matrix)) {
     # Check for cached travel time matrix
     # Use actual (unsorted) IDs — the matrix is positional, so row/col order matters
     zone_ids <- as.character(tracts_df[[tract_id]])
     point_ids <- as.character(elec_df[[point_id]])
-    # Include routing params in cache key so different modes
+    # Include routing params in cache key so different modes/methods
     # don't collide
     tt_mode <- dots$mode %||% "WALK"
     tt_dur <- dots$max_trip_duration %||% 300L
+    tt_point_method <- dots$point_method %||% "point_on_surface"
     cache_input <- paste(
       c(zone_ids, "||", point_ids, "||",
-        tt_mode, tt_dur),
+        tt_mode, tt_dur, tt_point_method),
       collapse = ","
     )
     tt_hash <- substr(.digest_simple(cache_input), 1, 16)
@@ -349,6 +365,14 @@ interpolate_election <- function(
              verbose = verbose),
         tt_args
       ))
+
+      # Extract heavy/non-serializable attributes before caching
+      # (SpatRaster and sf objects should not be serialized inside the
+      # travel time RDS cache)
+      pop_raster_obj <- attr(time_matrix, "pop_raster")
+      attr(time_matrix, "pop_raster") <- NULL
+      rep_points_obj <- attr(time_matrix, "rep_points")
+      attr(time_matrix, "rep_points") <- NULL
 
       # Cache the computed travel time matrix with ID attributes
       attr(time_matrix, "zone_ids") <- zone_ids
@@ -458,6 +482,8 @@ interpolate_election <- function(
     weights       = if ("weights" %in% keep) W_std else NULL,
     time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
     sources_sf    = if ("sources_sf" %in% keep) electoral_sf else NULL,
+    pop_raster    = if ("pop_raster" %in% keep) pop_raster_obj else NULL,
+    rep_points    = if ("rep_points" %in% keep) rep_points_obj else NULL,
     # Brazilian metadata (NULL when called generically)
     code_muni      = NULL,
     nome_municipio = NULL,
@@ -540,9 +566,13 @@ print.interpElections_result <- function(x, ...) {
   has_w <- !is.null(x$weights)
   has_t <- !is.null(x$time_matrix)
   has_s <- !is.null(x$sources_sf)
+  has_p <- !is.null(x$pop_raster)
+  has_r <- !is.null(x$rep_points)
   if (has_w) cat("    result$weights         weight matrix\n")
   if (has_t) cat("    result$time_matrix     travel time matrix\n")
   if (has_s) cat("    result$sources_sf      source locations (sf)\n")
+  if (has_p) cat("    result$pop_raster      population density raster\n")
+  if (has_r) cat("    result$rep_points      representative points (sf)\n")
 
   cat("  Methods: summary(), as.data.frame(), coef(), residuals()\n")
   cat("  Plotting: plot(result, variable = ..., type = ..., breaks = ...)\n")
