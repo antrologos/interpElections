@@ -273,7 +273,7 @@ equations, visualizations, and worked examples using real data.
 interpElections works with any point-to-polygon disaggregation, not just
 Brazilian elections. Here is a synthetic example:
 
-```{r custom-example, eval = TRUE}
+```{r custom-example, eval = torch::torch_is_installed()}
 library(interpElections)
 
 # Synthetic data: 5 zones, 3 sources, 2 calibration variables
@@ -333,7 +333,7 @@ Conservation: the interpolated total matches the source total exactly.
 
 For full control, use the core functions directly:
 
-```{r core, eval = TRUE}
+```{r core, eval = torch::torch_is_installed()}
 # Load bundled example data
 tt  <- readRDS(system.file("extdata/example_tt_matrix.rds",
                             package = "interpElections"))
