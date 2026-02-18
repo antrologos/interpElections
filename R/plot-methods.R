@@ -429,7 +429,6 @@ autoplot.interpElections_result <- function(object, ...) {
 #' @noRd
 .compute_breaks <- function(values, method, n_breaks) {
   # Custom numeric breaks: passthrough
-
   if (is.numeric(method)) return(method)
 
   switch(method,
@@ -450,7 +449,7 @@ autoplot.interpElections_result <- function(object, ...) {
       }
       clean <- values[!is.na(values)]
       brks <- classInt::classIntervals(clean, n = n_breaks, style = "jenks")$brks
-      .clean_breaks(brks)
+      brks <- .clean_breaks(brks)
     },
     stop(sprintf("Unknown breaks method: '%s'. Use 'continuous', 'quantile', 'jenks', or a numeric vector.",
                  method), call. = FALSE)
@@ -459,15 +458,37 @@ autoplot.interpElections_result <- function(object, ...) {
 
 
 #' Round computed breaks to clean values for display
+#'
+#' Collapses near-duplicate break points (floating-point noise from
+#' quantile interpolation), then rounds to the fewest significant
+#' digits that still keep all remaining breaks distinct.
 #' @noRd
 .clean_breaks <- function(brks) {
-  brks <- as.numeric(unique(brks))
-  brks <- signif(brks, 3L)
-  # Replace near-zero values with exact 0
+  brks <- sort(as.numeric(unique(brks)))
+  if (length(brks) < 2L) return(brks)
+
+  # Collapse near-duplicates (within 1e-9 of total range)
   rng <- diff(range(brks))
-  if (rng > 0) brks[abs(brks) < rng * 1e-4] <- 0
+  if (rng > 0) {
+    tol <- rng * 1e-9
+    keep <- c(TRUE, diff(brks) > tol)
+    brks <- brks[keep]
+  }
+
+  # Round for display, increasing precision until distinct breaks are preserved
+  n_target <- length(brks)
+  for (digits in 3L:8L) {
+    rounded <- signif(brks, digits)
+    # Replace near-zero values with exact 0
+    r <- diff(range(rounded))
+    if (r > 0) rounded[abs(rounded) < r * 1e-4] <- 0
+    result <- unique(rounded)
+    if (length(result) >= n_target) return(result)
+  }
+
   unique(brks)
 }
+
 
 
 #' Build the ggplot2 fill scale
