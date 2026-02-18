@@ -1,18 +1,21 @@
-# Compute a travel-time matrix from zone centroids to source points
+# Compute a travel-time matrix from census tract representative points to source points
 
 Builds a travel-time matrix using the r5r routing engine. Computes
-travel times from the centroids of target zones (e.g., census tracts) to
+travel times from representative points of target census tracts to
 geolocated source points (e.g., polling locations).
 
 ## Usage
 
 ``` r
 compute_travel_times(
-  zones_sf,
+  tracts_sf,
   points_sf,
   network_path,
-  zone_id = "id",
+  tract_id = "id",
   point_id = "id",
+  point_method = "point_on_surface",
+  pop_raster = NULL,
+  pop_min_area = 1,
   mode = "WALK",
   max_trip_duration = 300L,
   fill_missing = max_trip_duration,
@@ -24,9 +27,9 @@ compute_travel_times(
 
 ## Arguments
 
-- zones_sf:
+- tracts_sf:
 
-  An `sf` object with polygon geometries. Target zones.
+  An `sf` object with polygon geometries. Target census tracts.
 
 - points_sf:
 
@@ -37,13 +40,34 @@ compute_travel_times(
   Character. Path to the directory containing the OSM `.pbf` file for
   building the r5r network.
 
-- zone_id:
+- tract_id:
 
-  Character. Name of the ID column in `zones_sf`. Default: `"id"`.
+  Character. Name of the ID column in `tracts_sf`. Default: `"id"`.
 
 - point_id:
 
   Character. Name of the ID column in `points_sf`. Default: `"id"`.
+
+- point_method:
+
+  Character. Method for computing representative points for census
+  tracts. One of `"point_on_surface"` (default), `"centroid"`, or
+  `"pop_weighted"`. See
+  [`compute_representative_points()`](https://antrologos.github.io/interpElections/reference/compute_representative_points.md)
+  for details.
+
+- pop_raster:
+
+  A
+  [terra::SpatRaster](https://rspatial.github.io/terra/reference/SpatRaster-class.html)
+  object, a file path to a GeoTIFF, or `NULL`. Population density raster
+  for `point_method = "pop_weighted"`. If `NULL`, WorldPop data is
+  auto-downloaded. Ignored for other methods.
+
+- pop_min_area:
+
+  Numeric. Minimum tract area in km² for applying the
+  population-weighted method. Default: 1.
 
 - mode:
 
@@ -74,9 +98,9 @@ compute_travel_times(
 
 ## Value
 
-A numeric matrix \[n_zones x n_points\]. Travel times in minutes. Row
-names = zone IDs, column names = point IDs. Unreachable pairs are filled
-with `fill_missing`.
+A numeric matrix \[n_tracts x n_points\]. Travel times in minutes. Row
+names = census tract IDs, column names = point IDs. Unreachable pairs
+are filled with `fill_missing`.
 
 ## Details
 
@@ -99,9 +123,9 @@ Other spatial:
 ``` r
 if (FALSE) { # \dontrun{
 tt <- compute_travel_times(
-  zones_sf = tracts, points_sf = stations,
+  tracts_sf = tracts, points_sf = stations,
   network_path = "path/to/osm_data",
-  zone_id = "code_tract", point_id = "id"
+  tract_id = "code_tract", point_id = "id"
 )
 } # }
 ```

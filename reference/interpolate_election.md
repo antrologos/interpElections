@@ -1,4 +1,4 @@
-# One-step IDW interpolation from source points to target zones
+# One-step IDW interpolation from source points to census tracts
 
 High-level wrapper that combines travel-time computation (optional),
 alpha optimization, and interpolation into a single call. If no travel
@@ -11,9 +11,9 @@ downloaded and travel times are computed via r5r.
 interpolate_election(
   tracts_sf,
   electoral_sf,
-  zone_id,
+  tract_id,
   point_id,
-  calib_zones,
+  calib_tracts,
   calib_sources,
   interp_sources = NULL,
   time_matrix = NULL,
@@ -36,13 +36,13 @@ interpolate_election(
 
 - tracts_sf:
 
-  An `sf` polygon object. Target zones (e.g., census tracts).
+  An `sf` polygon object. Target census tracts.
 
 - electoral_sf:
 
   An `sf` point object. Source points (e.g., voting locations).
 
-- zone_id:
+- tract_id:
 
   Character. Name of the ID column in `tracts_sf`.
 
@@ -50,7 +50,7 @@ interpolate_election(
 
   Character. Name of the ID column in `electoral_sf`.
 
-- calib_zones:
+- calib_tracts:
 
   Character vector. Column names in `tracts_sf` to use as the
   calibration population matrix. Must match `calib_sources` in length.
@@ -58,7 +58,7 @@ interpolate_election(
 - calib_sources:
 
   Character vector. Column names in `electoral_sf` to use as the source
-  calibration matrix. Must match `calib_zones` in length.
+  calibration matrix. Must match `calib_tracts` in length.
 
 - interp_sources:
 
@@ -88,8 +88,8 @@ interpolate_election(
 
 - min_pop:
 
-  Numeric. Minimum total population in `calib_zones` for a zone to be
-  included. Default: 1.
+  Numeric. Minimum total population in `calib_tracts` for a census tract
+  to be included. Default: 1.
 
 - alpha:
 
@@ -106,9 +106,11 @@ interpolate_election(
   include in the result. Default NULL (lightweight). Options:
   `"weights"` (column-standardized weight matrix \[n x m\]),
   `"time_matrix"` (travel time matrix \[n x m\]), `"sources_sf"` (source
-  points as `sf` object with geometry). These can be large for big
-  municipalities. Travel times are cached on disk and can be reloaded
-  without keeping them in memory.
+  points as `sf` object with geometry), `"pop_raster"` (population
+  density raster, when `point_method = "pop_weighted"`), `"rep_points"`
+  (representative points `sf` object used for routing). These can be
+  large for big municipalities. Travel times are cached on disk and can
+  be reloaded without keeping them in memory.
 
 - use_gpu:
 
@@ -126,6 +128,11 @@ interpolate_election(
   [`compute_travel_times()`](https://antrologos.github.io/interpElections/reference/compute_travel_times.md),
   and/or
   [`download_r5r_data()`](https://antrologos.github.io/interpElections/reference/download_r5r_data.md).
+  Notable forwarded arguments: `point_method` (representative point
+  method), `pop_raster` (population density raster), `pop_min_area`
+  (area threshold for pop-weighted points). See
+  [`compute_travel_times()`](https://antrologos.github.io/interpElections/reference/compute_travel_times.md)
+  for details.
 
 - .step_offset:
 
@@ -152,7 +159,7 @@ A list of class `"interpElections_result"` with components:
 
 - tracts_sf:
 
-  `sf` object with interpolated columns joined to zones.
+  `sf` object with interpolated columns joined to census tracts.
 
 - sources:
 
@@ -170,9 +177,9 @@ A list of class `"interpElections_result"` with components:
 
   The matched call.
 
-- zone_id:
+- tract_id:
 
-  Character. Name of the ID column in zones.
+  Character. Name of the census tract ID column.
 
 - point_id:
 
@@ -184,7 +191,7 @@ A list of class `"interpElections_result"` with components:
 
 - calib_cols:
 
-  List with `$zones` and `$sources` calibration columns.
+  List with `$tracts` and `$sources` calibration columns.
 
 - weights:
 
@@ -201,10 +208,22 @@ A list of class `"interpElections_result"` with components:
   `sf` point object or NULL. Source points with geometry. Present only
   when `keep` includes `"sources_sf"`.
 
+- pop_raster:
+
+  [terra::SpatRaster](https://rspatial.github.io/terra/reference/SpatRaster-class.html)
+  or NULL. Population density raster (cropped to municipality). Present
+  only when `keep` includes `"pop_raster"` and
+  `point_method = "pop_weighted"` was used.
+
+- rep_points:
+
+  `sf` POINT object or NULL. Representative points used for travel time
+  routing. Present only when `keep` includes `"rep_points"`.
+
 ## See also
 
 [`optimize_alpha()`](https://antrologos.github.io/interpElections/reference/optimize_alpha.md),
-[`idw_interpolate()`](https://antrologos.github.io/interpElections/reference/idw_interpolate.md),
+[`sinkhorn_weights()`](https://antrologos.github.io/interpElections/reference/sinkhorn_weights.md),
 [`interpolate_election_br()`](https://antrologos.github.io/interpElections/reference/interpolate_election_br.md)
 for the Brazilian-specific wrapper.
 
@@ -219,9 +238,9 @@ if (FALSE) { # \dontrun{
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  zone_id      = "code_tract",
+  tract_id     = "code_tract",
   point_id     = "id",
-  calib_zones  = c("pop_18_24", "pop_25_34"),
+  calib_tracts  = c("pop_18_24", "pop_25_34"),
   calib_sources = c("voters_18_24", "voters_25_34")
 )
 
@@ -229,9 +248,9 @@ result <- interpolate_election(
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  zone_id      = "code_tract",
+  tract_id     = "code_tract",
   point_id     = "id",
-  calib_zones  = c("pop_young", "pop_old"),
+  calib_tracts  = c("pop_young", "pop_old"),
   calib_sources = c("voters_young", "voters_old"),
   time_matrix  = my_tt_matrix
 )

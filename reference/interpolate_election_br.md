@@ -27,6 +27,9 @@ interpolate_election_br(
   remove_unpopulated = TRUE,
   osm_buffer_km = 10,
   osm_provider = "openstreetmap_fr",
+  point_method = "point_on_surface",
+  pop_raster = NULL,
+  pop_min_area = 1,
   keep = NULL,
   alpha = NULL,
   offset = 1,
@@ -217,11 +220,33 @@ interpolate_election_br(
   Alternatives: `"geofabrik"`, `"bbbike"`. Only used when OSM data is
   auto-downloaded (no `network_path` or `time_matrix` provided).
 
+- point_method:
+
+  Character. Method for computing representative points for census
+  tracts. One of `"point_on_surface"` (default, guaranteed inside
+  polygon), `"centroid"`, or `"pop_weighted"` (uses WorldPop raster for
+  large tracts). See
+  [`compute_representative_points()`](https://antrologos.github.io/interpElections/reference/compute_representative_points.md).
+
+- pop_raster:
+
+  A
+  [terra::SpatRaster](https://rspatial.github.io/terra/reference/SpatRaster-class.html),
+  file path, or `NULL`. Population density raster for
+  `point_method = "pop_weighted"`. If `NULL`, WorldPop Brazil
+  Constrained 2020 (~48 MB) is auto-downloaded.
+
+- pop_min_area:
+
+  Numeric. Minimum tract area (km²) for applying the population-weighted
+  method. Smaller tracts use `point_on_surface`. Default: 1.
+
 - keep:
 
   Character vector or NULL. Names of heavy intermediate objects to
   include in the result. Default NULL (lightweight). Options:
-  `"weights"`, `"time_matrix"`, `"sources_sf"`. See
+  `"weights"`, `"time_matrix"`, `"sources_sf"`, `"pop_raster"`,
+  `"rep_points"`. See
   [`interpolate_election()`](https://antrologos.github.io/interpElections/reference/interpolate_election.md)
   for details.
 
@@ -300,9 +325,9 @@ A list of class `"interpElections_result"` with components:
 
   The matched call.
 
-- zone_id:
+- tract_id:
 
-  Character. Name of zone ID column.
+  Character. Name of census tract ID column.
 
 - point_id:
 
@@ -314,7 +339,7 @@ A list of class `"interpElections_result"` with components:
 
 - calib_cols:
 
-  List with `$zones` and `$sources` calibration columns.
+  List with `$tracts` and `$sources` calibration columns.
 
 - weights:
 

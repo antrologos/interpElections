@@ -1,9 +1,9 @@
-# Find optimal decay parameters (alpha) for IDW interpolation
+# Find optimal decay parameters (alpha) for spatial interpolation
 
 Optimizes the per-zone decay parameters that minimize the squared error
-between IDW-interpolated values and known population counts. Supports
-GPU-accelerated optimization via torch (ADAM) and CPU optimization via
-L-BFGS-B.
+between Sinkhorn-balanced interpolated values and known population
+counts. Uses torch autograd for gradient computation with ADAM optimizer
+on both CPU and GPU.
 
 ## Usage
 
@@ -12,19 +12,20 @@ optimize_alpha(
   time_matrix,
   pop_matrix,
   source_matrix,
+  row_targets = NULL,
   alpha_init = NULL,
+  sinkhorn_iter = 5L,
   use_gpu = NULL,
   device = NULL,
   dtype = "float32",
   gpu_iterations = 20L,
   gpu_lr_init = 0.1,
   gpu_lr_decay = 0.6,
-  cpu_method = "auto",
-  cpu_parallel = NULL,
-  cpu_ncores = NULL,
+  gpu_grad_tol = 1e-04,
+  gpu_grad_clip = 1,
+  gpu_warmup_steps = 10L,
   lower_bound = 0,
   upper_bound = 20,
-  maxit = 10000L,
   offset = 1,
   verbose = TRUE
 )
@@ -47,15 +48,31 @@ optimize_alpha(
   Numeric matrix \[m x k\]. Known counts at source points (e.g.,
   registered voters by age group).
 
+- row_targets:
+
+  Numeric vector of length n, or NULL. Target row sums for Sinkhorn
+  balancing. Each element specifies how much weight a zone should
+  attract, proportional to its share of total population. If NULL
+  (default), auto-computed as
+  `rowSums(pop_matrix) / sum(pop_matrix) * m`.
+
 - alpha_init:
 
   Numeric vector of length n, or a single value to be recycled. Initial
   guess for alpha. Default: `rep(1, n)`.
 
+- sinkhorn_iter:
+
+  Integer. Number of Sinkhorn iterations per objective evaluation during
+  optimization. Higher values give more accurate balancing but are
+  slower. Default: 5 (sufficient for optimization; final weights use
+  full convergence via
+  [`sinkhorn_weights()`](https://antrologos.github.io/interpElections/reference/sinkhorn_weights.md)).
+
 - use_gpu:
 
-  Logical or NULL. If `TRUE`, use torch ADAM optimizer. If `FALSE`, use
-  CPU optimization. If `NULL` (default), reads the package option
+  Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If `FALSE`, use
+  CPU. If `NULL` (default), reads the package option
   `interpElections.use_gpu` (set via
   [`use_gpu()`](https://antrologos.github.io/interpElections/reference/use_gpu.md)).
 
@@ -67,12 +84,13 @@ optimize_alpha(
 - dtype:
 
   Character. Torch dtype: `"float32"` or `"float64"`. Default:
-  `"float32"`. Float32 halves GPU memory usage with negligible precision
-  loss for this optimization problem.
+  `"float32"`. Float32 halves memory usage with negligible precision
+  loss.
 
 - gpu_iterations:
 
-  Integer. Number of outer ADAM iterations. Default: 20.
+  Integer. Number of outer ADAM phases with learning rate decay.
+  Default: 20.
 
 - gpu_lr_init:
 
@@ -80,23 +98,21 @@ optimize_alpha(
 
 - gpu_lr_decay:
 
-  Numeric. Learning rate decay factor per outer iteration. Default: 0.6.
+  Numeric. Learning rate decay factor per phase. Default: 0.6.
 
-- cpu_method:
+- gpu_grad_tol:
 
-  Character. CPU optimization method: `"L-BFGS-B"`, `"BFGS"`, or
-  `"auto"`. `"auto"` tries parallel L-BFGS-B first, then serial
-  L-BFGS-B, then BFGS. Default: `"auto"`.
+  Numeric. Gradient norm threshold for convergence. Default: 1e-4.
 
-- cpu_parallel:
+- gpu_grad_clip:
 
-  Logical or NULL. Use `optimParallel` for CPU? Default: NULL
-  (auto-detect based on package availability).
+  Numeric or NULL. Maximum gradient norm for clipping. `NULL` disables
+  clipping. Default: 1.0.
 
-- cpu_ncores:
+- gpu_warmup_steps:
 
-  Integer or NULL. Number of cores for parallel optimization. Default:
-  NULL (auto = `max(1, detectCores() - 2)`).
+  Integer. Linear learning rate warmup steps at the start of phase 1.
+  Default: 10.
 
 - lower_bound:
 
@@ -104,17 +120,12 @@ optimize_alpha(
 
 - upper_bound:
 
-  Numeric. Upper bound for alpha values. Values above ~10 produce nearly
-  identical weights (the nearest source dominates), so capping prevents
-  meaningless divergence between methods. Default: 20.
-
-- maxit:
-
-  Integer. Maximum iterations for CPU optimizer. Default: 10000.
+  Numeric. Upper bound for alpha values. Default: 20.
 
 - offset:
 
-  Numeric. Value added to travel times. Default: 1.
+  Numeric. Value added to travel times before exponentiation. Default:
+  1.
 
 - verbose:
 
@@ -134,8 +145,8 @@ A list of class `"interpElections_optim"` with components:
 
 - method:
 
-  Character. Optimization method used (e.g., `"gpu_adam"`,
-  `"cpu_lbfgsb_parallel"`, `"cpu_lbfgsb"`, `"cpu_bfgs"`).
+  Character. Method used (e.g., `"torch_adam_sinkhorn_cpu"`,
+  `"torch_adam_sinkhorn_cuda"`).
 
 - convergence:
 
@@ -143,7 +154,7 @@ A list of class `"interpElections_optim"` with components:
 
 - iterations:
 
-  Number of iterations/steps taken.
+  Number of ADAM steps taken.
 
 - elapsed:
 
@@ -155,32 +166,62 @@ A list of class `"interpElections_optim"` with components:
 
 - history:
 
-  Numeric vector. Objective values at each step (GPU only).
+  Numeric vector. Objective values at each step.
+
+- grad_norm_final:
+
+  Numeric. Final gradient norm.
+
+- row_targets:
+
+  Numeric vector. Row targets used for Sinkhorn.
+
+- sinkhorn_iter:
+
+  Integer. Sinkhorn iterations used.
+
+## Details
+
+The weight matrix is balanced via log-domain Sinkhorn iterations (row
+sums proportional to population, column sums = 1) before computing the
+calibration loss. Gradients are obtained by differentiating through the
+unrolled Sinkhorn iterations via torch autograd.
+
+The optimization requires the `torch` R package. Install it with
+[`setup_torch()`](https://antrologos.github.io/interpElections/reference/setup_torch.md)
+if not already available.
+
+Two execution paths:
+
+- **CPU** (default): `use_gpu = FALSE` or `NULL`. Uses torch on CPU
+  device. Fast for small/medium problems (\< 2000 tracts).
+
+- **GPU**: `use_gpu = TRUE`. Uses CUDA or MPS. Faster for large problems
+  (\> 2000 tracts).
+
+Both paths use the same ADAM optimizer with log-domain Sinkhorn.
+Gradients are computed via torch autograd through the unrolled Sinkhorn
+iterations.
 
 ## See also
 
 [`use_gpu()`](https://antrologos.github.io/interpElections/reference/use_gpu.md)
 to toggle GPU globally,
-[`idw_interpolate()`](https://antrologos.github.io/interpElections/reference/idw_interpolate.md)
-to apply the optimal alphas,
-[`idw_objective()`](https://antrologos.github.io/interpElections/reference/idw_objective.md)
-and
-[`idw_gradient()`](https://antrologos.github.io/interpElections/reference/idw_gradient.md)
-for the underlying math.
-
-Other IDW core:
-[`idw_gradient()`](https://antrologos.github.io/interpElections/reference/idw_gradient.md),
-[`idw_interpolate()`](https://antrologos.github.io/interpElections/reference/idw_interpolate.md),
-[`idw_objective()`](https://antrologos.github.io/interpElections/reference/idw_objective.md),
-[`idw_weights()`](https://antrologos.github.io/interpElections/reference/idw_weights.md)
+[`sinkhorn_weights()`](https://antrologos.github.io/interpElections/reference/sinkhorn_weights.md)
+to build the final weight matrix,
+[`sinkhorn_objective()`](https://antrologos.github.io/interpElections/reference/sinkhorn_objective.md)
+for the objective function,
+[`setup_torch()`](https://antrologos.github.io/interpElections/reference/setup_torch.md)
+to install torch.
 
 ## Examples
 
 ``` r
+if (FALSE) { # \dontrun{
 tt <- matrix(c(2, 5, 3, 4, 6, 2), nrow = 2)
 pop <- matrix(c(100, 200), nrow = 2)
 src <- matrix(c(80, 120, 100), nrow = 3)
 result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 result$alpha
-#> [1] 1.5069488 0.9746938
+} # }
 ```

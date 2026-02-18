@@ -1,9 +1,10 @@
 # interpElections: Spatial Interpolation of Electoral Data via Inverse Distance Weighting
 
 Spatial interpolation of electoral data via inverse distance weighting
-with per-zone optimized decay parameters. Designed for disaggregating
-voting results from polling locations into census tracts using
-travel-time-based IDW, with optional GPU acceleration via torch.
+with Sinkhorn-balanced weights and per-census-tract optimized decay
+parameters. Designed for disaggregating voting results from polling
+locations into census tracts using travel-time-based IDW. Optimization
+uses torch autograd (ADAM) on CPU or GPU.
 
 ## See also
 

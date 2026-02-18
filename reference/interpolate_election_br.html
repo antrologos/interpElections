@@ -24,16 +24,13 @@ municipality code (or name) and an election year."></head><body>
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/introduction.html">Getting Started</a></li>
-    <li><a class="dropdown-item" href="../articles/understanding-the-model.html">Understanding the Model</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/get-started.html">Getting Started</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Use Cases</h6></li>
-    <li><a class="dropdown-item" href="../articles/brazilian-elections.html">Brazilian Elections</a></li>
-    <li><a class="dropdown-item" href="../articles/custom-data.html">Custom Data</a></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Technical</h6></li>
+    <li><a class="dropdown-item" href="../articles/methodology.html">Methodology</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
-    <li><a class="dropdown-item" href="../articles/performance-and-configuration.html">Performance &amp; Configuration</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -79,6 +76,9 @@ municipality code (or name) and an election year.</p>
 <span>  remove_unpopulated <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  osm_buffer_km <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  osm_provider <span class="op">=</span> <span class="st">"openstreetmap_fr"</span>,</span>
+<span>  point_method <span class="op">=</span> <span class="st">"point_on_surface"</span>,</span>
+<span>  pop_raster <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  pop_min_area <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  keep <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  alpha <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  offset <span class="op">=</span> <span class="fl">1</span>,</span>
@@ -242,11 +242,30 @@ Alternatives: <code>"geofabrik"</code>, <code>"bbbike"</code>. Only used when OS
 auto-downloaded (no <code>network_path</code> or <code>time_matrix</code> provided).</p></dd>
 
 
+<dt id="arg-point-method">point_method<a class="anchor" aria-label="anchor" href="#arg-point-method"></a></dt>
+<dd><p>Character. Method for computing representative points
+for census tracts. One of <code>"point_on_surface"</code> (default, guaranteed
+inside polygon), <code>"centroid"</code>, or <code>"pop_weighted"</code> (uses WorldPop
+raster for large tracts). See <code><a href="compute_representative_points.html">compute_representative_points()</a></code>.</p></dd>
+
+
+<dt id="arg-pop-raster">pop_raster<a class="anchor" aria-label="anchor" href="#arg-pop-raster"></a></dt>
+<dd><p>A <a href="https://rspatial.github.io/terra/reference/SpatRaster-class.html" class="external-link">terra::SpatRaster</a>, file path, or <code>NULL</code>. Population
+density raster for <code>point_method = "pop_weighted"</code>. If <code>NULL</code>, WorldPop
+Brazil Constrained 2020 (~48 MB) is auto-downloaded.</p></dd>
+
+
+<dt id="arg-pop-min-area">pop_min_area<a class="anchor" aria-label="anchor" href="#arg-pop-min-area"></a></dt>
+<dd><p>Numeric. Minimum tract area (km²) for applying the
+population-weighted method. Smaller tracts use <code>point_on_surface</code>.
+Default: 1.</p></dd>
+
+
 <dt id="arg-keep">keep<a class="anchor" aria-label="anchor" href="#arg-keep"></a></dt>
 <dd><p>Character vector or NULL. Names of heavy intermediate
 objects to include in the result. Default NULL (lightweight).
-Options: <code>"weights"</code>, <code>"time_matrix"</code>, <code>"sources_sf"</code>.
-See <code><a href="interpolate_election.html">interpolate_election()</a></code> for details.</p></dd>
+Options: <code>"weights"</code>, <code>"time_matrix"</code>, <code>"sources_sf"</code>,
+<code>"pop_raster"</code>, <code>"rep_points"</code>. See <code><a href="interpolate_election.html">interpolate_election()</a></code> for details.</p></dd>
 
 
 <dt id="arg-alpha">alpha<a class="anchor" aria-label="anchor" href="#arg-alpha"></a></dt>
@@ -313,8 +332,8 @@ pre-supplied).</p></dd>
 <dt>call</dt>
 <dd><p>The matched call.</p></dd>
 
-<dt>zone_id</dt>
-<dd><p>Character. Name of zone ID column.</p></dd>
+<dt>tract_id</dt>
+<dd><p>Character. Name of census tract ID column.</p></dd>
 
 <dt>point_id</dt>
 <dd><p>Character. Name of source point ID column.</p></dd>
@@ -323,7 +342,7 @@ pre-supplied).</p></dd>
 <dd><p>Character vector. Names of interpolated columns.</p></dd>
 
 <dt>calib_cols</dt>
-<dd><p>List with <code>$zones</code> and <code>$sources</code> calibration columns.</p></dd>
+<dd><p>List with <code>$tracts</code> and <code>$sources</code> calibration columns.</p></dd>
 
 <dt>weights</dt>
 <dd><p>Numeric matrix or NULL. Present only when

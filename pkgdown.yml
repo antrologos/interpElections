@@ -2,13 +2,10 @@ pandoc: 3.1.11
 pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
-  brazilian-elections: brazilian-elections.html
-  custom-data: custom-data.html
-  introduction: introduction.html
-  performance-and-configuration: performance-and-configuration.html
-  understanding-the-model: understanding-the-model.html
+  get-started: get-started.html
+  methodology: methodology.html
   working-with-results: working-with-results.html
-last_built: 2026-02-16T14:31Z
+last_built: 2026-02-18T08:26Z
 urls:
   reference: https://antrologos.github.io/interpElections/reference
   article: https://antrologos.github.io/interpElections/articles

@@ -18,16 +18,13 @@
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/introduction.html">Getting Started</a></li>
-    <li><a class="dropdown-item" href="../articles/understanding-the-model.html">Understanding the Model</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/get-started.html">Getting Started</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Use Cases</h6></li>
-    <li><a class="dropdown-item" href="../articles/brazilian-elections.html">Brazilian Elections</a></li>
-    <li><a class="dropdown-item" href="../articles/custom-data.html">Custom Data</a></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Technical</h6></li>
+    <li><a class="dropdown-item" href="../articles/methodology.html">Methodology</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
-    <li><a class="dropdown-item" href="../articles/performance-and-configuration.html">Performance &amp; Configuration</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -44,7 +41,7 @@
     </div>
 
     <div class="section level2">
-      <h2 id="core-idw-engine">Core IDW Engine<a class="anchor" aria-label="anchor" href="#core-idw-engine"></a></h2>
+      <h2 id="core-sinkhorn-engine">Core Sinkhorn Engine<a class="anchor" aria-label="anchor" href="#core-sinkhorn-engine"></a></h2>
 
       <div class="section-desc"><p>Build weights, evaluate the objective, and optimize decay parameters.</p></div>
 
@@ -55,38 +52,31 @@
 
       <dl><dt>
 
-          <code><a href="idw_weights.html">idw_weights()</a></code>
+          <code><a href="sinkhorn_balance.html">sinkhorn_balance()</a></code>
 
         </dt>
-        <dd>Compute the column-standardized IDW weight matrix</dd>
+        <dd>Balance a weight matrix using Sinkhorn/IPF iterations</dd>
 
         <dt>
 
-          <code><a href="idw_interpolate.html">idw_interpolate()</a></code>
+          <code><a href="sinkhorn_weights.html">sinkhorn_weights()</a></code>
 
         </dt>
-        <dd>Interpolate source data into target zones using IDW weights</dd>
+        <dd>Compute Sinkhorn-balanced IDW weights</dd>
 
         <dt>
 
-          <code><a href="idw_objective.html">idw_objective()</a></code>
+          <code><a href="sinkhorn_objective.html">sinkhorn_objective()</a></code>
 
         </dt>
-        <dd>Compute the IDW interpolation objective value</dd>
-
-        <dt>
-
-          <code><a href="idw_gradient.html">idw_gradient()</a></code>
-
-        </dt>
-        <dd>Compute the analytical gradient of the IDW objective</dd>
+        <dd>Compute the Sinkhorn-balanced interpolation objective</dd>
 
         <dt>
 
           <code><a href="optimize_alpha.html">optimize_alpha()</a></code>
 
         </dt>
-        <dd>Find optimal decay parameters (alpha) for IDW interpolation</dd>
+        <dd>Find optimal decay parameters (alpha) for spatial interpolation</dd>
       </dl></div><div class="section level2">
       <h2 id="high-level-wrappers">High-Level Wrappers<a class="anchor" aria-label="anchor" href="#high-level-wrappers"></a></h2>
 
@@ -102,7 +92,7 @@
           <code><a href="interpolate_election.html">interpolate_election()</a></code>
 
         </dt>
-        <dd>One-step IDW interpolation from source points to target zones</dd>
+        <dd>One-step IDW interpolation from source points to census tracts</dd>
 
         <dt>
 
@@ -129,10 +119,10 @@
 
         <dt>
 
-          <code><a href="plot.interpElections_result.html">plot(<i>&lt;interpElections_result&gt;</i>)</a></code>
+          <code><a href="plot.interpElections_result.html">plot(<i>&lt;interpElections_result&gt;</i>)</a></code> <code><a href="plot.interpElections_result.html">autoplot(<i>&lt;interpElections_result&gt;</i>)</a></code>
 
         </dt>
-        <dd>Plot an interpolated variable on a map</dd>
+        <dd>Plot an interpolated variable as a choropleth map</dd>
 
         <dt>
 
@@ -154,6 +144,13 @@
 
         </dt>
         <dd>Convert result to data frame</dd>
+
+        <dt>
+
+          <code><a href="plot_interactive.html">plot_interactive()</a></code>
+
+        </dt>
+        <dd>Interactive map of interpolated results</dd>
       </dl></div><div class="section level2">
       <h2 id="brazilian-data-helpers">Brazilian Data Helpers<a class="anchor" aria-label="anchor" href="#brazilian-data-helpers"></a></h2>
 
@@ -208,10 +205,24 @@
 
         <dt>
 
+          <code><a href="br_download_party_legends.html">br_download_party_legends()</a></code>
+
+        </dt>
+        <dd>Download party legends from TSE</dd>
+
+        <dt>
+
           <code><a href="compute_travel_times.html">compute_travel_times()</a></code>
 
         </dt>
-        <dd>Compute a travel-time matrix from zone centroids to source points</dd>
+        <dd>Compute a travel-time matrix from census tract representative points to source points</dd>
+
+        <dt>
+
+          <code><a href="compute_representative_points.html">compute_representative_points()</a></code>
+
+        </dt>
+        <dd>Compute representative points for census tracts</dd>
 
         <dt>
 

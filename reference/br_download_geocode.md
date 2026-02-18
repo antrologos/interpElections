@@ -111,5 +111,6 @@ Hidalgo fallback for missing coordinates),
 to manage cached downloads.
 
 Other Brazil downloads:
+[`br_download_party_legends()`](https://antrologos.github.io/interpElections/reference/br_download_party_legends.md),
 [`br_download_turnout()`](https://antrologos.github.io/interpElections/reference/br_download_turnout.md),
 [`br_download_votes()`](https://antrologos.github.io/interpElections/reference/br_download_votes.md)

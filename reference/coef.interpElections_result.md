@@ -22,4 +22,4 @@ coef(object, ...)
 
 ## Value
 
-Numeric vector of length n (one alpha per zone).
+Numeric vector of length n (one alpha per census tract).

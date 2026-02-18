@@ -113,4 +113,5 @@ to manage cached downloads.
 
 Other Brazil downloads:
 [`br_download_geocode()`](https://antrologos.github.io/interpElections/reference/br_download_geocode.md),
+[`br_download_party_legends()`](https://antrologos.github.io/interpElections/reference/br_download_party_legends.md),
 [`br_download_votes()`](https://antrologos.github.io/interpElections/reference/br_download_votes.md)

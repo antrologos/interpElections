@@ -1,7 +1,7 @@
 # Convert result to data frame
 
-Drops geometry from `tracts_sf` and returns a plain data frame with zone
-IDs and interpolated values.
+Drops geometry from `tracts_sf` and returns a plain data frame with
+census tract IDs and interpolated values.
 
 ## Usage
 
