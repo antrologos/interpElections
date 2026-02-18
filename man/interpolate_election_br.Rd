@@ -29,6 +29,7 @@ interpolate_election_br(
   keep = NULL,
   alpha = NULL,
   offset = 1,
+  calib_type = "full",
   use_gpu = NULL,
   cache = TRUE,
   force = FALSE,
@@ -198,6 +199,14 @@ entirely. Useful for re-interpolating with a previously optimized
 alpha.}
 
 \item{offset}{Numeric. Travel time offset. Default: 1.}
+
+\item{calib_type}{Character. Calibration column type:
+\itemize{
+\item \code{"full"} \strong{(default)}: 28 columns crossing gender (male/female) ×
+literacy (literate/illiterate) × 7 age brackets. Provides stronger
+spatial signal for the optimizer.
+\item \code{"age_only"}: 7 age-bracket-only columns (original behavior).
+}}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 

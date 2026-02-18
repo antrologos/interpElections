@@ -33,6 +33,12 @@ Requires the \code{censobr}, \code{dplyr}, \code{tidyr}, and \code{data.table} p
 
 All years also produce: \code{pop_00_04}, \code{pop_05_09}, \code{pop_10_14},
 \code{pop_15_17} (or \code{pop_15_19} for 2022), \code{pop_70mais}.
+
+Additionally, all years produce gender x literacy columns for the
+same voting-age brackets: \verb{pop_hom_alf_*}, \verb{pop_hom_nalf_*},
+\verb{pop_mul_alf_*}, \verb{pop_mul_nalf_*} (literate/illiterate men/women).
+These are used by the "full" calibration mode in
+\code{\link[=interpolate_election_br]{interpolate_election_br()}}.
 }
 \examples{
 \dontrun{

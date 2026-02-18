@@ -163,23 +163,31 @@ test_that("census year auto-selection works correctly", {
   df <- data.frame(id = seq_len(n))
 
   if (census_year %in% c(2000, 2010)) {
-    df$pop_18_20 <- rpois(n, 30)
-    df$pop_21_24 <- rpois(n, 40)
-    df$pop_25_29 <- rpois(n, 50)
-    df$pop_30_39 <- rpois(n, 80)
-    df$pop_40_49 <- rpois(n, 70)
-    df$pop_50_59 <- rpois(n, 60)
-    df$pop_60_69 <- rpois(n, 40)
+    age_groups <- c("18_20", "21_24", "25_29", "30_39", "40_49", "50_59", "60_69")
+    lambdas <- c(30, 40, 50, 80, 70, 60, 40)
+    for (i in seq_along(age_groups)) {
+      df[[paste0("pop_", age_groups[i])]] <- rpois(n, lambdas[i])
+    }
   } else {
     # Census 2022
-    df$pop_15_19 <- rpois(n, 50)
-    df$pop_20_24 <- rpois(n, 50)
-    df$pop_25_29 <- rpois(n, 50)
-    df$pop_30_39 <- rpois(n, 80)
-    df$pop_40_49 <- rpois(n, 70)
-    df$pop_50_59 <- rpois(n, 60)
-    df$pop_60_69 <- rpois(n, 40)
+    age_groups <- c("15_19", "20_24", "25_29", "30_39", "40_49", "50_59", "60_69")
+    lambdas <- c(50, 50, 50, 80, 70, 60, 40)
+    for (i in seq_along(age_groups)) {
+      df[[paste0("pop_", age_groups[i])]] <- rpois(n, lambdas[i])
+    }
   }
+
+  # Gender x literacy columns (split each age group into 4 categories)
+  categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
+  shares <- c(0.40, 0.05, 0.45, 0.10)  # approximate population shares
+  for (i in seq_along(age_groups)) {
+    total <- df[[paste0("pop_", age_groups[i])]]
+    for (j in seq_along(categories)) {
+      df[[paste0("pop_", categories[j], "_", age_groups[i])]] <-
+        round(total * shares[j])
+    }
+  }
+
   sf::st_sf(df, geometry = sfc)
 }
 
@@ -188,21 +196,30 @@ test_that("census year auto-selection works correctly", {
     lapply(seq_len(m), function(i) sf::st_point(c(runif(1), runif(1)))),
     crs = 4326
   )
-  df <- data.frame(
-    id = seq_len(m),
-    votantes_18_19 = rpois(m, 20),
-    votantes_20 = rpois(m, 10),
-    votantes_21_24 = rpois(m, 40),
-    votantes_25_29 = rpois(m, 50),
-    votantes_30_34 = rpois(m, 40),
-    votantes_35_39 = rpois(m, 40),
-    votantes_40_44 = rpois(m, 35),
-    votantes_45_49 = rpois(m, 35),
-    votantes_50_54 = rpois(m, 30),
-    votantes_55_59 = rpois(m, 30),
-    votantes_60_64 = rpois(m, 20),
-    votantes_65_69 = rpois(m, 20)
-  )
+
+  # Fine TSE age groups
+  tse_ages <- c("18_19", "20", "21_24", "25_29", "30_34", "35_39",
+                "40_44", "45_49", "50_54", "55_59", "60_64", "65_69")
+  tse_lambdas <- c(20, 10, 40, 50, 40, 40, 35, 35, 30, 30, 20, 20)
+
+  df <- data.frame(id = seq_len(m))
+
+  # Age-only votantes columns
+  for (i in seq_along(tse_ages)) {
+    df[[paste0("votantes_", tse_ages[i])]] <- rpois(m, tse_lambdas[i])
+  }
+
+  # Cross-tabulated vot_* columns
+  categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
+  shares <- c(0.40, 0.05, 0.45, 0.10)
+  for (i in seq_along(tse_ages)) {
+    total <- df[[paste0("votantes_", tse_ages[i])]]
+    for (j in seq_along(categories)) {
+      df[[paste0("vot_", categories[j], "_", tse_ages[i])]] <-
+        round(total * shares[j])
+    }
+  }
+
   sf::st_sf(df, geometry = pts)
 }
 
@@ -214,7 +231,8 @@ test_that(".br_match_calibration for census 2010 produces 7 matched groups", {
   tracts <- .mock_tracts_for_calib(8, 2010)
   elec <- .mock_electoral_for_calib(5)
 
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec)
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
+    calib_type = "age_only")
 
   expect_equal(length(result$calib_tracts), 7)
   expect_equal(length(result$calib_sources), 7)
@@ -255,7 +273,8 @@ test_that(".br_match_calibration for census 2000 produces same groups as 2010", 
   tracts <- .mock_tracts_for_calib(6, 2000)
   elec <- .mock_electoral_for_calib(4)
 
-  result <- interpElections:::.br_match_calibration(2000, tracts, elec)
+  result <- interpElections:::.br_match_calibration(2000, tracts, elec,
+    calib_type = "age_only")
 
   expect_equal(result$calib_tracts, c(
     "pop_18_20", "pop_21_24", "pop_25_29",
@@ -270,7 +289,8 @@ test_that(".br_match_calibration for census 2022 splits 18-19 and 20-24 brackets
   tracts <- .mock_tracts_for_calib(8, 2022)
   elec <- .mock_electoral_for_calib(5)
 
-  result <- interpElections:::.br_match_calibration(2022, tracts, elec)
+  result <- interpElections:::.br_match_calibration(2022, tracts, elec,
+    calib_type = "age_only")
 
   # 7 groups for 2022 (pop_18_19 proxy + pop_20_24)
   expect_equal(length(result$calib_tracts), 7)
@@ -311,7 +331,8 @@ test_that(".br_match_calibration aggregation is numerically correct", {
   tracts <- .mock_tracts_for_calib(4, 2010)
   elec <- .mock_electoral_for_calib(3)
 
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec)
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
+    calib_type = "age_only")
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
   orig_df <- sf::st_drop_geometry(elec)
 
@@ -331,6 +352,106 @@ test_that(".br_match_calibration aggregation is numerically correct", {
   expect_equal(
     elec_df$votantes_60_69,
     orig_df$votantes_60_64 + orig_df$votantes_65_69
+  )
+})
+
+# --- calib_type = "full" tests ---
+
+test_that(".br_match_calibration full mode for census 2010 produces 28 pairs", {
+  skip_if_not_installed("sf")
+
+  set.seed(100)
+  tracts <- .mock_tracts_for_calib(8, 2010)
+  elec <- .mock_electoral_for_calib(5)
+
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
+    calib_type = "full")
+
+  expect_equal(length(result$calib_tracts), 28)
+  expect_equal(length(result$calib_sources), 28)
+
+  # First 7 should be hom_alf
+  expect_true(all(grepl("^pop_hom_alf_", result$calib_tracts[1:7])))
+  expect_true(all(grepl("^vot_hom_alf_", result$calib_sources[1:7])))
+
+  # Check age groups cycle correctly for 2010 (18_20 first)
+  expect_equal(result$calib_tracts[1], "pop_hom_alf_18_20")
+  expect_equal(result$calib_sources[1], "vot_hom_alf_18_20")
+  expect_equal(result$calib_tracts[8], "pop_hom_nalf_18_20")
+  expect_equal(result$calib_tracts[15], "pop_mul_alf_18_20")
+  expect_equal(result$calib_tracts[22], "pop_mul_nalf_18_20")
+})
+
+test_that(".br_match_calibration full mode for census 2022 uses 18_19 bracket", {
+  skip_if_not_installed("sf")
+
+  set.seed(110)
+  tracts <- .mock_tracts_for_calib(8, 2022)
+  elec <- .mock_electoral_for_calib(5)
+
+  result <- interpElections:::.br_match_calibration(2022, tracts, elec,
+    calib_type = "full")
+
+  expect_equal(length(result$calib_tracts), 28)
+  expect_equal(length(result$calib_sources), 28)
+
+  # 2022 uses 18_19 (not 18_20) as first age group
+  expect_equal(result$calib_tracts[1], "pop_hom_alf_18_19")
+  expect_equal(result$calib_sources[1], "vot_hom_alf_18_19")
+  expect_equal(result$calib_tracts[2], "pop_hom_alf_20_24")
+  expect_equal(result$calib_sources[2], "vot_hom_alf_20_24")
+
+  # pop_hom_alf_18_19 should be pop_hom_alf_15_19 * 2/5
+  tracts_df <- sf::st_drop_geometry(result$tracts_sf)
+  orig_df <- sf::st_drop_geometry(tracts)
+  expect_equal(
+    tracts_df$pop_hom_alf_18_19,
+    orig_df$pop_hom_alf_15_19 * 2 / 5
+  )
+})
+
+test_that(".br_match_calibration full mode aggregation is correct", {
+  skip_if_not_installed("sf")
+
+  set.seed(120)
+  tracts <- .mock_tracts_for_calib(4, 2010)
+  elec <- .mock_electoral_for_calib(3)
+
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
+    calib_type = "full")
+  elec_df <- sf::st_drop_geometry(result$electoral_sf)
+  orig_df <- sf::st_drop_geometry(elec)
+
+  # vot_hom_alf_18_20 = vot_hom_alf_18_19 + vot_hom_alf_20
+  expect_equal(
+    elec_df$vot_hom_alf_18_20,
+    orig_df$vot_hom_alf_18_19 + orig_df$vot_hom_alf_20
+  )
+
+  # vot_mul_nalf_30_39 = vot_mul_nalf_30_34 + vot_mul_nalf_35_39
+  expect_equal(
+    elec_df$vot_mul_nalf_30_39,
+    orig_df$vot_mul_nalf_30_34 + orig_df$vot_mul_nalf_35_39
+  )
+
+  # vot_hom_nalf_60_69 = vot_hom_nalf_60_64 + vot_hom_nalf_65_69
+  expect_equal(
+    elec_df$vot_hom_nalf_60_69,
+    orig_df$vot_hom_nalf_60_64 + orig_df$vot_hom_nalf_65_69
+  )
+})
+
+test_that(".br_match_calibration rejects invalid calib_type", {
+  skip_if_not_installed("sf")
+
+  set.seed(130)
+  tracts <- .mock_tracts_for_calib(4, 2010)
+  elec <- .mock_electoral_for_calib(3)
+
+  expect_error(
+    interpElections:::.br_match_calibration(2010, tracts, elec,
+      calib_type = "invalid"),
+    "calib_type"
   )
 })
 

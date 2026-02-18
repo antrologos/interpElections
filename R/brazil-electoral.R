@@ -110,6 +110,10 @@
 #'   - `id`: Sequential integer ID.
 #'   - `votantes_18_20`, ..., `votantes_65_69`: Registered voters per
 #'     age bracket at this location (used as calibration data).
+#'   - `vot_hom_alf_*`, `vot_hom_nalf_*`, `vot_mul_alf_*`,
+#'     `vot_mul_nalf_*`: Cross-tabulated voters by gender, literacy,
+#'     and age bracket (used for "full" calibration mode). 48 columns
+#'     total (12 age groups x 4 gender-literacy categories).
 #'
 #'   **Conditional on `what`:**
 #'   - `"candidates"`: `CAND_<number>` columns + `QT_COMPARECIMENTO`.
@@ -353,6 +357,38 @@ br_prepare_electoral <- function(
     ) |>
     tidyr::pivot_wider(names_from = "faixa_idade", values_from = "n",
                        values_fill = 0)
+
+  # Cross-tabulated gender x literacy x age columns (for full calibration)
+  if ("DS_GENERO" %in% names(dados_perfil) &&
+      "DS_GRAU_ESCOLARIDADE" %in% names(dados_perfil)) {
+    crosstab_wide <- dados_perfil |>
+      dplyr::mutate(
+        genero = dplyr::case_when(
+          grepl("MASCULINO", .data$DS_GENERO) ~ "hom",
+          grepl("FEMININO", .data$DS_GENERO)  ~ "mul",
+          TRUE ~ NA_character_
+        ),
+        alfab = dplyr::if_else(
+          grepl("ANALFABETO", toupper(trimws(.data$DS_GRAU_ESCOLARIDADE))),
+          "nalf", "alf"
+        ),
+        crosstab_col = paste0("vot_", .data$genero, "_", .data$alfab, "_",
+                              sub("^votantes_", "", .data$faixa_idade))
+      ) |>
+      dplyr::filter(!is.na(.data$genero)) |>
+      dplyr::count(
+        .data$NM_MUNICIPIO, COD_MUN_TSE = .data$CD_MUNICIPIO,
+        .data$NR_ZONA, .data$NR_SECAO, .data$NR_LOCAL_VOTACAO,
+        .data$crosstab_col,
+        wt = .data$QT_ELEITORES_PERFIL
+      ) |>
+      tidyr::pivot_wider(names_from = "crosstab_col", values_from = "n",
+                         values_fill = 0)
+
+    perfil_wide <- dplyr::left_join(perfil_wide, crosstab_wide,
+      by = c("NM_MUNICIPIO", "COD_MUN_TSE", "NR_ZONA", "NR_SECAO",
+             "NR_LOCAL_VOTACAO"))
+  }
 
   # --- Vote Data ---
   needs_votes <- any(c("candidates", "parties", "turnout") %in% what)

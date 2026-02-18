@@ -24,6 +24,12 @@
 #' All years also produce: `pop_00_04`, `pop_05_09`, `pop_10_14`,
 #' `pop_15_17` (or `pop_15_19` for 2022), `pop_70mais`.
 #'
+#' Additionally, all years produce gender x literacy columns for the
+#' same voting-age brackets: `pop_hom_alf_*`, `pop_hom_nalf_*`,
+#' `pop_mul_alf_*`, `pop_mul_nalf_*` (literate/illiterate men/women).
+#' These are used by the "full" calibration mode in
+#' [interpolate_election_br()].
+#'
 #' @examples
 #' \dontrun{
 #' # Census 2010 population for Sao Paulo
@@ -80,7 +86,7 @@ br_prepare_population <- function(code_muni, year = 2010) {
     ) |>
     dplyr::collect() |>
     dplyr::mutate(dplyr::across(
-      dplyr::everything(),
+      -dplyr::all_of(c("code_tract", "code_muni")),
       \(x) tidyr::replace_na(as.numeric(x), 0)
     ))
 
@@ -103,7 +109,6 @@ br_prepare_population <- function(code_muni, year = 2010) {
   # V1448-V1464: pre-aggregated 5-year groups
   # V1451 = 15-19 group, V1452 = 20-24 group
   persons <- dplyr::mutate(persons,
-    code_tract = as.character(.data$code_tract),
     pop_00_04  = .data$pessoa1_V1448,
     pop_05_09  = .data$pessoa1_V1449,
     pop_10_14  = .data$pessoa1_V1450,
@@ -122,11 +127,86 @@ br_prepare_population <- function(code_muni, year = 2010) {
                  .data$pessoa1_V1464
   )
 
-  dplyr::select(persons,
+  persons <- dplyr::select(persons,
     "code_tract", "code_muni",
     dplyr::starts_with("pop")
-  ) |>
-    as.data.frame()
+  )
+
+  # --- Gender x literacy columns from "Instrucao" dataset ---
+  instrucao <- tryCatch(
+    censobr::read_tracts(2000, "Instrucao"),
+    error = function(e) {
+      warning(sprintf(
+        "Could not download Census 2000 Instrucao data: %s. ",
+        "Gender x literacy columns will be missing.",
+        e$message
+      ), call. = FALSE)
+      NULL
+    }
+  )
+
+  if (!is.null(instrucao)) {
+    # Literate men:   instrucao3_V{2644+age} (ages 5-80+)
+    # Illiterate men: instrucao3_V{2736+age} (ages 5-80+)
+    # Literate women: instrucao5_V{2929+age} (ages 5-80+)
+    # Illiterate women: instrucao5_V{3021+age} (ages 5-80+)
+    instrucao <- instrucao |>
+      dplyr::select(
+        "code_tract", "code_muni",
+        dplyr::starts_with("instrucao3_V26"),
+        dplyr::starts_with("instrucao3_V27"),
+        dplyr::starts_with("instrucao3_V28"),
+        dplyr::starts_with("instrucao5_V29"),
+        dplyr::starts_with("instrucao5_V30"),
+        dplyr::starts_with("instrucao5_V31")
+      ) |>
+      dplyr::collect() |>
+      dplyr::mutate(dplyr::across(
+        -dplyr::all_of(c("code_tract", "code_muni")),
+        \(x) tidyr::replace_na(as.numeric(x), 0)
+      ))
+
+    instrucao <- dplyr::filter(
+      instrucao,
+      as.character(.data$code_muni) %in% code_muni
+    )
+
+    # Column name builders
+    ha  <- function(ages) paste0("instrucao3_V", 2644L + ages)
+    hna <- function(ages) paste0("instrucao3_V", 2736L + ages)
+    fa  <- function(ages) paste0("instrucao5_V", 2929L + ages)
+    fna <- function(ages) paste0("instrucao5_V", 3021L + ages)
+
+    age_brackets <- list(
+      "18_20" = 18:20, "21_24" = 21:24, "25_29" = 25:29,
+      "30_39" = 30:39, "40_49" = 40:49, "50_59" = 50:59,
+      "60_69" = 60:69
+    )
+
+    dt <- data.table::as.data.table(instrucao)
+    for (nm in names(age_brackets)) {
+      ages <- age_brackets[[nm]]
+      dt[, paste0("pop_hom_alf_", nm) := rowSums(.SD),
+         .SDcols = ha(ages)]
+      dt[, paste0("pop_hom_nalf_", nm) := rowSums(.SD),
+         .SDcols = hna(ages)]
+      dt[, paste0("pop_mul_alf_", nm) := rowSums(.SD),
+         .SDcols = fa(ages)]
+      dt[, paste0("pop_mul_nalf_", nm) := rowSums(.SD),
+         .SDcols = fna(ages)]
+    }
+
+    lit_cols <- dplyr::as_tibble(dt) |>
+      dplyr::select("code_tract",
+                     dplyr::starts_with("pop_hom_"),
+                     dplyr::starts_with("pop_mul_"))
+
+    persons <- dplyr::left_join(
+      persons, lit_cols, by = "code_tract"
+    )
+  }
+
+  as.data.frame(persons)
 }
 
 
@@ -147,17 +227,26 @@ br_prepare_population <- function(code_muni, year = 2010) {
     }
   )
 
-  # Select V034-V134 columns (single-age counts)
-  # V034=age0, V035=age1, ..., V134=age100+
-  # Note: V030-V033 are NOT age columns; ages start at V034
+  # Select columns for:
+  #   pessoa13_V*: total population by single age (V034=age0 .. V134=age100+)
+  #   pessoa02_V*: literate men (V002=age5..V077=age80+) and
+  #                literate women (V087=age5..V162=age80+)
+  #   pessoa11_V*: total men by single age (V035=age1..V134=age100+)
+  #   pessoa12_V*: total women by single age (V035=age1..V134=age100+)
   persons <- persons |>
     dplyr::select(
       "code_tract", "code_muni",
-      dplyr::matches("^pessoa13_V0[3][4-9]$|^pessoa13_V0[4-9][0-9]$|^pessoa13_V1[0-3][0-9]$")
+      dplyr::matches(paste0(
+        "^pessoa13_V0[3][4-9]$|^pessoa13_V0[4-9][0-9]$|",
+        "^pessoa13_V1[0-3][0-9]$|",
+        "^pessoa02_V[01][0-9][0-9]$|^pessoa02_V2[0-4][0-9]$|",
+        "^pessoa11_V0[5-9][0-9]$|^pessoa11_V1[0-3][0-9]$|",
+        "^pessoa12_V0[5-9][0-9]$|^pessoa12_V1[0-3][0-9]$"
+      ))
     ) |>
     dplyr::collect() |>
     dplyr::mutate(dplyr::across(
-      dplyr::everything(),
+      -dplyr::all_of(c("code_tract", "code_muni")),
       \(x) tidyr::replace_na(as.numeric(x), 0)
     ))
 
@@ -177,19 +266,7 @@ br_prepare_population <- function(code_muni, year = 2010) {
   # Use data.table for fast row-wise aggregation
   dt <- data.table::as.data.table(persons)
 
-  # Offset: V{034 + age} = that age
-  # V034=age0, V035=age1, ..., V038=age4  => pop_00_04
-  # V039=age5, ..., V043=age9             => pop_05_09
-  # V044=age10, ..., V048=age14           => pop_10_14
-  # V049=age15, V050=age16, V051=age17    => pop_15_17
-  # V052=age18, V053=age19, V054=age20    => pop_18_20
-  # V055=age21, ..., V058=age24           => pop_21_24
-  # V059=age25, ..., V063=age29           => pop_25_29
-  # V064=age30, ..., V073=age39           => pop_30_39
-  # V074=age40, ..., V083=age49           => pop_40_49
-  # V084=age50, ..., V093=age59           => pop_50_59
-  # V094=age60, ..., V103=age69           => pop_60_69
-  # V104=age70, ..., V134=age100+         => pop_70mais
+  # ---- Total population age brackets (pessoa13: V{034+age}) ----
   dt[, pop_00_04 := rowSums(.SD),
      .SDcols = paste0("pessoa13_V0", 34:38)]
   dt[, pop_05_09 := rowSums(.SD),
@@ -215,6 +292,61 @@ br_prepare_population <- function(code_muni, year = 2010) {
                  paste0("pessoa13_V", 100:103))]
   dt[, pop_70mais := rowSums(.SD),
      .SDcols = paste0("pessoa13_V", 104:134)]
+
+  # ---- Gender x literacy age brackets ----
+  # pessoa02: literate men V{age-3} (V002=age5..V077=age80+),
+  #           literate women V{age+82} (V087=age5..V162=age80+)
+  # pessoa11: total men V{034+age}, pessoa12: total women V{034+age}
+  # Illiterate = total - literate (clamped to 0)
+
+  # Helper: build column names for an age range
+  p02 <- function(ages) paste0("pessoa02_V", sprintf("%03d", ages - 3L))
+  p11 <- function(ages) paste0("pessoa11_V", sprintf("%03d", 34L + ages))
+  p02f <- function(ages) paste0("pessoa02_V", sprintf("%03d", ages + 82L))
+  p12 <- function(ages) paste0("pessoa12_V", sprintf("%03d", 34L + ages))
+
+  age_brackets <- list(
+    "18_20" = 18:20, "21_24" = 21:24, "25_29" = 25:29,
+    "30_39" = 30:39, "40_49" = 40:49, "50_59" = 50:59,
+    "60_69" = 60:69
+  )
+
+  for (nm in names(age_brackets)) {
+    ages <- age_brackets[[nm]]
+    hom_alf_cols  <- p02(ages)
+    hom_tot_cols  <- p11(ages)
+    mul_alf_cols  <- p02f(ages)
+    mul_tot_cols  <- p12(ages)
+
+    hom_alf_var  <- paste0("pop_hom_alf_", nm)
+    hom_nalf_var <- paste0("pop_hom_nalf_", nm)
+    mul_alf_var  <- paste0("pop_mul_alf_", nm)
+    mul_nalf_var <- paste0("pop_mul_nalf_", nm)
+
+    # Literate counts
+    dt[, (hom_alf_var) := rowSums(.SD),
+       .SDcols = hom_alf_cols]
+    dt[, (mul_alf_var) := rowSums(.SD),
+       .SDcols = mul_alf_cols]
+
+    # Total men/women for age bracket (temp columns)
+    tmp_hom <- paste0(".hom_tot_", nm)
+    tmp_mul <- paste0(".mul_tot_", nm)
+    dt[, (tmp_hom) := rowSums(.SD), .SDcols = hom_tot_cols]
+    dt[, (tmp_mul) := rowSums(.SD), .SDcols = mul_tot_cols]
+
+    # Illiterate = total - literate (clamped to 0)
+    dt[, (hom_nalf_var) := pmax(
+      get(tmp_hom) - get(hom_alf_var), 0
+    )]
+    dt[, (mul_nalf_var) := pmax(
+      get(tmp_mul) - get(mul_alf_var), 0
+    )]
+
+    # Clean up temp columns
+    dt[, (tmp_hom) := NULL]
+    dt[, (tmp_mul) := NULL]
+  }
 
   dplyr::as_tibble(dt) |>
     dplyr::select(
@@ -282,6 +414,120 @@ br_prepare_population <- function(code_muni, year = 2010) {
     pop_60_69  = .data$V01040,
     pop_70mais = .data$V01041
   )
+
+  # --- Gender x literacy columns from alfabetizacao_V* ---
+  # Download with literacy columns from the same Pessoas dataset
+  lit_data <- tryCatch(
+    censobr::read_tracts(2022, "Pessoas"),
+    error = function(e) {
+      warning(sprintf(
+        "Could not re-download Census 2022 Pessoas data: %s. ",
+        "Gender x literacy columns will be missing.",
+        e$message
+      ), call. = FALSE)
+      NULL
+    }
+  )
+
+  if (!is.null(lit_data)) {
+    lit_data <- lit_data |>
+      dplyr::select(
+        "code_tract", "code_muni",
+        dplyr::starts_with("alfabetizacao_V007"),
+        dplyr::starts_with("alfabetizacao_V008")
+      ) |>
+      dplyr::collect() |>
+      dplyr::mutate(dplyr::across(
+        -dplyr::all_of(c("code_tract", "code_muni")),
+        \(x) tidyr::replace_na(as.numeric(x), 0)
+      ))
+
+    # Remove "alfabetizacao_" prefix
+    nm <- names(lit_data)
+    names(lit_data) <- sub("^alfabetizacao_", "", nm)
+
+    lit_data <- dplyr::filter(
+      lit_data,
+      as.character(.data$code_muni) %in% code_muni
+    )
+
+    # Census 2022 age groups (already pre-aggregated):
+    # Men total:   V00722(15-19)..V00734(80+)
+    # Women total: V00735(15-19)..V00747(80+)
+    # Lit men:     V00826(15-19)..V00838(80+)
+    # Lit women:   V00839(15-19)..V00851(80+)
+    #
+    # Age group mapping (V offset from base):
+    # 15-19=+0, 20-24=+1, 25-29=+2, 30-34=+3, 35-39=+4,
+    # 40-44=+5, 45-49=+6, 50-54=+7, 55-59=+8,
+    # 60-64=+9, 65-69=+10, 70-79=+11, 80+=+12
+
+    # 15-19 bracket: use 2/5 proxy for 18-19
+    lit_data <- dplyr::mutate(lit_data,
+      pop_hom_alf_18_19  = .data$V00826 * 2 / 5,
+      pop_hom_nalf_18_19 = pmax(
+        (.data$V00722 - .data$V00826) * 2 / 5, 0),
+      pop_mul_alf_18_19  = .data$V00839 * 2 / 5,
+      pop_mul_nalf_18_19 = pmax(
+        (.data$V00735 - .data$V00839) * 2 / 5, 0),
+      # 20-24
+      pop_hom_alf_20_24  = .data$V00827,
+      pop_hom_nalf_20_24 = pmax(
+        .data$V00723 - .data$V00827, 0),
+      pop_mul_alf_20_24  = .data$V00840,
+      pop_mul_nalf_20_24 = pmax(
+        .data$V00736 - .data$V00840, 0),
+      # 25-29
+      pop_hom_alf_25_29  = .data$V00828,
+      pop_hom_nalf_25_29 = pmax(
+        .data$V00724 - .data$V00828, 0),
+      pop_mul_alf_25_29  = .data$V00841,
+      pop_mul_nalf_25_29 = pmax(
+        .data$V00737 - .data$V00841, 0),
+      # 30-39 = 30-34 + 35-39
+      pop_hom_alf_30_39  = .data$V00829 + .data$V00830,
+      pop_hom_nalf_30_39 = pmax(
+        (.data$V00725 + .data$V00726) -
+          (.data$V00829 + .data$V00830), 0),
+      pop_mul_alf_30_39  = .data$V00842 + .data$V00843,
+      pop_mul_nalf_30_39 = pmax(
+        (.data$V00738 + .data$V00739) -
+          (.data$V00842 + .data$V00843), 0),
+      # 40-49 = 40-44 + 45-49
+      pop_hom_alf_40_49  = .data$V00831 + .data$V00832,
+      pop_hom_nalf_40_49 = pmax(
+        (.data$V00727 + .data$V00728) -
+          (.data$V00831 + .data$V00832), 0),
+      pop_mul_alf_40_49  = .data$V00844 + .data$V00845,
+      pop_mul_nalf_40_49 = pmax(
+        (.data$V00740 + .data$V00741) -
+          (.data$V00844 + .data$V00845), 0),
+      # 50-59 = 50-54 + 55-59
+      pop_hom_alf_50_59  = .data$V00833 + .data$V00834,
+      pop_hom_nalf_50_59 = pmax(
+        (.data$V00729 + .data$V00730) -
+          (.data$V00833 + .data$V00834), 0),
+      pop_mul_alf_50_59  = .data$V00846 + .data$V00847,
+      pop_mul_nalf_50_59 = pmax(
+        (.data$V00742 + .data$V00743) -
+          (.data$V00846 + .data$V00847), 0),
+      # 60-69 = 60-64 + 65-69
+      pop_hom_alf_60_69  = .data$V00835 + .data$V00836,
+      pop_hom_nalf_60_69 = pmax(
+        (.data$V00731 + .data$V00732) -
+          (.data$V00835 + .data$V00836), 0),
+      pop_mul_alf_60_69  = .data$V00848 + .data$V00849,
+      pop_mul_nalf_60_69 = pmax(
+        (.data$V00744 + .data$V00745) -
+          (.data$V00848 + .data$V00849), 0)
+    )
+
+    lit_cols <- dplyr::select(lit_data, "code_tract",
+      dplyr::starts_with("pop_hom_"),
+      dplyr::starts_with("pop_mul_"))
+    persons <- dplyr::left_join(persons, lit_cols,
+                                by = "code_tract")
+  }
 
   dplyr::select(persons,
     "code_tract", "code_muni",

@@ -139,6 +139,11 @@
 #'   entirely. Useful for re-interpolating with a previously optimized
 #'   alpha.
 #' @param offset Numeric. Travel time offset. Default: 1.
+#' @param calib_type Character. Calibration column type:
+#'   - `"full"` **(default)**: 28 columns crossing gender (male/female) ×
+#'     literacy (literate/illiterate) × 7 age brackets. Provides stronger
+#'     spatial signal for the optimizer.
+#'   - `"age_only"`: 7 age-bracket-only columns (original behavior).
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
 #' @param cache Logical. If TRUE (default), downloaded files (TSE data,
 #'   OSM networks, census tracts) are stored persistently across R sessions.
@@ -385,6 +390,7 @@ interpolate_election_br <- function(
     keep                = NULL,
     alpha               = NULL,
     offset              = 1,
+    calib_type          = "full",
     use_gpu             = NULL,
     cache               = TRUE,
     force               = FALSE,
@@ -549,7 +555,8 @@ interpolate_election_br <- function(
   calib <- .br_match_calibration(
     census_year = census_year,
     tracts_sf = tracts_sf,
-    electoral_sf = electoral_sf
+    electoral_sf = electoral_sf,
+    calib_type = calib_type
   )
   tracts_sf <- calib$tracts_sf
   electoral_sf <- calib$electoral_sf
@@ -835,73 +842,88 @@ interpolate_election_br <- function(
 
 # --- Internal: match calibration brackets ---
 # Aggregates TSE voter brackets to match census population brackets.
+# calib_type = "age_only": 7 age-only pairs (original behavior)
+# calib_type = "full": 28 gender x literacy x age pairs
 
-.br_match_calibration <- function(census_year, tracts_sf, electoral_sf) {
+.br_match_calibration <- function(census_year, tracts_sf, electoral_sf,
+                                   calib_type = "full") {
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("The 'sf' package is required", call. = FALSE)
+  }
+  if (!calib_type %in% c("full", "age_only")) {
+    stop("calib_type must be 'full' or 'age_only'", call. = FALSE)
   }
 
   tracts_df <- sf::st_drop_geometry(tracts_sf)
   elec_df <- sf::st_drop_geometry(electoral_sf)
 
-  # Get pop columns from census
-  pop_cols <- grep("^pop_", names(tracts_df), value = TRUE)
-  vot_cols <- grep("^votantes_", names(elec_df), value = TRUE)
+  # --- Helper: aggregate fine TSE groups to census groups ---
+  # Applies to both age-only (votantes_*) and cross-tab (vot_*) columns
+  .aggregate_tse_groups <- function(electoral_sf, elec_df, prefix,
+                                     is_2022 = FALSE) {
+    if (is_2022) {
+      electoral_sf[[paste0(prefix, "20_24")]] <- .safe_sum(
+        elec_df, c(paste0(prefix, "20"), paste0(prefix, "21_24")))
+    } else {
+      electoral_sf[[paste0(prefix, "18_20")]] <- .safe_sum(
+        elec_df, c(paste0(prefix, "18_19"), paste0(prefix, "20")))
+    }
+    electoral_sf[[paste0(prefix, "30_39")]] <- .safe_sum(
+      elec_df, c(paste0(prefix, "30_34"), paste0(prefix, "35_39")))
+    electoral_sf[[paste0(prefix, "40_49")]] <- .safe_sum(
+      elec_df, c(paste0(prefix, "40_44"), paste0(prefix, "45_49")))
+    electoral_sf[[paste0(prefix, "50_59")]] <- .safe_sum(
+      elec_df, c(paste0(prefix, "50_54"), paste0(prefix, "55_59")))
+    electoral_sf[[paste0(prefix, "60_69")]] <- .safe_sum(
+      elec_df, c(paste0(prefix, "60_64"), paste0(prefix, "65_69")))
+    electoral_sf
+  }
 
-  if (census_year %in% c(2000, 2010)) {
-    # Census produces: pop_18_20, pop_21_24, pop_25_29, pop_30_39,
-    #   pop_40_49, pop_50_59, pop_60_69
-    # TSE produces: votantes_18_19, votantes_20, ..., votantes_65_69 (12 fine groups)
-    # Need to aggregate TSE's fine groups to match census coarser groups
+  is_2022 <- !census_year %in% c(2000, 2010)
 
-    calib_tracts <- c("pop_18_20", "pop_21_24", "pop_25_29",
-                     "pop_30_39", "pop_40_49", "pop_50_59",
-                     "pop_60_69")
+  if (is_2022) {
+    age_groups <- c("18_19", "20_24", "25_29", "30_39",
+                    "40_49", "50_59", "60_69")
+  } else {
+    age_groups <- c("18_20", "21_24", "25_29", "30_39",
+                    "40_49", "50_59", "60_69")
+  }
 
-    # Aggregate TSE voter columns
-    electoral_sf$votantes_18_20 <- .safe_sum(
-      elec_df, c("votantes_18_19", "votantes_20"))
-    electoral_sf$votantes_30_39 <- .safe_sum(
-      elec_df, c("votantes_30_34", "votantes_35_39"))
-    electoral_sf$votantes_40_49 <- .safe_sum(
-      elec_df, c("votantes_40_44", "votantes_45_49"))
-    electoral_sf$votantes_50_59 <- .safe_sum(
-      elec_df, c("votantes_50_54", "votantes_55_59"))
-    electoral_sf$votantes_60_69 <- .safe_sum(
-      elec_df, c("votantes_60_64", "votantes_65_69"))
+  # Always aggregate age-only TSE columns (needed even in full mode)
+  electoral_sf <- .aggregate_tse_groups(
+    electoral_sf, elec_df, "votantes_", is_2022 = is_2022)
 
-    calib_sources <- c("votantes_18_20", "votantes_21_24",
-                       "votantes_25_29", "votantes_30_39",
-                       "votantes_40_49", "votantes_50_59",
-                       "votantes_60_69")
+  if (is_2022) {
+    tracts_sf$pop_18_19 <- tracts_df$pop_15_19 * 2 / 5
+  }
+
+  if (calib_type == "age_only") {
+    # Original behavior: 7 age-only pairs
+    calib_tracts <- paste0("pop_", age_groups)
+    calib_sources <- paste0("votantes_", age_groups)
 
   } else {
-    # Census 2022 produces: pop_15_19, pop_20_24, pop_25_29, pop_30_39,
-    #   pop_40_49, pop_50_59, pop_60_69
-    # 15-19 bracket includes non-voting ages (15-17); use 2/5 as proxy
-    # for ages 18-19 (assuming uniform distribution within bracket).
-    # pop_20_24 matches TSE's "20 anos" + "21 a 24 anos" directly.
+    # Full calibration: 28 gender x literacy x age pairs
+    categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
 
-    tracts_sf$pop_18_19 <- tracts_df$pop_15_19 * 2 / 5
+    for (cat in categories) {
+      electoral_sf <- .aggregate_tse_groups(
+        electoral_sf, elec_df, paste0("vot_", cat, "_"), is_2022 = is_2022)
+    }
 
-    electoral_sf$votantes_20_24 <- .safe_sum(
-      elec_df, c("votantes_20", "votantes_21_24"))
-    electoral_sf$votantes_30_39 <- .safe_sum(
-      elec_df, c("votantes_30_34", "votantes_35_39"))
-    electoral_sf$votantes_40_49 <- .safe_sum(
-      elec_df, c("votantes_40_44", "votantes_45_49"))
-    electoral_sf$votantes_50_59 <- .safe_sum(
-      elec_df, c("votantes_50_54", "votantes_55_59"))
-    electoral_sf$votantes_60_69 <- .safe_sum(
-      elec_df, c("votantes_60_64", "votantes_65_69"))
+    if (is_2022) {
+      # Apply 2/5 proxy for 18-19 from census 15-19 bracket, per category
+      for (cat in categories) {
+        pop_15_19_col <- paste0("pop_", cat, "_15_19")
+        pop_18_19_col <- paste0("pop_", cat, "_18_19")
+        if (pop_15_19_col %in% names(tracts_df)) {
+          tracts_sf[[pop_18_19_col]] <- tracts_df[[pop_15_19_col]] * 2 / 5
+        }
+      }
+    }
 
-    calib_tracts <- c("pop_18_19", "pop_20_24", "pop_25_29",
-                     "pop_30_39", "pop_40_49", "pop_50_59",
-                     "pop_60_69")
-    calib_sources <- c("votantes_18_19", "votantes_20_24",
-                       "votantes_25_29", "votantes_30_39",
-                       "votantes_40_49", "votantes_50_59",
-                       "votantes_60_69")
+    calib_tracts <- paste0("pop_", rep(categories, each = 7), "_", age_groups)
+    calib_sources <- paste0("vot_", rep(categories, each = 7), "_", age_groups)
   }
 
   # Verify all columns exist
