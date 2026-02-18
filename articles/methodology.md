@@ -62,8 +62,9 @@ station in the area voted. But several things make this harder than it
 seems:
 
 - **One station, many neighborhoods**: a school in Botafogo may receive
-  voters from Botafogo, Humaitá, and even from the Santa Marta favela up
-  the hill. The station’s vote total is a mix of all these populations.
+  voters from Botafogo, Laranjeiras, and even from the Santa Marta
+  favela up the hill. The station’s vote total is a mix of all these
+  populations.
 - **One neighborhood, many stations**: Copacabana voters may be assigned
   to polling stations in Copacabana itself, in neighboring Ipanema, or
   in Leme. The neighborhood’s voters are split across multiple stations.
@@ -119,6 +120,14 @@ proximity assumption.
 > Pereira, R. H. M., Braga, C. K. V., Serra, B., & Nadalin, V. (2023).
 > “Free public transit and voter turnout.” *Available at:*
 > <https://www.urbandemographics.org/files/2023_Pereira_et_al_free_public_transit_voter_turnout.pdf>
+
+A second important assumption is that **voters reside in the
+municipality where they are registered to vote**, which is the same
+municipality captured by the census. This residential assumption is what
+allows us to use census population data as the target distribution: the
+age structure of voters at a polling station should reflect the age
+structure of the surrounding population. Without this assumption, the
+calibration step would not be valid.
 
 We use realistic **walking travel times** computed on the OpenStreetMap
 road network, not straight-line distances. Mountains, rivers, and the
@@ -341,27 +350,40 @@ Why not just use straight-line distance? Because geography creates
 dramatic discrepancies between Euclidean distance and actual walking
 time. Two examples:
 
-**Example 1: Mountains (Rio de Janeiro)**
+**Example 1: Mountain barrier (Rio de Janeiro)**
 
-The Santa Marta favela sits on a steep hillside in Botafogo, Rio de
-Janeiro. A polling station at the bottom of the hill may be only 500
-meters away in a straight line, but the actual walking route — along
-switchback streets, staircases, and steep alleys — can take 20–30
-minutes.
+A point in the Botafogo neighborhood lies at the base of the
+Corcovado/Sumaré hills. A polling station in Laranjeiras sits on the
+other side. In a straight line, the distance is modest — but the walking
+route must navigate around the steep terrain:
 
-![](figures/routes-rj-santa-marta.png)
+![](figures/routes-rj-botafogo-laranjeiras.png)
 
 The solid blue line shows the actual walking route computed by r5r on
 the OSM road network. The dotted red line shows the straight-line
 distance. In mountainous terrain, these can differ by a factor of 3–5x.
 
-**Example 2: River barrier (Recife)**
+**Example 2: Water barrier (Recife)**
 
-The Capibaribe river divides central Recife. Two points on opposite
-banks may be only 200 meters apart, but the walking route must follow
-the river to the nearest bridge, adding significant distance.
+A point in the Boa Vista neighborhood and a destination in the Brasília
+Teimosa peninsula are separated by Recife’s waterways. The walking route
+must navigate around the estuary and cross bridges, adding significant
+distance compared to the straight line.
 
-![](figures/routes-recife-river.png)
+![](figures/routes-recife-water.png)
+
+**Example 3: Water barrier (Florianópolis)**
+
+Florianópolis, capital of Santa Catarina, is split between the mainland
+and an island in the Atlantic. A point in Coqueiros (mainland) and a
+destination at Costeira do Pirajubaé (island) are separated by the bay.
+The walking route must detour to one of the bridges connecting the two
+sides:
+
+![](figures/routes-florianopolis-water.png)
+
+These examples illustrate why Euclidean distance is a poor proxy for
+actual accessibility — and why the routing engine matters.
 
 #### 9.3 Building the travel time matrix
 
@@ -611,26 +633,31 @@ In our context:
 - The initial pattern comes from the IDW kernel (travel-time-based
   weights)
 
-#### 12.2 Who is Sinkhorn?
+#### 12.2 Historical context: from demography to optimal transport
 
-Richard Sinkhorn was an American mathematician who proved in 1964 that
-any square matrix with all positive entries can be made **doubly
-stochastic** (all rows and columns sum to 1) by alternately normalizing
-rows and columns. This elegant result — “A relationship between
-arbitrary positive matrices and doubly stochastic matrices” — was later
-extended to rectangular matrices with arbitrary prescribed marginals.
+The idea of alternating row and column normalization has been discovered
+independently in several fields, each giving it a different name:
 
-The same idea appears independently in several fields under different
-names:
-
-- **IPF (Iterative Proportional Fitting)** in statistics and demography
-  (Deming & Stephan, 1940)
-- **RAS method** in economics (input-output tables)
-- **Matrix balancing** in transportation planning (trip distribution)
-- **Sinkhorn-Knopp algorithm** in numerical linear algebra
+- **Iterative Proportional Fitting (IPF)**: Deming & Stephan (1940)
+  introduced it for adjusting census contingency tables to match known
+  marginal totals — directly related to our application.
+- **RAS method**: economists use it to update input-output tables when
+  only row and column totals are available for a new period.
+- **Matrix balancing**: transportation planners apply it for trip
+  distribution — fitting an origin-destination matrix to known trip
+  generation and attraction totals.
+- **Sinkhorn-Knopp algorithm**: Richard Sinkhorn (1964) proved the key
+  convergence result: any matrix with all positive entries can be made
+  doubly stochastic by this procedure. The result was later extended to
+  rectangular matrices with arbitrary prescribed marginals.
+- **Optimal transport**: in the machine learning literature, the
+  Sinkhorn algorithm is the standard method for computing entropy-
+  regularized optimal transport (Cuturi, 2013).
 
 All describe the same procedure: alternate row and column normalization
-until both marginal constraints are satisfied.
+until both marginal constraints are satisfied. The convergence is
+guaranteed when `sum(row_targets) = sum(col_targets)`, and the balanced
+matrix is unique.
 
 #### 12.3 Step-by-step worked example
 
@@ -1270,7 +1297,9 @@ directly. This is equivalent to constructing Voronoi (Thiessen) polygons
 around each station and assigning each tract 100% of the weight from one
 station.
 
-We compare both methods using **Palmas (TO)**, the capital of Tocantins:
+We compare both methods across **four Brazilian state capitals** with
+diverse urban morphologies: Palmas (TO), Cuiabá (MT), Manaus (AM), and
+Natal (RN).
 
 ![](figures/voronoi-palmas-map.png)
 
@@ -1279,23 +1308,60 @@ and electoral profile of a single station. This ignores the many-to-many
 structure: a tract near the boundary between two Voronoi cells gets none
 of the influence from the station just across the boundary.
 
-How well do the two methods recover the census age structure?
+How well do the two methods recover the census age structure? The
+following figure compares predicted versus observed demographic profiles
+across all four cities:
 
 ![](figures/voronoi-vs-sinkhorn-scatter.png)
 
-The scatter plot shows predicted versus observed population by age
-bracket for each tract. Sinkhorn points (left) cluster tightly around
-the 45-degree line. Voronoi points (right) show much more scatter — many
-tracts have large prediction errors because they were assigned to a
-station with a very different demographic composition.
+Sinkhorn points cluster tightly around the 45-degree line in every city.
+Voronoi points show much more scatter — many tracts have large
+prediction errors because they were assigned to a station with a very
+different demographic composition.
 
 ![](figures/voronoi-vs-sinkhorn-residuals.png)
 
-The residual boxplot confirms the pattern: Sinkhorn residuals are
-tightly centered around zero, while Voronoi residuals have much larger
-spread. The Sinkhorn method achieves dramatically lower squared error
-because it uses smooth, calibrated weights instead of hard
-nearest-station assignment.
+The residual boxplots confirm the pattern across all four cities:
+Sinkhorn residuals are tightly centered around zero, while Voronoi
+residuals have much larger spread.
+
+The aggregate SSE ratio quantifies the advantage:
+
+![](figures/voronoi-sse-ratio-cities.png)
+
+In every city, the Sinkhorn method achieves dramatically lower squared
+error than Voronoi assignment — typically by a factor of 100–1000x. The
+advantage is consistent across cities of different sizes and urban
+layouts, confirming that smooth, calibrated weighting is fundamentally
+superior to hard nearest-station assignment.
+
+#### 17.4 Ecological correlation: Lula vote share and household income
+
+As a final validation exercise, we examine whether the interpolated
+voting patterns exhibit expected ecological correlations. If the spatial
+weights are correct, interpolated vote shares should correlate with
+tract-level socioeconomic indicators from independent data sources.
+
+We correlate the interpolated percentage of votes for Lula (PT) in each
+census tract with the average monthly income of household heads,
+obtained from the 2022 Census (via
+`censobr::read_tracts(2022, "ResponsavelRenda")`). We show this
+correlation for four cities with very different socioeconomic profiles:
+São Paulo (SP), Salvador (BA), Porto Alegre (RS), and Cuiabá (MT).
+
+![](figures/lula-income-correlation.png)
+
+The negative correlation is consistent across all four cities and with
+well-established patterns in Brazilian electoral geography: lower-income
+areas tend to vote more heavily for PT candidates, while higher-income
+areas lean toward other parties. The fact that our interpolated
+tract-level estimates reproduce this pattern — using vote data that was
+originally measured at polling stations, not at tracts — provides
+external validation that the spatial weights are geographically
+meaningful.
+
+The income data is log-transformed ($\log(x + 1)$) to reduce the
+influence of extreme values and improve linearity.
 
 ## Part VII: Practical
 
