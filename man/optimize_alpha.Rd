@@ -2,13 +2,15 @@
 % Please edit documentation in R/optimize.R
 \name{optimize_alpha}
 \alias{optimize_alpha}
-\title{Find optimal decay parameters (alpha) for IDW interpolation}
+\title{Find optimal decay parameters (alpha) for spatial interpolation}
 \usage{
 optimize_alpha(
   time_matrix,
   pop_matrix,
   source_matrix,
+  row_targets = NULL,
   alpha_init = NULL,
+  sinkhorn_iter = 5L,
   use_gpu = NULL,
   device = NULL,
   dtype = "float32",
@@ -18,12 +20,8 @@ optimize_alpha(
   gpu_grad_tol = 1e-04,
   gpu_grad_clip = 1,
   gpu_warmup_steps = 10L,
-  cpu_method = "auto",
-  cpu_parallel = FALSE,
-  cpu_ncores = NULL,
   lower_bound = 0,
   upper_bound = 20,
-  maxit = 10000L,
   offset = 1,
   verbose = TRUE
 )
@@ -38,65 +36,52 @@ with k demographic groups as columns.}
 \item{source_matrix}{Numeric matrix [m x k]. Known counts at source
 points (e.g., registered voters by age group).}
 
+\item{row_targets}{Numeric vector of length n, or NULL. Target row sums
+for Sinkhorn balancing. Each element specifies how much weight a zone
+should attract, proportional to its share of total population. If NULL
+(default), auto-computed as \code{rowSums(pop_matrix) / sum(pop_matrix) * m}.}
+
 \item{alpha_init}{Numeric vector of length n, or a single value to be
 recycled. Initial guess for alpha. Default: \code{rep(1, n)}.}
 
-\item{use_gpu}{Logical or NULL. If \code{TRUE}, use torch ADAM optimizer. If
-\code{FALSE}, use CPU optimization. If \code{NULL} (default), reads the package
-option \code{interpElections.use_gpu} (set via \code{\link[=use_gpu]{use_gpu()}}).}
+\item{sinkhorn_iter}{Integer. Number of Sinkhorn iterations per objective
+evaluation during optimization. Higher values give more accurate balancing
+but are slower. Default: 5 (sufficient for optimization; final weights
+use full convergence via \code{\link[=sinkhorn_weights]{sinkhorn_weights()}}).}
+
+\item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
+\code{FALSE}, use CPU. If \code{NULL} (default), reads the package option
+\code{interpElections.use_gpu} (set via \code{\link[=use_gpu]{use_gpu()}}).}
 
 \item{device}{Character or NULL. Torch device: \code{"cuda"}, \code{"mps"}, or
 \code{"cpu"}. Only used when GPU is enabled. Default: NULL (auto-detect).}
 
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
-\code{"float32"}. Float32 halves GPU memory usage with negligible precision
-loss for this optimization problem.}
+\code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
-\item{gpu_iterations}{Integer. Number of outer ADAM iterations. Default: 20.}
+\item{gpu_iterations}{Integer. Number of outer ADAM phases with learning
+rate decay. Default: 20.}
 
 \item{gpu_lr_init}{Numeric. Initial ADAM learning rate. Default: 0.1.}
 
-\item{gpu_lr_decay}{Numeric. Learning rate decay factor per outer iteration.
+\item{gpu_lr_decay}{Numeric. Learning rate decay factor per phase.
 Default: 0.6.}
 
-\item{gpu_grad_tol}{Numeric. Gradient norm threshold for convergence
-(first-order optimality condition). When the L2 norm of the gradient
-falls below this value, optimization stops early. Default: 1e-4.}
+\item{gpu_grad_tol}{Numeric. Gradient norm threshold for convergence.
+Default: 1e-4.}
 
-\item{gpu_grad_clip}{Numeric or NULL. Maximum gradient norm for gradient
-clipping. Limits gradient magnitude to prevent large steps on steep
-regions, leading to better convergence and lower final gradient norms.
+\item{gpu_grad_clip}{Numeric or NULL. Maximum gradient norm for clipping.
 \code{NULL} disables clipping. Default: 1.0.}
 
-\item{gpu_warmup_steps}{Integer. Number of linear learning rate warmup
-steps at the start of phase 1. Prevents cold-start oscillations when
-starting with a large LR + strong momentum. Default: 10.}
-
-\item{cpu_method}{Character. CPU optimization method: \code{"L-BFGS-B"},
-\code{"BFGS"}, or \code{"auto"}. \code{"auto"} tries parallel L-BFGS-B first (if
-\code{cpu_parallel = TRUE}), then serial L-BFGS-B, then BFGS.
-Default: \code{"auto"}.}
-
-\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
-optimization? Default: \code{FALSE}. \strong{Not recommended:} when an
-analytical gradient is provided (as here), \code{optimParallel} only
-parallelizes \code{fn()} and \code{gr()} evaluation across 2 workers —
-additional cores sit idle. In benchmarks this is ~10x \strong{slower}
-than serial L-BFGS-B. For large municipalities, use GPU
-(\code{use_gpu = TRUE}) instead.}
-
-\item{cpu_ncores}{Integer or NULL. Number of cores for parallel optimization.
-Default: NULL (auto = 80\%\% of available cores).}
+\item{gpu_warmup_steps}{Integer. Linear learning rate warmup steps at
+the start of phase 1. Default: 10.}
 
 \item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.}
 
-\item{upper_bound}{Numeric. Upper bound for alpha values. Values above
-~10 produce nearly identical weights (the nearest source dominates),
-so capping prevents meaningless divergence between methods. Default: 20.}
+\item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.}
 
-\item{maxit}{Integer. Maximum iterations for CPU optimizer. Default: 10000.}
-
-\item{offset}{Numeric. Value added to travel times. Default: 1.}
+\item{offset}{Numeric. Value added to travel times before exponentiation.
+Default: 1.}
 
 \item{verbose}{Logical. Print progress messages? Default: TRUE.}
 }
@@ -105,40 +90,57 @@ A list of class \code{"interpElections_optim"} with components:
 \describe{
 \item{alpha}{Numeric vector. Optimal alpha values.}
 \item{value}{Numeric. Objective function value at optimum.}
-\item{method}{Character. Optimization method used (e.g.,
-\code{"gpu_adam"}, \code{"cpu_lbfgsb_parallel"}, \code{"cpu_lbfgsb"}, \code{"cpu_bfgs"}).}
+\item{method}{Character. Method used (e.g.,
+\code{"torch_adam_sinkhorn_cpu"}, \code{"torch_adam_sinkhorn_cuda"}).}
 \item{convergence}{Integer. 0 = success.}
-\item{iterations}{Number of iterations/steps taken.}
+\item{iterations}{Number of ADAM steps taken.}
 \item{elapsed}{\code{difftime} object. Wall-clock time.}
 \item{message}{Character. Additional information.}
-\item{history}{Numeric vector. Objective values at each step (GPU only).}
-\item{grad_norm_final}{Numeric. Final gradient norm (GPU only). Indicates
-proximity to a stationary point.}
+\item{history}{Numeric vector. Objective values at each step.}
+\item{grad_norm_final}{Numeric. Final gradient norm.}
+\item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
+\item{sinkhorn_iter}{Integer. Sinkhorn iterations used.}
 }
 }
 \description{
 Optimizes the per-zone decay parameters that minimize the squared error
-between IDW-interpolated values and known population counts. Supports
-GPU-accelerated optimization via torch (ADAM) and CPU optimization via
-L-BFGS-B.
+between Sinkhorn-balanced interpolated values and known population counts.
+Uses torch autograd for gradient computation with ADAM optimizer on both
+CPU and GPU.
+}
+\details{
+The weight matrix is balanced via log-domain Sinkhorn iterations
+(row sums proportional to population, column sums = 1) before computing
+the calibration loss. Gradients are obtained by differentiating through
+the unrolled Sinkhorn iterations via torch autograd.
+
+The optimization requires the \code{torch} R package. Install it with
+\code{\link[=setup_torch]{setup_torch()}} if not already available.
+
+Two execution paths:
+\itemize{
+\item \strong{CPU} (default): \code{use_gpu = FALSE} or \code{NULL}. Uses torch on CPU
+device. Fast for small/medium problems (< 2000 tracts).
+\item \strong{GPU}: \code{use_gpu = TRUE}. Uses CUDA or MPS. Faster for large
+problems (> 2000 tracts).
+}
+
+Both paths use the same ADAM optimizer with log-domain Sinkhorn.
+Gradients are computed via torch autograd through the unrolled
+Sinkhorn iterations.
 }
 \examples{
+\dontrun{
 tt <- matrix(c(2, 5, 3, 4, 6, 2), nrow = 2)
 pop <- matrix(c(100, 200), nrow = 2)
 src <- matrix(c(80, 120, 100), nrow = 3)
 result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 result$alpha
+}
 
 }
 \seealso{
-\code{\link[=use_gpu]{use_gpu()}} to toggle GPU globally, \code{\link[=idw_interpolate]{idw_interpolate()}} to apply
-the optimal alphas, \code{\link[=idw_objective]{idw_objective()}} and \code{\link[=idw_gradient]{idw_gradient()}} for the
-underlying math.
-
-Other IDW core: 
-\code{\link{idw_gradient}()},
-\code{\link{idw_interpolate}()},
-\code{\link{idw_objective}()},
-\code{\link{idw_weights}()}
+\code{\link[=use_gpu]{use_gpu()}} to toggle GPU globally, \code{\link[=sinkhorn_weights]{sinkhorn_weights()}} to
+build the final weight matrix, \code{\link[=sinkhorn_objective]{sinkhorn_objective()}} for the
+objective function, \code{\link[=setup_torch]{setup_torch()}} to install torch.
 }
-\concept{IDW core}

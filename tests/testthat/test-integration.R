@@ -1,20 +1,26 @@
 # Round-trip integration test:
-# optimize_alpha → idw_interpolate → verify objective is lower
+# optimize_alpha → sinkhorn_weights → verify valid results
 
-test_that("optimize + interpolate round-trip produces valid results", {
+test_that("optimize + sinkhorn_weights round-trip produces valid results", {
+  skip_if_not_installed("torch")
+
   set.seed(42)
   n <- 10  # zones
-
   m <- 8   # sources
   k <- 3   # demographic groups
 
   # Generate realistic-ish data
   time_matrix <- matrix(abs(rnorm(n * m, 15, 5)) + 1, n, m)
   source_matrix <- matrix(rpois(m * k, 50), m, k)
-  # Population = rough IDW at alpha=1 (so optimum is near 1)
-  W <- time_matrix ^ (-1)
-  W_std <- t(t(W) / colSums(W))
-  pop_matrix <- W_std %*% source_matrix + matrix(rnorm(n * k, 0, 2), n, k)
+  storage.mode(source_matrix) <- "double"
+
+  # Population = rough Sinkhorn-balanced IDW at alpha=1
+  pop_total <- runif(n, 20, 200)
+  r <- pop_total / sum(pop_total) * m
+  W <- suppressWarnings(
+    sinkhorn_weights(time_matrix, rep(1, n), offset = 0, row_targets = r)
+  )
+  pop_matrix <- W %*% source_matrix + matrix(rnorm(n * k, 0, 2), n, k)
   pop_matrix <- pmax(round(pop_matrix), 0)
   storage.mode(pop_matrix) <- "double"
 
@@ -23,56 +29,53 @@ test_that("optimize + interpolate round-trip produces valid results", {
     time_matrix = time_matrix,
     pop_matrix = pop_matrix,
     source_matrix = source_matrix,
-    offset = 0,  # already offset
-    verbose = FALSE,
-    cpu_parallel = FALSE
+    offset = 0,
+    use_gpu = FALSE,
+    gpu_iterations = 5L,
+    verbose = FALSE
   )
 
   expect_s3_class(result, "interpElections_optim")
   expect_true(all(result$alpha >= 0))
   expect_true(is.finite(result$value))
 
-  # The optimized objective should be less than the initial (alpha=1)
-  init_obj <- idw_objective(rep(1, n), time_matrix, pop_matrix, source_matrix)
-  expect_true(result$value <= init_obj)
+  # Build final weights
+  W_final <- suppressWarnings(sinkhorn_weights(
+    time_matrix, result$alpha, offset = 0,
+    row_targets = result$row_targets
+  ))
 
-  # Interpolate with the optimal alpha
-  interpolated <- idw_interpolate(
-    time_matrix, result$alpha, source_matrix, offset = 0
-  )
+  interpolated <- W_final %*% source_matrix
 
   expect_equal(nrow(interpolated), n)
   expect_equal(ncol(interpolated), k)
   expect_true(all(is.finite(interpolated)))
-  # Column sums should be preserved (weights sum to 1 per column)
-  expect_equal(colSums(interpolated), colSums(source_matrix),
-               tolerance = 1e-6)
 })
 
-test_that("alpha = 0 produces uniform weights", {
-  n <- 5
-  m <- 3
-  k <- 2
-  time_matrix <- matrix(abs(rnorm(n * m)) + 1, n, m)
-  alpha <- rep(0, n)
+test_that("row sums match row_targets after Sinkhorn weighting", {
+  set.seed(1)
+  n <- 8
+  m <- 4
+  time_matrix <- matrix(runif(n * m, 1, 30), nrow = n)
+  alpha <- runif(n, 0.5, 2)
+  pop <- runif(n, 10, 200)
+  r <- pop / sum(pop) * m
 
-  W <- idw_weights(time_matrix, alpha, offset = 0)
+  W <- sinkhorn_weights(time_matrix, alpha, row_targets = r)
 
-  # All alpha = 0 means t^0 = 1 for all entries
-  # So W_std should have all rows equal to 1/n
-  expect_equal(W, matrix(1 / n, n, m), tolerance = 1e-10)
+  expect_equal(rowSums(W), r, tolerance = 1e-6)
 })
 
-test_that("single row/column matrices work", {
-  time_matrix <- matrix(c(5, 10), nrow = 2, ncol = 1)
-  alpha <- c(1, 1)
-  source_matrix <- matrix(100, nrow = 1, ncol = 1)
-  pop_matrix <- matrix(c(60, 40), nrow = 2, ncol = 1)
+test_that("column sums approximately 1 after Sinkhorn weighting", {
+  set.seed(2)
+  n <- 8
+  m <- 4
+  time_matrix <- matrix(runif(n * m, 1, 30), nrow = n)
+  alpha <- runif(n, 0.5, 2)
+  pop <- runif(n, 10, 200)
+  r <- pop / sum(pop) * m
 
-  obj <- idw_objective(alpha, time_matrix, pop_matrix, source_matrix)
-  expect_true(is.finite(obj))
+  W <- sinkhorn_weights(time_matrix, alpha, row_targets = r)
 
-  grad <- idw_gradient(alpha, time_matrix, pop_matrix, source_matrix)
-  expect_length(grad, 2)
-  expect_true(all(is.finite(grad)))
+  expect_equal(colSums(W), rep(1, m), tolerance = 1e-6)
 })

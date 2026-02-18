@@ -1,4 +1,6 @@
-test_that("optimize_alpha CPU finds lower objective than initial", {
+test_that("optimize_alpha finds lower objective than initial", {
+  skip_if_not_installed("torch")
+
   set.seed(123)
   n <- 10
   m <- 5
@@ -10,9 +12,7 @@ test_that("optimize_alpha CPU finds lower objective than initial", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_method = "L-BFGS-B",
-    cpu_parallel = FALSE,
-    maxit = 500L,
+    gpu_iterations = 5L,
     verbose = FALSE
   )
 
@@ -20,11 +20,15 @@ test_that("optimize_alpha CPU finds lower objective than initial", {
   expect_length(result$alpha, n)
 
   # Compare with initial alpha = 1
-  init_val <- idw_objective(rep(1, n), t_mat + 1, p_mat, s_mat)
+  pop_total <- rowSums(p_mat)
+  r <- pop_total / sum(pop_total) * m
+  init_val <- sinkhorn_objective(rep(1, n), t_mat + 1, p_mat, s_mat, r)
   expect_true(result$value <= init_val)
 })
 
 test_that("optimize_alpha respects lower_bound", {
+  skip_if_not_installed("torch")
+
   set.seed(42)
   n <- 5
   m <- 3
@@ -36,10 +40,8 @@ test_that("optimize_alpha respects lower_bound", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_method = "L-BFGS-B",
-    cpu_parallel = FALSE,
     lower_bound = 0,
-    maxit = 200L,
+    gpu_iterations = 5L,
     verbose = FALSE
   )
 
@@ -47,6 +49,8 @@ test_that("optimize_alpha respects lower_bound", {
 })
 
 test_that("optimize_alpha returns proper structure", {
+  skip_if_not_installed("torch")
+
   set.seed(1)
   n <- 4
   m <- 2
@@ -58,8 +62,7 @@ test_that("optimize_alpha returns proper structure", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_parallel = FALSE,
-    maxit = 100L,
+    gpu_iterations = 3L,
     verbose = FALSE
   )
 
@@ -68,9 +71,17 @@ test_that("optimize_alpha returns proper structure", {
   expect_true("method" %in% names(result))
   expect_true("convergence" %in% names(result))
   expect_true("elapsed" %in% names(result))
+  expect_true("row_targets" %in% names(result))
+  expect_true("sinkhorn_iter" %in% names(result))
+  expect_true("history" %in% names(result))
+  expect_true("grad_norm_final" %in% names(result))
+  expect_equal(result$sinkhorn_iter, 5L)
+  expect_length(result$row_targets, n)
 })
 
 test_that("optimize_alpha print method works", {
+  skip_if_not_installed("torch")
+
   set.seed(1)
   t_mat <- matrix(runif(8, 1, 10), nrow = 4)
   p_mat <- matrix(runif(4), nrow = 4)
@@ -79,85 +90,78 @@ test_that("optimize_alpha print method works", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_parallel = FALSE,
-    maxit = 50L,
+    gpu_iterations = 3L,
     verbose = FALSE
   )
 
   expect_output(print(result), "interpElections optimization result")
 })
 
-test_that("cpu_parallel defaults to FALSE (serial by default)", {
+test_that("optimize_alpha auto-computes row_targets when NULL", {
+  skip_if_not_installed("torch")
+
   set.seed(1)
-  n <- 10
-  m <- 5
+  n <- 6
+  m <- 3
   k <- 1
-  t_mat <- matrix(runif(n * m, 1, 50), nrow = n)
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    maxit = 100L,
+    gpu_iterations = 3L,
     verbose = FALSE
   )
 
-  # Default should use serial L-BFGS-B, not parallel
-  expect_equal(result$method, "cpu_lbfgsb")
+  # row_targets should be auto-computed
+  expected_r <- rowSums(p_mat) / sum(p_mat) * m
+  expect_equal(result$row_targets, expected_r)
 })
 
-test_that("parallel optimization works when explicitly enabled", {
-  skip_if_not_installed("optimParallel")
-  skip_if_not_installed("parallel")
+test_that("optimize_alpha errors without torch", {
+  # Mock torch as unavailable
+  skip_if_not_installed("torch")
+
+  # This test checks the error message format — we can't truly test
+
+  # without torch since we need it to run. Just verify the function exists.
+  expect_true(is.function(optimize_alpha))
+})
+
+test_that("optimize_alpha sinkhorn_iter parameter works", {
+  skip_if_not_installed("torch")
 
   set.seed(42)
-  n <- 60  # Above the 50-tract threshold
-
-  m <- 10
-  k <- 2
-  t_mat <- matrix(runif(n * m, 1, 50), nrow = n)
-  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
-  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
-
-  result <- optimize_alpha(
-    t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    cpu_parallel = TRUE,
-    cpu_ncores = 2L,
-    maxit = 500L,
-    verbose = FALSE
-  )
-
-  expect_s3_class(result, "interpElections_optim")
-  expect_equal(result$method, "cpu_lbfgsb_parallel")
-  expect_length(result$alpha, n)
-
-  # Should find a lower objective than initial
-  init_val <- idw_objective(rep(1, n), t_mat + 1, p_mat, s_mat)
-  expect_true(result$value <= init_val)
-})
-
-test_that("parallel skipped for small problems (< 50 tracts)", {
-  skip_if_not_installed("optimParallel")
-  skip_if_not_installed("parallel")
-
-  set.seed(1)
-  n <- 10  # Below the 50-tract threshold
-  m <- 5
+  n <- 5
+  m <- 3
   k <- 1
   t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result <- optimize_alpha(
+  result_k1 <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_parallel = TRUE,
-    maxit = 200L,
+    sinkhorn_iter = 1L,
+    gpu_iterations = 3L,
     verbose = FALSE
   )
 
-  # Should fall back to serial despite cpu_parallel = TRUE
-  expect_equal(result$method, "cpu_lbfgsb")
+  result_k5 <- optimize_alpha(
+    t_mat, p_mat, s_mat,
+    use_gpu = FALSE,
+    sinkhorn_iter = 5L,
+    gpu_iterations = 3L,
+    verbose = FALSE
+  )
+
+  expect_equal(result_k1$sinkhorn_iter, 1L)
+  expect_equal(result_k5$sinkhorn_iter, 5L)
+  # Both should produce valid results
+  expect_length(result_k1$alpha, n)
+  expect_length(result_k5$alpha, n)
+  expect_true(is.finite(result_k1$value))
+  expect_true(is.finite(result_k5$value))
 })

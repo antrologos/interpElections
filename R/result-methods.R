@@ -217,7 +217,8 @@ residuals.interpElections_result <- function(object, ...) {
   if (!is.null(object$weights)) {
     W <- object$weights
   } else {
-    W <- idw_weights(object$time_matrix, object$alpha, object$offset)
+    W <- sinkhorn_weights(object$time_matrix, object$alpha, object$offset,
+                           row_targets = object$row_targets)
   }
 
   # Source calibration values

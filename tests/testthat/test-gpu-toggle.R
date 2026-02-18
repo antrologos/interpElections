@@ -22,18 +22,18 @@ test_that("use_gpu returns previous settings invisibly", {
   options(interpElections.use_gpu = old)
 })
 
-test_that("optimize_alpha use_gpu=FALSE works without torch", {
+test_that("optimize_alpha use_gpu=FALSE uses torch CPU", {
+  skip_if_not_installed("torch")
+
   set.seed(1)
   t_mat <- matrix(runif(8, 1, 10), nrow = 4)
   p_mat <- matrix(runif(4), nrow = 4)
   s_mat <- matrix(runif(2), nrow = 2)
 
-  # This should always work regardless of torch availability
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    cpu_parallel = FALSE,
-    maxit = 50L,
+    gpu_iterations = 5L,
     verbose = FALSE
   )
   expect_s3_class(result, "interpElections_optim")

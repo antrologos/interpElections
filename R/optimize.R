@@ -1,9 +1,14 @@
-#' Find optimal decay parameters (alpha) for IDW interpolation
+#' Find optimal decay parameters (alpha) for spatial interpolation
 #'
 #' Optimizes the per-zone decay parameters that minimize the squared error
-#' between IDW-interpolated values and known population counts. Supports
-#' GPU-accelerated optimization via torch (ADAM) and CPU optimization via
-#' L-BFGS-B.
+#' between Sinkhorn-balanced interpolated values and known population counts.
+#' Uses torch autograd for gradient computation with ADAM optimizer on both
+#' CPU and GPU.
+#'
+#' The weight matrix is balanced via log-domain Sinkhorn iterations
+#' (row sums proportional to population, column sums = 1) before computing
+#' the calibration loss. Gradients are obtained by differentiating through
+#' the unrolled Sinkhorn iterations via torch autograd.
 #'
 #' @param time_matrix Numeric matrix \[n x m\]. Raw travel times.
 #'   Rows = target zones, columns = source points.
@@ -11,85 +16,93 @@
 #'   with k demographic groups as columns.
 #' @param source_matrix Numeric matrix \[m x k\]. Known counts at source
 #'   points (e.g., registered voters by age group).
+#' @param row_targets Numeric vector of length n, or NULL. Target row sums
+#'   for Sinkhorn balancing. Each element specifies how much weight a zone
+#'   should attract, proportional to its share of total population. If NULL
+#'   (default), auto-computed as `rowSums(pop_matrix) / sum(pop_matrix) * m`.
 #' @param alpha_init Numeric vector of length n, or a single value to be
 #'   recycled. Initial guess for alpha. Default: `rep(1, n)`.
-#' @param use_gpu Logical or NULL. If `TRUE`, use torch ADAM optimizer. If
-#'   `FALSE`, use CPU optimization. If `NULL` (default), reads the package
-#'   option `interpElections.use_gpu` (set via [use_gpu()]).
+#' @param sinkhorn_iter Integer. Number of Sinkhorn iterations per objective
+#'   evaluation during optimization. Higher values give more accurate balancing
+#'   but are slower. Default: 5 (sufficient for optimization; final weights
+#'   use full convergence via [sinkhorn_weights()]).
+#' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
+#'   `FALSE`, use CPU. If `NULL` (default), reads the package option
+#'   `interpElections.use_gpu` (set via [use_gpu()]).
 #' @param device Character or NULL. Torch device: `"cuda"`, `"mps"`, or
 #'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
-#'   `"float32"`. Float32 halves GPU memory usage with negligible precision
-#'   loss for this optimization problem.
-#' @param gpu_iterations Integer. Number of outer ADAM iterations. Default: 20.
+#'   `"float32"`. Float32 halves memory usage with negligible precision loss.
+#' @param gpu_iterations Integer. Number of outer ADAM phases with learning
+#'   rate decay. Default: 20.
 #' @param gpu_lr_init Numeric. Initial ADAM learning rate. Default: 0.1.
-#' @param gpu_lr_decay Numeric. Learning rate decay factor per outer iteration.
+#' @param gpu_lr_decay Numeric. Learning rate decay factor per phase.
 #'   Default: 0.6.
-#' @param gpu_grad_tol Numeric. Gradient norm threshold for convergence
-#'   (first-order optimality condition). When the L2 norm of the gradient
-#'   falls below this value, optimization stops early. Default: 1e-4.
-#' @param gpu_grad_clip Numeric or NULL. Maximum gradient norm for gradient
-#'   clipping. Limits gradient magnitude to prevent large steps on steep
-#'   regions, leading to better convergence and lower final gradient norms.
+#' @param gpu_grad_tol Numeric. Gradient norm threshold for convergence.
+#'   Default: 1e-4.
+#' @param gpu_grad_clip Numeric or NULL. Maximum gradient norm for clipping.
 #'   `NULL` disables clipping. Default: 1.0.
-#' @param gpu_warmup_steps Integer. Number of linear learning rate warmup
-#'   steps at the start of phase 1. Prevents cold-start oscillations when
-#'   starting with a large LR + strong momentum. Default: 10.
-#' @param cpu_method Character. CPU optimization method: `"L-BFGS-B"`,
-#'   `"BFGS"`, or `"auto"`. `"auto"` tries parallel L-BFGS-B first (if
-#'   `cpu_parallel = TRUE`), then serial L-BFGS-B, then BFGS.
-#'   Default: `"auto"`.
-#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
-#'   optimization? Default: `FALSE`. **Not recommended:** when an
-#'   analytical gradient is provided (as here), `optimParallel` only
-#'   parallelizes `fn()` and `gr()` evaluation across 2 workers —
-#'   additional cores sit idle. In benchmarks this is ~10x **slower**
-#'   than serial L-BFGS-B. For large municipalities, use GPU
-#'   (`use_gpu = TRUE`) instead.
-#' @param cpu_ncores Integer or NULL. Number of cores for parallel optimization.
-#'   Default: NULL (auto = 80%% of available cores).
+#' @param gpu_warmup_steps Integer. Linear learning rate warmup steps at
+#'   the start of phase 1. Default: 10.
 #' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.
-#' @param upper_bound Numeric. Upper bound for alpha values. Values above
-#'   ~10 produce nearly identical weights (the nearest source dominates),
-#'   so capping prevents meaningless divergence between methods. Default: 20.
-#' @param maxit Integer. Maximum iterations for CPU optimizer. Default: 10000.
-#' @param offset Numeric. Value added to travel times. Default: 1.
+#' @param upper_bound Numeric. Upper bound for alpha values. Default: 20.
+#' @param offset Numeric. Value added to travel times before exponentiation.
+#'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
 #'
 #' @return A list of class `"interpElections_optim"` with components:
 #' \describe{
 #'   \item{alpha}{Numeric vector. Optimal alpha values.}
 #'   \item{value}{Numeric. Objective function value at optimum.}
-#'   \item{method}{Character. Optimization method used (e.g.,
-#'     `"gpu_adam"`, `"cpu_lbfgsb_parallel"`, `"cpu_lbfgsb"`, `"cpu_bfgs"`).}
+#'   \item{method}{Character. Method used (e.g.,
+#'     `"torch_adam_sinkhorn_cpu"`, `"torch_adam_sinkhorn_cuda"`).}
 #'   \item{convergence}{Integer. 0 = success.}
-#'   \item{iterations}{Number of iterations/steps taken.}
+#'   \item{iterations}{Number of ADAM steps taken.}
 #'   \item{elapsed}{`difftime` object. Wall-clock time.}
 #'   \item{message}{Character. Additional information.}
-#'   \item{history}{Numeric vector. Objective values at each step (GPU only).}
-#'   \item{grad_norm_final}{Numeric. Final gradient norm (GPU only). Indicates
-#'     proximity to a stationary point.}
+#'   \item{history}{Numeric vector. Objective values at each step.}
+#'   \item{grad_norm_final}{Numeric. Final gradient norm.}
+#'   \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
+#'   \item{sinkhorn_iter}{Integer. Sinkhorn iterations used.}
 #' }
 #'
+#' @details
+#' The optimization requires the `torch` R package. Install it with
+#' [setup_torch()] if not already available.
+#'
+#' Two execution paths:
+#' \itemize{
+#'   \item **CPU** (default): `use_gpu = FALSE` or `NULL`. Uses torch on CPU
+#'     device. Fast for small/medium problems (< 2000 tracts).
+#'   \item **GPU**: `use_gpu = TRUE`. Uses CUDA or MPS. Faster for large
+#'     problems (> 2000 tracts).
+#' }
+#'
+#' Both paths use the same ADAM optimizer with log-domain Sinkhorn.
+#' Gradients are computed via torch autograd through the unrolled
+#' Sinkhorn iterations.
+#'
 #' @examples
+#' \dontrun{
 #' tt <- matrix(c(2, 5, 3, 4, 6, 2), nrow = 2)
 #' pop <- matrix(c(100, 200), nrow = 2)
 #' src <- matrix(c(80, 120, 100), nrow = 3)
 #' result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 #' result$alpha
+#' }
 #'
-#' @family IDW core
-#'
-#' @seealso [use_gpu()] to toggle GPU globally, [idw_interpolate()] to apply
-#'   the optimal alphas, [idw_objective()] and [idw_gradient()] for the
-#'   underlying math.
+#' @seealso [use_gpu()] to toggle GPU globally, [sinkhorn_weights()] to
+#'   build the final weight matrix, [sinkhorn_objective()] for the
+#'   objective function, [setup_torch()] to install torch.
 #'
 #' @export
 optimize_alpha <- function(
     time_matrix,
     pop_matrix,
     source_matrix,
+    row_targets = NULL,
     alpha_init = NULL,
+    sinkhorn_iter = 5L,
     use_gpu = NULL,
     device = NULL,
     dtype = "float32",
@@ -99,17 +112,19 @@ optimize_alpha <- function(
     gpu_grad_tol = 1e-4,
     gpu_grad_clip = 1.0,
     gpu_warmup_steps = 10L,
-    cpu_method = "auto",
-    cpu_parallel = FALSE,
-    cpu_ncores = NULL,
     lower_bound = 0,
     upper_bound = 20,
-    maxit = 10000L,
     offset = 1,
     verbose = TRUE
 ) {
-  # Validate cpu_method
-  cpu_method <- match.arg(cpu_method, c("auto", "L-BFGS-B", "BFGS"))
+  # --- Check torch is available ---
+  if (!requireNamespace("torch", quietly = TRUE)) {
+    stop(
+      "The 'torch' package is required for optimization.\n",
+      "Install with: interpElections::setup_torch()",
+      call. = FALSE
+    )
+  }
 
   # Coerce to matrix if data.frame
   if (is.data.frame(time_matrix))   time_matrix   <- as.matrix(time_matrix)
@@ -123,6 +138,17 @@ optimize_alpha <- function(
   .validate_matrices(t_adj, pop_matrix, source_matrix)
 
   n <- nrow(t_adj)
+  m <- ncol(t_adj)
+
+  # Auto-compute row_targets if not provided
+  if (is.null(row_targets)) {
+    pop_total <- rowSums(pop_matrix)
+    row_targets <- pop_total / sum(pop_total) * m
+  }
+  if (length(row_targets) != n) {
+    stop(sprintf("row_targets must have length %d (one per row of time_matrix), got %d",
+                 n, length(row_targets)), call. = FALSE)
+  }
 
   # Default alpha_init
   if (is.null(alpha_init)) {
@@ -132,6 +158,12 @@ optimize_alpha <- function(
   }
   .validate_alpha(alpha_init, n)
 
+  # Coerce sinkhorn_iter
+  sinkhorn_iter <- as.integer(sinkhorn_iter)
+  if (sinkhorn_iter < 1L) {
+    stop("sinkhorn_iter must be >= 1", call. = FALSE)
+  }
+
   # Resolve GPU setting
   resolved_use_gpu <- if (!is.null(use_gpu)) {
     use_gpu
@@ -139,85 +171,40 @@ optimize_alpha <- function(
     getOption("interpElections.use_gpu", default = FALSE)
   }
 
-  start_time <- Sys.time()
-
   if (resolved_use_gpu) {
-    # GPU path
-    if (!requireNamespace("torch", quietly = TRUE)) {
-      stop("use_gpu = TRUE but the 'torch' package is not installed.\n",
-           "Install with: install.packages('torch')", call. = FALSE)
-    }
-
     resolved_device <- device %||%
       getOption("interpElections.device") %||%
       .detect_device()
-    resolved_dtype <- dtype %||%
-      getOption("interpElections.dtype", default = "float32")
-
-    if (verbose) {
-      message(sprintf("  GPU (ADAM, %s, %s, %d phases)",
-                       resolved_device, resolved_dtype, gpu_iterations))
+    if (resolved_device == "cpu") {
+      warning("GPU requested but no GPU found; using CPU torch", call. = FALSE)
     }
-
-    raw <- .optimize_gpu(
-      time_matrix = t_adj,
-      pop_matrix = pop_matrix,
-      source_matrix = source_matrix,
-      alpha_init = alpha_init,
-      device = resolved_device,
-      dtype = resolved_dtype,
-      iterations = gpu_iterations,
-      lr_init = gpu_lr_init,
-      lr_decay = gpu_lr_decay,
-      lower_bound = lower_bound,
-      upper_bound = upper_bound,
-      grad_tol = gpu_grad_tol,
-      grad_clip = gpu_grad_clip,
-      warmup_steps = gpu_warmup_steps,
-      verbose = verbose
-    )
   } else {
-    # CPU path
-    # Resolve parallel settings: only enabled when explicitly requested
-    if (cpu_parallel) {
-      if (!requireNamespace("optimParallel", quietly = TRUE) ||
-          !requireNamespace("parallel", quietly = TRUE)) {
-        if (verbose) message("  optimParallel/parallel not installed; using serial.")
-        cpu_parallel <- FALSE
-      }
-      if (is.null(cpu_ncores) && cpu_parallel) {
-        cpu_ncores <- max(1L, floor(parallel::detectCores() * 0.8))
-      }
-    }
-
-    if (verbose) {
-      message(sprintf("  CPU optimization: method=%s, parallel=%s",
-                       cpu_method, cpu_parallel))
-    }
-
-    # Warn about serial CPU on large problems
-    if (!cpu_parallel && n >= 1000L) {
-      warning(sprintf(
-        paste0("Serial CPU optimization with %d tracts may be slow. ",
-               "Consider using GPU (use_gpu=TRUE) for large municipalities."),
-        n
-      ), call. = FALSE)
-    }
-
-    raw <- .optimize_cpu(
-      time_matrix = t_adj,
-      pop_matrix = pop_matrix,
-      source_matrix = source_matrix,
-      alpha_init = alpha_init,
-      method = cpu_method,
-      use_parallel = cpu_parallel,
-      ncores = cpu_ncores,
-      lower_bound = lower_bound,
-      upper_bound = upper_bound,
-      maxit = maxit,
-      verbose = verbose
-    )
+    resolved_device <- "cpu"
   }
+  resolved_dtype <- dtype %||%
+    getOption("interpElections.dtype", default = "float32")
+
+  start_time <- Sys.time()
+
+  raw <- .optimize_torch(
+    time_matrix = t_adj,
+    pop_matrix = pop_matrix,
+    source_matrix = source_matrix,
+    alpha_init = alpha_init,
+    row_targets = row_targets,
+    sinkhorn_iter = sinkhorn_iter,
+    device = resolved_device,
+    dtype = resolved_dtype,
+    iterations = gpu_iterations,
+    lr_init = gpu_lr_init,
+    lr_decay = gpu_lr_decay,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound,
+    grad_tol = gpu_grad_tol,
+    grad_clip = gpu_grad_clip,
+    warmup_steps = gpu_warmup_steps,
+    verbose = verbose
+  )
 
   elapsed <- Sys.time() - start_time
 
@@ -230,8 +217,10 @@ optimize_alpha <- function(
     ), call. = FALSE)
     bad <- !is.finite(raw$alpha)
     raw$alpha[bad] <- alpha_init[bad]
-    # Recompute objective with corrected alpha
-    raw$value <- idw_objective(raw$alpha, t_adj, pop_matrix, source_matrix)
+    raw$value <- sinkhorn_objective(
+      raw$alpha, t_adj, pop_matrix, source_matrix,
+      row_targets, sinkhorn_iter
+    )
   }
 
   result <- list(
@@ -243,7 +232,9 @@ optimize_alpha <- function(
     elapsed = elapsed,
     message = raw$message %||% "",
     history = raw$history %||% NULL,
-    grad_norm_final = raw$grad_norm_final %||% NULL
+    grad_norm_final = raw$grad_norm_final %||% NULL,
+    row_targets = row_targets,
+    sinkhorn_iter = sinkhorn_iter
   )
   class(result) <- "interpElections_optim"
 

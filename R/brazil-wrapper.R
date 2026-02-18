@@ -140,11 +140,6 @@
 #'   alpha.
 #' @param offset Numeric. Travel time offset. Default: 1.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
-#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
-#'   optimization? Default: `FALSE`. **Not recommended:** ~10x slower
-#'   than serial L-BFGS-B in practice because `optimParallel` cannot
-#'   parallelize the analytical gradient. For large municipalities,
-#'   use GPU (`use_gpu = TRUE`). Passed to [optimize_alpha()].
 #' @param cache Logical. If TRUE (default), downloaded files (TSE data,
 #'   OSM networks, census tracts) are stored persistently across R sessions.
 #'   See [get_interpElections_cache_dir()]. Subsequent calls reuse cached files,
@@ -391,7 +386,6 @@ interpolate_election_br <- function(
     alpha               = NULL,
     offset              = 1,
     use_gpu             = NULL,
-    cpu_parallel        = FALSE,
     cache               = TRUE,
     force               = FALSE,
     verbose             = TRUE,
@@ -612,7 +606,6 @@ interpolate_election_br <- function(
     offset = offset,
     keep = keep,
     use_gpu = use_gpu,
-    cpu_parallel = cpu_parallel,
     verbose = verbose,
     osm_provider = osm_provider,
     point_method = point_method,

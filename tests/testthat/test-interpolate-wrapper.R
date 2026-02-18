@@ -61,7 +61,9 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   storage.mode(src_mat) <- "double"
 
   opt <- optimize_alpha(tt, pop_mat, src_mat, verbose = FALSE)
-  manual <- idw_interpolate(tt, opt$alpha, src_mat)
+  W_manual <- sinkhorn_weights(tt, opt$alpha, offset = 1,
+                                row_targets = opt$row_targets)
+  manual <- W_manual %*% src_mat
 
   # Wrapper
   result <- interpolate_election(
@@ -228,10 +230,12 @@ test_that("interpolate_election() with pre-supplied alpha skips optimization", {
   expect_null(result$optimization)
   expect_equal(result$alpha, alpha_fixed)
 
-  # Should match direct call
+  # Should match direct call with sinkhorn weights
   src_mat <- as.matrix(sf::st_drop_geometry(sources)[, src_cols])
   storage.mode(src_mat) <- "double"
-  direct <- idw_interpolate(tt, alpha_fixed, src_mat)
+  W_direct <- sinkhorn_weights(tt, alpha_fixed, offset = 1,
+                                row_targets = result$row_targets)
+  direct <- W_direct %*% src_mat
   expect_equal(result$interpolated, direct)
 })
 

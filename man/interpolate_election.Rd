@@ -21,7 +21,6 @@ interpolate_election(
   offset = 1,
   keep = NULL,
   use_gpu = NULL,
-  cpu_parallel = FALSE,
   verbose = TRUE,
   ...,
   .step_offset = 0L,
@@ -82,12 +81,6 @@ These can be large for big municipalities. Travel times are
 cached on disk and can be reloaded without keeping them in memory.}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
-
-\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
-optimization? Default: \code{FALSE}. \strong{Not recommended:} ~10x slower
-than serial L-BFGS-B in practice because \code{optimParallel} cannot
-parallelize the analytical gradient. For large municipalities,
-use GPU (\code{use_gpu = TRUE}). Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
@@ -165,7 +158,7 @@ result <- interpolate_election(
 
 }
 \seealso{
-\code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=idw_interpolate]{idw_interpolate()}},
+\code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=sinkhorn_weights]{sinkhorn_weights()}},
 \code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper.
 
 Other wrappers: 

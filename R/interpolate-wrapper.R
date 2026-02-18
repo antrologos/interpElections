@@ -44,11 +44,6 @@
 #'   These can be large for big municipalities. Travel times are
 #'   cached on disk and can be reloaded without keeping them in memory.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
-#' @param cpu_parallel Logical. Use `optimParallel` for parallel CPU
-#'   optimization? Default: `FALSE`. **Not recommended:** ~10x slower
-#'   than serial L-BFGS-B in practice because `optimParallel` cannot
-#'   parallelize the analytical gradient. For large municipalities,
-#'   use GPU (`use_gpu = TRUE`). Passed to [optimize_alpha()].
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Additional arguments forwarded to [optimize_alpha()],
 #'   [compute_travel_times()], and/or [download_r5r_data()].
@@ -115,7 +110,7 @@
 #'
 #' @family wrappers
 #'
-#' @seealso [optimize_alpha()], [idw_interpolate()],
+#' @seealso [optimize_alpha()], [sinkhorn_weights()],
 #'   [interpolate_election_br()] for the Brazilian-specific wrapper.
 #'
 #' @export
@@ -136,7 +131,6 @@ interpolate_election <- function(
     offset         = 1,
     keep           = NULL,
     use_gpu        = NULL,
-    cpu_parallel   = FALSE,
     verbose        = TRUE,
     ...,
     .step_offset   = 0L,
@@ -432,6 +426,10 @@ interpolate_election <- function(
   }
 
   # --- Step 4: Optimize alpha ---
+  # Compute row_targets for Sinkhorn balancing
+  pop_total <- rowSums(pop_matrix)
+  row_targets <- pop_total / sum(pop_total) * ncol(time_matrix)
+
   optim_result <- NULL
   if (is.null(alpha)) {
     if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
@@ -439,9 +437,8 @@ interpolate_election <- function(
     opt_args <- .extract_args(dots, optimize_alpha)
     optim_result <- do.call(optimize_alpha, c(
       list(time_matrix = time_matrix, pop_matrix = pop_matrix,
-           source_matrix = source_matrix, offset = offset,
-           use_gpu = use_gpu, cpu_parallel = cpu_parallel,
-           verbose = verbose),
+           source_matrix = source_matrix, row_targets = row_targets,
+           offset = offset, use_gpu = use_gpu, verbose = verbose),
       opt_args
     ))
     alpha <- optim_result$alpha
@@ -454,8 +451,9 @@ interpolate_election <- function(
   # --- Step 5: Interpolate ---
   if (verbose) message(sprintf("[%d/%d] Interpolating...",
                                step_num, total_steps))
-  W_std <- idw_weights(time_matrix, alpha, offset = offset)
-  interpolated <- W_std %*% interp_data
+  W <- sinkhorn_weights(time_matrix, alpha, offset = offset,
+                         row_targets = row_targets)
+  interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
     colnames(interpolated) <- colnames(interp_data)
   }
@@ -478,8 +476,9 @@ interpolate_election <- function(
     point_id      = point_id,
     interp_cols   = colnames(interpolated),
     calib_cols    = list(tracts = calib_tracts, sources = calib_sources),
+    row_targets   = row_targets,
     # Heavy objects (opt-in)
-    weights       = if ("weights" %in% keep) W_std else NULL,
+    weights       = if ("weights" %in% keep) W else NULL,
     time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
     sources_sf    = if ("sources_sf" %in% keep) electoral_sf else NULL,
     pop_raster    = if ("pop_raster" %in% keep) pop_raster_obj else NULL,

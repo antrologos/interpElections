@@ -30,7 +30,6 @@ interpolate_election_br(
   alpha = NULL,
   offset = 1,
   use_gpu = NULL,
-  cpu_parallel = FALSE,
   cache = TRUE,
   force = FALSE,
   verbose = TRUE,
@@ -201,12 +200,6 @@ alpha.}
 \item{offset}{Numeric. Travel time offset. Default: 1.}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
-
-\item{cpu_parallel}{Logical. Use \code{optimParallel} for parallel CPU
-optimization? Default: \code{FALSE}. \strong{Not recommended:} ~10x slower
-than serial L-BFGS-B in practice because \code{optimParallel} cannot
-parallelize the analytical gradient. For large municipalities,
-use GPU (\code{use_gpu = TRUE}). Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
 \item{cache}{Logical. If TRUE (default), downloaded files (TSE data,
 OSM networks, census tracts) are stored persistently across R sessions.
