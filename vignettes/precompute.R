@@ -23,6 +23,8 @@ library(maptiles)
 library(stars)
 library(ggspatial)
 library(terra)
+library(tidyr)
+library(stringr)
 
 sf::sf_use_s2(FALSE)
 
@@ -37,6 +39,29 @@ save_fig <- function(p, filename, width = 8, height = 6, dpi = 200) {
   ggsave(path, plot = p, width = width, height = height, dpi = dpi,
          bg = "white")
   message("  Saved: ", path)
+}
+
+# Utility: normalize 15-digit IBGE tract codes (avoid scientific notation)
+normalize_code <- function(x) {
+  x <- as.character(x)
+  sci_mask <- grepl("[eE]", x)
+  if (any(sci_mask)) {
+    x[sci_mask] <- format(as.numeric(x[sci_mask]),
+                          scientific = FALSE, trim = TRUE)
+  }
+  x
+}
+
+# Helper: extend r5r route to start/end at exact specified coordinates
+extend_route <- function(route_sf, origin_lon, origin_lat,
+                         dest_lon, dest_lat) {
+  route_4326 <- st_transform(route_sf, 4326)
+  coords <- st_coordinates(route_4326)
+  xy <- coords[, c("X", "Y"), drop = FALSE]
+  full_coords <- rbind(
+    c(origin_lon, origin_lat), xy, c(dest_lon, dest_lat))
+  st_sf(id = 1,
+        geometry = st_sfc(st_linestring(full_coords), crs = 4326))
 }
 
 
@@ -194,20 +219,21 @@ message("\n[Varginha] Generating figures...")
 
 # --- Methodology vignette figures ---
 
-# 3.2: Population pyramid
+# 3.2: Population pyramid (percentages, younger at bottom)
 pop_brackets_vga <- data.frame(
   bracket = c("18-20", "21-24", "25-29", "30-39", "40-49", "50-59", "60-69"),
   total = colSums(pop_matrix_vga)
 )
+pop_brackets_vga$pct <- pop_brackets_vga$total / sum(pop_brackets_vga$total) * 100
 pop_brackets_vga$bracket <- factor(pop_brackets_vga$bracket,
-                                    levels = rev(pop_brackets_vga$bracket))
-p <- ggplot(pop_brackets_vga, aes(x = total, y = bracket)) +
+                                    levels = pop_brackets_vga$bracket)
+p <- ggplot(pop_brackets_vga, aes(x = pct, y = bracket)) +
   geom_col(fill = "#4575b4", alpha = 0.85) +
   labs(title = "Census Population by Age Bracket",
-       subtitle = sprintf("Varginha (MG) — %d tracts, total pop: %s",
+       subtitle = sprintf("Varginha (MG) \u2014 %d tracts, total pop: %s",
                            nrow(pop_matrix_vga),
                            format(sum(pop_matrix_vga), big.mark = ",")),
-       x = "Population", y = "Age bracket") +
+       x = "% of total population", y = "Age bracket") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 save_fig(p, "pop-pyramid.png", width = 7, height = 5)
@@ -242,20 +268,22 @@ p <- ggplot() +
         legend.position = "bottom")
 save_fig(p, "electoral-stations-map.png")
 
-# 3.5: Age pyramids comparison (census vs electoral)
+# 3.5: Age pyramids comparison (census vs electoral, percentages)
 elec_totals <- colSums(source_matrix_vga)
+census_pcts <- pop_brackets_vga$total / sum(pop_brackets_vga$total) * 100
+elec_pcts <- elec_totals / sum(elec_totals) * 100
 pyramid_df <- data.frame(
   bracket = rep(pop_brackets_vga$bracket, 2),
-  count = c(pop_brackets_vga$total, elec_totals),
+  pct = c(census_pcts, elec_pcts),
   source = rep(c("Census (population)", "TSE (voters)"),
                each = nrow(pop_brackets_vga))
 )
-p <- ggplot(pyramid_df, aes(x = count, y = bracket, fill = source)) +
+p <- ggplot(pyramid_df, aes(x = pct, y = bracket, fill = source)) +
   geom_col(position = "dodge", alpha = 0.85) +
   scale_fill_manual(values = c("#4575b4", "#d73027")) +
   labs(title = "Census Population vs. Registered Voters by Age",
-       subtitle = "Varginha (MG) — 2010 Census vs. 2022 Election",
-       x = "Count", y = "Age bracket", fill = "") +
+       subtitle = "Varginha (MG) \u2014 2010 Census vs. 2022 Election",
+       x = "% of group total", y = "Age bracket", fill = "") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
         legend.position = "bottom")
@@ -660,7 +688,7 @@ tryCatch({
     pop_raster = pop_raster_sp
   ), file.path(out_data, "saopaulo_rep_points.rds"))
 
-  # --- Figures ---
+  # --- Figures (OSM background, coord_sf limits, larger fonts) ---
   message("[SP] Generating figures...")
 
   # Transform all to WGS84 for consistent plotting
@@ -669,24 +697,43 @@ tryCatch({
   pp_wgs <- st_transform(pts_sp_p, 4326)
   pw_wgs <- st_transform(pts_sp_w, 4326)
 
-  # 3-panel comparison map
+  # Download neutral basemap tiles
+  bb_sp <- st_bbox(ts_wgs)
+  message("[SP] Downloading basemap tiles...")
+  basemap_sp <- tryCatch({
+    tiles <- get_tiles(x = st_as_sfc(bb_sp),
+                       provider = "CartoDB.Positron",
+                       crop = TRUE, zoom = 12)
+    st_as_stars(tiles)
+  }, error = function(e) {
+    message("  Basemap download failed: ", conditionMessage(e))
+    NULL
+  })
+
+  # 3-panel comparison map with OSM background and coord_sf limits
   pts_all <- rbind(
     cbind(pc_wgs[, "id"], method = "Centroid"),
     cbind(pp_wgs[, "id"], method = "Point on Surface"),
     cbind(pw_wgs[, "id"], method = "Pop-Weighted")
   )
 
-  p <- ggplot() +
-    geom_sf(data = ts_wgs, fill = "grey95",
-            color = "grey60", linewidth = 0.2) +
+  p <- ggplot()
+  if (!is.null(basemap_sp)) {
+    p <- p + layer_spatial(basemap_sp, dpi = 300)
+  }
+  p <- p +
+    geom_sf(data = ts_wgs, fill = NA,
+            color = "grey40", linewidth = 0.3) +
     geom_sf(data = pts_all, aes(color = method),
-            size = 1.5, alpha = 0.8) +
+            size = 2, alpha = 0.9) +
     scale_color_manual(values = c(
       "Centroid" = "#d73027",
       "Point on Surface" = "#4575b4",
       "Pop-Weighted" = "#1a9850"
     )) +
     facet_wrap(~method, ncol = 3) +
+    coord_sf(xlim = c(bb_sp["xmin"], bb_sp["xmax"]),
+             ylim = c(bb_sp["ymin"], bb_sp["ymax"])) +
     labs(
       title = "Representative Point Methods Compared",
       subtitle = paste0(
@@ -694,17 +741,17 @@ tryCatch({
         nrow(tracts_south), " tracts"
       )
     ) +
-    theme_void() +
+    theme_void(base_size = 14) +
     theme(
-      plot.title = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(color = "grey40"),
+      plot.title = element_text(face = "bold", size = 18),
+      plot.subtitle = element_text(color = "grey40", size = 13),
       legend.position = "none",
-      strip.text = element_text(face = "bold", size = 11)
+      strip.text = element_text(face = "bold", size = 14)
     )
   save_fig(p, "rep-points-saopaulo-comparison.png",
-           width = 14, height = 6)
+           width = 16, height = 7)
 
-  # Zoom inset: pick the largest tract
+  # Zoom inset with OSM background
   biggest_idx <- which.max(areas_sp[south_mask])
   zoom_tract <- ts_wgs[biggest_idx, ]
   zoom_bb <- st_bbox(zoom_tract)
@@ -716,6 +763,13 @@ tryCatch({
   zoom_bb["xmax"] <- zoom_bb["xmax"] + dx
   zoom_bb["ymin"] <- zoom_bb["ymin"] - dy
   zoom_bb["ymax"] <- zoom_bb["ymax"] + dy
+
+  basemap_zoom <- tryCatch({
+    tiles_z <- get_tiles(x = st_as_sfc(zoom_bb),
+                         provider = "CartoDB.Positron",
+                         crop = TRUE, zoom = 14)
+    st_as_stars(tiles_z)
+  }, error = function(e) NULL)
 
   pts_zoom <- data.frame(
     lon = c(st_coordinates(pc_wgs[biggest_idx, ])[1],
@@ -730,43 +784,15 @@ tryCatch({
   pts_zoom_sf <- st_as_sf(pts_zoom, coords = c("lon", "lat"),
                            crs = 4326)
 
-  # Try to add raster background
-  p_zoom <- ggplot() +
-    geom_sf(data = zoom_tract, fill = "grey90",
-            color = "grey40", linewidth = 0.4)
-
-  if (!is.null(pop_raster_sp)) {
-    rast_crop <- tryCatch({
-      zoom_ext <- ext(
-        zoom_bb["xmin"], zoom_bb["xmax"],
-        zoom_bb["ymin"], zoom_bb["ymax"]
-      )
-      rc <- crop(
-        project(pop_raster_sp, "EPSG:4326"),
-        zoom_ext
-      )
-      rc_df <- as.data.frame(rc, xy = TRUE)
-      names(rc_df)[3] <- "pop"
-      rc_df
-    }, error = function(e) NULL)
-    if (!is.null(rast_crop) && nrow(rast_crop) > 0) {
-      p_zoom <- p_zoom +
-        geom_raster(
-          data = rast_crop,
-          aes(x = x, y = y, fill = pop), alpha = 0.7
-        ) +
-        scale_fill_viridis_c(
-          option = "inferno", name = "Population\ndensity",
-          na.value = "transparent"
-        )
-    }
+  p_zoom <- ggplot()
+  if (!is.null(basemap_zoom)) {
+    p_zoom <- p_zoom + layer_spatial(basemap_zoom, dpi = 300)
   }
-
   p_zoom <- p_zoom +
     geom_sf(data = zoom_tract, fill = NA,
-            color = "grey30", linewidth = 0.5) +
+            color = "grey30", linewidth = 0.6) +
     geom_sf(data = pts_zoom_sf,
-            aes(color = method), size = 4, shape = 17) +
+            aes(color = method), size = 5, shape = 17) +
     scale_color_manual(values = c(
       "Centroid" = "#d73027",
       "Point on Surface" = "#4575b4",
@@ -781,11 +807,12 @@ tryCatch({
       subtitle = "Centroid may fall in uninhabited area",
       color = "Method"
     ) +
-    theme_void() +
+    theme_void(base_size = 14) +
     theme(
-      plot.title = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(color = "grey40"),
-      legend.position = "bottom"
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 12),
+      legend.position = "bottom",
+      legend.text = element_text(size = 12)
     )
   save_fig(p_zoom, "rep-points-zoom-inset.png",
            width = 8, height = 8)
@@ -1024,106 +1051,138 @@ message("RIO DE JANEIRO (RJ) — Age pyramids + routes + pipeline")
 message(strrep("=", 70))
 
 tryCatch({
-  # ── 7a. Census age pyramids: Rocinha vs Copacabana ──────────────
+  # ── 7a. Census age pyramids: Rocinha vs Copacabana (censobr 2022) ──
 
-  message("\n[RJ] Loading census population data...")
-  pop_rj <- br_prepare_population(3304557, year = 2010)
+  message("\n[RJ] Downloading 2022 census Pessoas data...")
+  pessoas_rj <- censobr::read_tracts(2022, "Pessoas") |>
+    dplyr::filter(as.character(code_muni) == "3304557") |>
+    dplyr::collect()
 
-  message("[RJ] Loading tract geometries...")
-  tracts_rj <- br_prepare_tracts(3304557, pop_rj, verbose = FALSE)
+  # Convert to plain data.frame (censobr returns data.table)
+  pessoas_rj <- as.data.frame(pessoas_rj)
+  nm <- names(pessoas_rj)
+  names(pessoas_rj) <- sub("^demografia_", "", nm)
 
-  message("[RJ] Identifying neighborhoods...")
-  # Download neighborhood boundaries
+  # Convert numeric columns
+  num_cols <- setdiff(names(pessoas_rj), c("code_tract", "code_muni"))
+  for (col in num_cols) {
+    pessoas_rj[[col]] <- suppressWarnings(as.numeric(pessoas_rj[[col]]))
+    pessoas_rj[[col]][is.na(pessoas_rj[[col]])] <- 0
+  }
+  # Normalize tract codes to avoid scientific notation from censobr
+  pessoas_rj$code_tract <- normalize_code(pessoas_rj$code_tract)
+  message(sprintf("  %d tracts, %d columns",
+                  nrow(pessoas_rj), ncol(pessoas_rj)))
+
+  # Total age columns (V01031-V01041 = 11 age brackets 0-4 to 70+)
+  total_age_cols <- paste0("V010", sprintf("%02d", 31:41))
+  has_total_age <- all(total_age_cols %in% names(pessoas_rj))
+
+  # Get neighborhood boundaries
+  message("[RJ] Loading neighborhood boundaries...")
   nbhoods_rj <- geobr::read_neighborhood(year = 2010)
   nbhoods_rj <- nbhoods_rj[nbhoods_rj$code_muni == 3304557, ]
-  nbhoods_rj <- st_transform(nbhoods_rj, st_crs(tracts_rj))
 
-  # Find Rocinha and Copacabana neighborhood polygons
-  rocinha_nb <- nbhoods_rj[
-    grepl("Rocinha", nbhoods_rj$name_neighborhood,
-          ignore.case = TRUE), ]
-  copacabana_nb <- nbhoods_rj[
-    grepl("Copacabana", nbhoods_rj$name_neighborhood,
-          ignore.case = TRUE), ]
+  # Get 2022 tract geometries for spatial join
+  message("[RJ] Loading 2022 tract geometries...")
+  pop_rj_2022 <- br_prepare_population(3304557, year = 2022)
+  tracts_rj_2022 <- br_prepare_tracts(3304557, pop_rj_2022,
+                                       verbose = FALSE)
+  nbhoods_rj <- st_transform(nbhoods_rj, st_crs(tracts_rj_2022))
 
-  if (nrow(rocinha_nb) > 0 && nrow(copacabana_nb) > 0) {
-    message(sprintf(
-      "  Found: Rocinha (%d polygons), Copacabana (%d polygons)",
-      nrow(rocinha_nb), nrow(copacabana_nb)))
+  rocinha_nb <- nbhoods_rj[grepl("Rocinha",
+    nbhoods_rj$name_neighborhood, ignore.case = TRUE), ]
+  copacabana_nb <- nbhoods_rj[grepl("Copacabana",
+    nbhoods_rj$name_neighborhood, ignore.case = TRUE), ]
 
-    # Spatial join: which tracts fall in each neighborhood
-    tracts_rj_pts <- st_point_on_surface(tracts_rj)
-    rocinha_tracts <- tracts_rj[
-      lengths(st_intersects(tracts_rj_pts, rocinha_nb)) > 0, ]
-    copacabana_tracts <- tracts_rj[
-      lengths(st_intersects(tracts_rj_pts, copacabana_nb)) > 0, ]
+  # Spatial join: tracts in each neighborhood
+  tracts_rj_pts <- st_point_on_surface(tracts_rj_2022)
+  roc_mask <- lengths(st_intersects(tracts_rj_pts, rocinha_nb)) > 0
+  cop_mask <- lengths(st_intersects(tracts_rj_pts, copacabana_nb)) > 0
+  roc_codes <- normalize_code(tracts_rj_2022$code_tract[roc_mask])
+  cop_codes <- normalize_code(tracts_rj_2022$code_tract[cop_mask])
+  message(sprintf("  Tracts: Rocinha=%d, Copacabana=%d",
+                  length(roc_codes), length(cop_codes)))
 
-    message(sprintf(
-      "  Tracts: Rocinha=%d, Copacabana=%d",
-      nrow(rocinha_tracts), nrow(copacabana_tracts)))
+  if (has_total_age) {
+    age_labels <- c("0-4", "5-9", "10-14", "15-19", "20-24",
+                     "25-29", "30-39", "40-49", "50-59",
+                     "60-69", "70+")
 
-    # Age brackets (matching calibration brackets)
-    age_cols <- grep("^pop_\\d", names(tracts_rj), value = TRUE)
-    # Filter to calibration brackets only (18+)
-    age_cols_18 <- age_cols[!grepl(
-      "pop_00|pop_05|pop_10|pop_70", age_cols)]
+    roc_data <- pessoas_rj[pessoas_rj$code_tract %in% roc_codes, ]
+    cop_data <- pessoas_rj[pessoas_rj$code_tract %in% cop_codes, ]
 
-    if (length(age_cols_18) > 0) {
-      roc_df <- st_drop_geometry(rocinha_tracts)
-      cop_df <- st_drop_geometry(copacabana_tracts)
+    roc_totals <- colSums(
+      roc_data[, total_age_cols, drop = FALSE])
+    cop_totals <- colSums(
+      cop_data[, total_age_cols, drop = FALSE])
 
-      roc_totals <- colSums(roc_df[, age_cols_18, drop = FALSE])
-      cop_totals <- colSums(cop_df[, age_cols_18, drop = FALSE])
-
-      # Clean bracket labels
-      bracket_labels <- gsub("pop_", "", age_cols_18)
-      bracket_labels <- gsub("_", "-", bracket_labels)
-
-      pyramid_rj <- data.frame(
-        bracket = rep(bracket_labels, 2),
-        population = c(roc_totals, cop_totals),
-        neighborhood = rep(
-          c("Rocinha (favela)", "Copacabana (wealthy)"),
-          each = length(age_cols_18)
-        )
-      )
-      # Normalize to percentages for comparison
-      pyramid_rj <- pyramid_rj |>
-        group_by(neighborhood) |>
-        mutate(pct = population / sum(population) * 100) |>
-        ungroup()
-      pyramid_rj$bracket <- factor(
-        pyramid_rj$bracket,
-        levels = rev(unique(pyramid_rj$bracket))
-      )
-
-      p <- ggplot(pyramid_rj,
-                  aes(x = pct, y = bracket,
-                      fill = neighborhood)) +
-        geom_col(position = "dodge", alpha = 0.85) +
-        scale_fill_manual(values = c(
-          "Rocinha (favela)" = "#d73027",
-          "Copacabana (wealthy)" = "#4575b4"
-        )) +
-        labs(
-          title = "Age Structure: Poor vs Wealthy Neighborhood",
-          subtitle = paste0(
-            "Rio de Janeiro \u2014 2010 Census ",
-            "(voting-age brackets)"
-          ),
-          x = "% of neighborhood population",
-          y = "Age bracket", fill = ""
-        ) +
-        theme_minimal() +
-        theme(
-          plot.title = element_text(face = "bold"),
-          legend.position = "bottom"
-        )
-      save_fig(p, "age-pyramids-rocinha-copacabana.png",
-               width = 8, height = 5)
+    # Sex ratio from V01002 (males) / V01003 (females)
+    if ("V01002" %in% names(pessoas_rj) &&
+        "V01003" %in% names(pessoas_rj)) {
+      roc_mr <- sum(roc_data$V01002, na.rm = TRUE) /
+        (sum(roc_data$V01002, na.rm = TRUE) +
+         sum(roc_data$V01003, na.rm = TRUE))
+      cop_mr <- sum(cop_data$V01002, na.rm = TRUE) /
+        (sum(cop_data$V01002, na.rm = TRUE) +
+         sum(cop_data$V01003, na.rm = TRUE))
+    } else {
+      roc_mr <- 0.48; cop_mr <- 0.45
     }
-  } else {
-    message("  WARNING: Could not find Rocinha/Copacabana")
+
+    # Convert to PERCENTAGES within each neighborhood
+    roc_pcts <- roc_totals / sum(roc_totals) * 100
+    cop_pcts <- cop_totals / sum(cop_totals) * 100
+
+    pyramid_df <- data.frame(
+      bracket = rep(age_labels, 4),
+      pct = c(-roc_pcts * roc_mr, roc_pcts * (1 - roc_mr),
+              -cop_pcts * cop_mr, cop_pcts * (1 - cop_mr)),
+      sex = rep(c("Male", "Female", "Male", "Female"),
+                each = 11),
+      neighborhood = rep(c("Rocinha", "Rocinha",
+                            "Copacabana", "Copacabana"),
+                          each = 11)
+    )
+    # Younger at bottom: no rev()
+    pyramid_df$bracket <- factor(pyramid_df$bracket,
+                                  levels = age_labels)
+    max_abs <- max(abs(pyramid_df$pct))
+
+    p <- ggplot(pyramid_df,
+                aes(x = pct, y = bracket, fill = sex)) +
+      geom_col(width = 0.75) +
+      scale_fill_manual(values = c("Male" = "#4575b4",
+                                    "Female" = "#d73027")) +
+      facet_wrap(~neighborhood) +
+      scale_x_continuous(
+        labels = function(x) paste0(format(abs(x), digits = 1), "%"),
+        limits = c(-max_abs * 1.08, max_abs * 1.08)
+      ) +
+      labs(
+        title = "Age Structure: Rocinha vs Copacabana",
+        subtitle = "Rio de Janeiro",
+        x = "% of neighborhood population", y = "Age bracket", fill = "",
+        caption = paste0(
+          "Source: IBGE Demographic Census 2022 (via censobr). ",
+          "Males shown to the left, females to the right."
+        )
+      ) +
+      theme_minimal(base_size = 14) +
+      theme(
+        plot.title = element_text(face = "bold", size = 18),
+        plot.subtitle = element_text(color = "grey40",
+                                      size = 13),
+        plot.caption = element_text(color = "grey50", size = 9,
+                                     hjust = 0),
+        legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        strip.text = element_text(face = "bold", size = 14),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 12)
+      )
+    save_fig(p, "age-pyramids-rocinha-copacabana.png",
+             width = 12, height = 7)
   }
 
   # ── 7b. Full pipeline (GPU) for age recovery figure ────────────
@@ -1150,37 +1209,41 @@ tryCatch({
   fitted_rj <- W_rj %*% src_mat_rj
 
   # Match Rocinha/Copacabana tracts in the result
-  # (result tracts may have different ordering/subsetting)
   tracts_rj_pts2 <- st_point_on_surface(tracts_rj_result)
   if (exists("rocinha_nb") && nrow(rocinha_nb) > 0) {
-    roc_mask <- lengths(
+    roc_mask2 <- lengths(
       st_intersects(tracts_rj_pts2, rocinha_nb)) > 0
-    cop_mask <- lengths(
+    cop_mask2 <- lengths(
       st_intersects(tracts_rj_pts2, copacabana_nb)) > 0
 
     roc_result_df <- st_drop_geometry(
-      tracts_rj_result[roc_mask, ])
+      tracts_rj_result[roc_mask2, ])
     cop_result_df <- st_drop_geometry(
-      tracts_rj_result[cop_mask, ])
+      tracts_rj_result[cop_mask2, ])
 
-    # Census values for these tracts
     calib_tract_cols <- calib_rj$tracts
     roc_census <- colSums(
       roc_result_df[, calib_tract_cols, drop = FALSE])
     cop_census <- colSums(
       cop_result_df[, calib_tract_cols, drop = FALSE])
-
-    # Interpolated (Sinkhorn) values
-    roc_interp <- colSums(fitted_rj[roc_mask, , drop = FALSE])
-    cop_interp <- colSums(fitted_rj[cop_mask, , drop = FALSE])
+    roc_interp <- colSums(
+      fitted_rj[roc_mask2, , drop = FALSE])
+    cop_interp <- colSums(
+      fitted_rj[cop_mask2, , drop = FALSE])
 
     bracket_labels_rj <- gsub("pop_", "", calib_tract_cols)
     bracket_labels_rj <- gsub("_", "-", bracket_labels_rj)
 
+    # Convert to PERCENTAGES within each neighborhood x source group
+    roc_census_pct <- roc_census / sum(roc_census) * 100
+    roc_interp_pct <- roc_interp / sum(roc_interp) * 100
+    cop_census_pct <- cop_census / sum(cop_census) * 100
+    cop_interp_pct <- cop_interp / sum(cop_interp) * 100
+
     recovery_df <- data.frame(
       bracket = rep(bracket_labels_rj, 4),
-      value = c(roc_census, roc_interp,
-                cop_census, cop_interp),
+      pct = c(roc_census_pct, roc_interp_pct,
+              cop_census_pct, cop_interp_pct),
       source = rep(c("Census", "Interpolated",
                       "Census", "Interpolated"),
                     each = length(calib_tract_cols)),
@@ -1190,193 +1253,170 @@ tryCatch({
         each = length(calib_tract_cols)
       )
     )
+    # Younger at bottom: no rev()
     recovery_df$bracket <- factor(
       recovery_df$bracket,
-      levels = rev(unique(recovery_df$bracket))
+      levels = unique(recovery_df$bracket)
     )
 
+    # Same x-axis limits for both neighborhoods
+    max_pct <- max(recovery_df$pct) * 1.05
+
     p <- ggplot(recovery_df,
-                aes(x = value, y = bracket,
-                    fill = source)) +
+                aes(x = pct, y = bracket, fill = source)) +
       geom_col(position = "dodge", alpha = 0.85) +
       scale_fill_manual(values = c(
         "Census" = "#4575b4",
         "Interpolated" = "#fdae61"
       )) +
-      facet_wrap(~neighborhood, scales = "free_x") +
+      facet_wrap(~neighborhood) +
+      scale_x_continuous(
+        limits = c(0, max_pct),
+        labels = function(x) paste0(format(x, digits = 1), "%")
+      ) +
       labs(
-        title = "Age Structure Recovery",
+        title = "Age Structure Recovery: Census vs Interpolated",
         subtitle = paste0(
-          "Census truth vs Sinkhorn-interpolated \u2014 ",
-          "Rio de Janeiro 2022"
+          "Rio de Janeiro 2022 \u2014 Sinkhorn-interpolated ",
+          "voter profiles vs census truth"
         ),
-        x = "Population / Voters",
+        x = "% of group total",
         y = "Age bracket", fill = ""
       ) +
-      theme_minimal() +
+      theme_minimal(base_size = 14) +
       theme(
-        plot.title = element_text(face = "bold"),
-        legend.position = "bottom"
+        plot.title = element_text(face = "bold", size = 18),
+        plot.subtitle = element_text(color = "grey40",
+                                      size = 12),
+        legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        strip.text = element_text(face = "bold", size = 14),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 12)
       )
     save_fig(p, "age-recovery-rocinha-copacabana.png",
-             width = 10, height = 6)
+             width = 12, height = 6)
   }
 
-  # ── 7c. Route visualization: Santa Marta / Botafogo ────────────
+  # ── 7c. Route: Botafogo -> Laranjeiras (Corcovado mountain) ─────
 
-  message("\n[RJ] Computing route for Santa Marta...")
+  message("\n[RJ] Computing route: Botafogo -> Laranjeiras...")
+  origin_df_rj <- data.frame(
+    id = "botafogo", lon = -43.188008, lat = -22.947474)
+  dest_df_rj <- data.frame(
+    id = "laranjeiras", lon = -43.193558, lat = -22.938640)
+
   routes_rj <- tryCatch({
-    if (!requireNamespace("r5r", quietly = TRUE)) {
-      message("  r5r not available, skipping routes")
-      NULL
-    } else {
-      cache_dir <- get_interpElections_cache_dir()
-      # r5r networks are stored under networks/r5r/<bbox_hash>/
-      r5r_base <- file.path(cache_dir, "networks", "r5r")
-      pbf_files <- list.files(
-        r5r_base, pattern = "\\.pbf$",
-        full.names = TRUE, recursive = TRUE)
-      # Also check downloads/osm/ for state-level extracts
-      osm_base <- file.path(cache_dir, "downloads", "osm")
-      pbf_files <- c(pbf_files, list.files(
-        osm_base, pattern = "\\.pbf$",
-        full.names = TRUE, recursive = TRUE))
-
-      # Find RJ network (clipped PBFs or state-level rio extract)
-      rj_pbf <- pbf_files[grepl(
-        "rio|RJ", pbf_files, ignore.case = TRUE)]
-      if (length(rj_pbf) == 0) rj_pbf <- pbf_files
-
-      if (length(rj_pbf) > 0) {
-        network_dir <- dirname(rj_pbf[1])
-        r5r_core <- r5r::setup_r5(
-          network_dir, verbose = FALSE)
-        on.exit(r5r::stop_r5(r5r_core), add = TRUE)
-
-        # Santa Marta tract area -> polling station
-        # Use a tract centroid near Santa Marta
-        origin <- data.frame(
-          id = "santa_marta",
-          lon = -43.1946, lat = -22.9538
-        )
-        # Two nearby stations: Botafogo + Laranjeiras
-        dests <- data.frame(
-          id = c("botafogo", "laranjeiras"),
-          lon = c(-43.1784, -43.1878),
-          lat = c(-22.9507, -22.9370)
-        )
-
-        route_lines <- r5r::detailed_itineraries(
-          r5r_core,
-          origins = origin,
-          destinations = dests,
-          mode = "WALK",
-          max_trip_duration = 120L,
-          shortest_path = TRUE
-        )
-        route_lines
-      } else {
-        message("  No RJ PBF found")
-        NULL
-      }
+    # Build dedicated network for Botafogo-Laranjeiras area
+    cache_dir <- get_interpElections_cache_dir()
+    rj_route_dir <- file.path(cache_dir, "networks", "r5r",
+                              "rj_botafogo_routes")
+    dir.create(rj_route_dir, recursive = TRUE, showWarnings = FALSE)
+    pbf_files <- list.files(rj_route_dir, pattern = "\\.pbf$",
+                            full.names = TRUE)
+    if (length(pbf_files) == 0) {
+      message("  Downloading OSM data for Botafogo area...")
+      rj_bb <- st_as_sf(
+        data.frame(lon = c(-43.22, -43.16),
+                   lat = c(-22.97, -22.92)),
+        coords = c("lon", "lat"), crs = 4326)
+      download_r5r_data(area_sf = rj_bb,
+                        output_dir = rj_route_dir, verbose = TRUE)
     }
+    r5r_core <- r5r::setup_r5(rj_route_dir, verbose = FALSE)
+    route_lines <- r5r::detailed_itineraries(
+      r5r_core,
+      origins = origin_df_rj, destinations = dest_df_rj,
+      mode = "WALK", max_trip_duration = 120L,
+      shortest_path = TRUE)
+    r5r::stop_r5(r5r_core)
+    route_lines
   }, error = function(e) {
-    message("  Route computation failed: ",
-            conditionMessage(e))
+    message("  Route failed: ", conditionMessage(e))
     NULL
   })
 
-  # Generate route figure with OSM basemap
   if (!is.null(routes_rj) && nrow(routes_rj) > 0) {
     message("[RJ] Generating route figure...")
-    route_sf <- st_transform(routes_rj, 4326)
-
-    # Get OSM basemap tiles
+    # Extend route to match euclidean endpoints
+    route_sf <- extend_route(routes_rj,
+      origin_df_rj$lon, origin_df_rj$lat,
+      dest_df_rj$lon, dest_df_rj$lat)
     bb_route <- st_bbox(route_sf)
-    pad_x <- 0.15 * (bb_route["xmax"] - bb_route["xmin"])
-    pad_y <- 0.15 * (bb_route["ymax"] - bb_route["ymin"])
-    bb_route["xmin"] <- bb_route["xmin"] - pad_x
-    bb_route["xmax"] <- bb_route["xmax"] + pad_x
-    bb_route["ymin"] <- bb_route["ymin"] - pad_y
-    bb_route["ymax"] <- bb_route["ymax"] + pad_y
-    bb_sfc <- st_as_sfc(bb_route)
+    pad <- 0.25 * max(0.005, max(bb_route["xmax"] - bb_route["xmin"],
+                                   bb_route["ymax"] - bb_route["ymin"]))
+    bb_route["xmin"] <- bb_route["xmin"] - pad
+    bb_route["xmax"] <- bb_route["xmax"] + pad
+    bb_route["ymin"] <- bb_route["ymin"] - pad
+    bb_route["ymax"] <- bb_route["ymax"] + pad
 
     basemap_rj <- tryCatch({
-      tiles <- get_tiles(
-        x = bb_sfc, provider = "OpenStreetMap",
+      tiles <- get_tiles(x = st_as_sfc(bb_route),
+        provider = "CartoDB.Positron",
         crop = TRUE, zoom = 15)
       st_as_stars(tiles)
-    }, error = function(e) {
-      message("  Basemap download failed: ",
-              conditionMessage(e))
-      NULL
-    })
-
-    # Origin and destination points for annotation
-    origin_pt <- st_as_sf(
-      data.frame(lon = -43.1946, lat = -22.9538,
-                 label = "Santa Marta"),
-      coords = c("lon", "lat"), crs = 4326
-    )
-    dest_pts <- st_as_sf(
-      data.frame(
-        lon = c(-43.1784, -43.1878),
-        lat = c(-22.9507, -22.9370),
-        label = c("Botafogo station",
-                   "Laranjeiras station")
-      ),
-      coords = c("lon", "lat"), crs = 4326
-    )
+    }, error = function(e) NULL)
 
     p_route <- ggplot()
     if (!is.null(basemap_rj)) {
-      p_route <- p_route +
-        layer_spatial(basemap_rj, dpi = 300)
+      p_route <- p_route + layer_spatial(basemap_rj, dpi = 300)
     }
     p_route <- p_route +
-      geom_sf(data = route_sf, color = "#002D72",
-              linewidth = 2, alpha = 0.8) +
-      geom_sf(data = origin_pt, color = "#d73027",
-              size = 4, shape = 16) +
-      geom_sf(data = dest_pts, color = "#1a9850",
-              size = 4, shape = 17) +
-      # Straight-line distance
       annotate("segment",
-               x = -43.1946, y = -22.9538,
-               xend = -43.1784, yend = -22.9507,
-               linetype = "dotted",
-               color = "red", linewidth = 0.8) +
-      coord_sf(
-        xlim = c(bb_route["xmin"], bb_route["xmax"]),
-        ylim = c(bb_route["ymin"], bb_route["ymax"])
-      ) +
+        x = origin_df_rj$lon, y = origin_df_rj$lat,
+        xend = dest_df_rj$lon, yend = dest_df_rj$lat,
+        linetype = "dotted", color = "#d73027",
+        linewidth = 1) +
+      geom_sf(data = route_sf, color = "#002D72",
+              linewidth = 2.5, alpha = 0.85) +
+      geom_sf(data = st_as_sf(origin_df_rj,
+        coords = c("lon", "lat"), crs = 4326),
+        color = "#d73027", size = 5, shape = 16) +
+      geom_sf(data = st_as_sf(dest_df_rj,
+        coords = c("lon", "lat"), crs = 4326),
+        color = "#1a9850", size = 5, shape = 17) +
+      annotate("label",
+        x = origin_df_rj$lon - 0.002,
+        y = origin_df_rj$lat,
+        label = "Botafogo\n(origin)",
+        size = 3.5, fontface = "bold",
+        fill = "white", alpha = 0.8) +
+      annotate("label",
+        x = dest_df_rj$lon + 0.002,
+        y = dest_df_rj$lat,
+        label = "Laranjeiras\n(destination)",
+        size = 3.5, fontface = "bold",
+        fill = "white", alpha = 0.8) +
+      coord_sf(xlim = c(bb_route["xmin"], bb_route["xmax"]),
+               ylim = c(bb_route["ymin"], bb_route["ymax"])) +
       labs(
-        title = "Walking Route: Santa Marta to Botafogo",
+        title = "Mountain Barrier: Botafogo to Laranjeiras",
         subtitle = paste0(
-          "Rio de Janeiro \u2014 dotted line = ",
-          "euclidean distance"
-        )
+          "Rio de Janeiro \u2014 Corcovado/Sumar\u00e9 hills ",
+          "between origin and destination\n",
+          "Dotted red = euclidean, solid blue = walking"),
+        caption = paste0(
+          "Map tiles: CartoDB Positron. ",
+          "Route: r5r on OpenStreetMap.")
       ) +
-      theme_void() +
+      theme_void(base_size = 12) +
       theme(
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(color = "grey40")
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey40",
+                                      size = 10),
+        plot.caption = element_text(color = "grey60", size = 8)
       )
-    save_fig(p_route, "routes-rj-santa-marta.png",
-             width = 9, height = 8)
+    save_fig(p_route, "routes-rj-botafogo-laranjeiras.png",
+             width = 10, height = 9)
   }
 
   # Save RDS with everything
   saveRDS(list(
-    pop_data = pop_rj,
-    tracts_rj = tracts_rj,
+    pop_data_2022 = pop_rj_2022,
+    tracts_rj_2022 = tracts_rj_2022,
     result = result_rj,
     fitted_demographics = fitted_rj,
     routes = routes_rj,
-    rocinha_tracts = if (exists("rocinha_tracts"))
-      rocinha_tracts else NULL,
-    copacabana_tracts = if (exists("copacabana_tracts"))
-      copacabana_tracts else NULL,
     neighborhoods = nbhoods_rj
   ), file.path(out_data, "rio_methodology.rds"))
 
@@ -1387,89 +1427,58 @@ tryCatch({
 
 
 # ═════════════════════════════════════════════════════════════════════
-# 8. RECIFE (PE) — River barrier route example
+# 8. RECIFE (PE) — Water barrier route example
 # ═════════════════════════════════════════════════════════════════════
 
 message("\n", strrep("=", 70))
-message("RECIFE (PE) — River barrier route")
+message("RECIFE (PE) — Water barrier route")
 message(strrep("=", 70))
 
 tryCatch({
   message("\n[Recife] Computing cross-river route...")
+
+  origin <- data.frame(
+    id = "boa_vista",
+    lon = -34.885756, lat = -8.059575)
+  dest <- data.frame(
+    id = "brasilia_teimosa",
+    lon = -34.880807, lat = -8.085098)
 
   routes_rec <- tryCatch({
     if (!requireNamespace("r5r", quietly = TRUE)) {
       message("  r5r not available, skipping")
       NULL
     } else {
-      # Download Recife OSM data if needed
-      # Try to use interpElections cache or download
+      # Build dedicated network for Boa Vista - Brasilia Teimosa area
       cache_dir <- get_interpElections_cache_dir()
-
-      # We need the r5r network for Recife
-      # Check networks/r5r/ and downloads/osm/ for PBF files
-      r5r_base <- file.path(cache_dir, "networks", "r5r")
-      osm_base <- file.path(cache_dir, "downloads", "osm")
-      pbf_files <- c(
-        list.files(r5r_base, pattern = "\\.pbf$",
-                   full.names = TRUE, recursive = TRUE),
-        list.files(osm_base, pattern = "\\.pbf$",
-                   full.names = TRUE, recursive = TRUE)
-      )
-      rec_pbf <- pbf_files[grepl(
-        "recife|pernambuco|PE", pbf_files, ignore.case = TRUE)]
-
-      if (length(rec_pbf) == 0) {
-        # Download OSM data for Recife via the package
-        message("  Downloading Recife OSM data...")
-        # Get tracts to define bounding box
-        pop_rec <- br_prepare_population(2611606, year = 2010)
-        tracts_rec <- br_prepare_tracts(
-          2611606, pop_rec, verbose = FALSE)
-
-        # Create r5r output directory in cache
-        rec_r5r_dir <- file.path(
-          cache_dir, "networks", "r5r", "recife_routes")
-        dir.create(rec_r5r_dir, recursive = TRUE,
-                   showWarnings = FALSE)
-
-        # Download r5r data using area_sf + output_dir
-        r5r_result <- download_r5r_data(
-          area_sf = tracts_rec,
-          output_dir = rec_r5r_dir,
-          verbose = TRUE
-        )
-        rec_pbf <- list.files(
-          rec_r5r_dir, pattern = "\\.pbf$",
-          full.names = TRUE)
+      rec_route_dir <- file.path(
+        cache_dir, "networks", "r5r", "recife_boa_vista_routes")
+      dir.create(rec_route_dir, recursive = TRUE,
+                 showWarnings = FALSE)
+      pbf_files <- list.files(rec_route_dir, pattern = "\\.pbf$",
+                              full.names = TRUE)
+      if (length(pbf_files) == 0) {
+        message("  Downloading OSM data for Boa Vista area...")
+        rec_bb <- st_as_sf(
+          data.frame(lon = c(-34.92, -34.85),
+                     lat = c(-8.10, -8.04)),
+          coords = c("lon", "lat"), crs = 4326)
+        download_r5r_data(area_sf = rec_bb,
+                          output_dir = rec_route_dir, verbose = TRUE)
+        pbf_files <- list.files(rec_route_dir, pattern = "\\.pbf$",
+                                full.names = TRUE)
       }
 
-      if (length(rec_pbf) > 0) {
-        network_dir <- dirname(rec_pbf[1])
+      if (length(pbf_files) > 0) {
         r5r_core <- r5r::setup_r5(
-          network_dir, verbose = FALSE)
+          rec_route_dir, verbose = FALSE)
         on.exit(r5r::stop_r5(r5r_core), add = TRUE)
 
-        # Points on opposite sides of Capibaribe river
-        # South bank: Boa Vista
-        # North bank: Espinheiro
-        origin <- data.frame(
-          id = "boa_vista",
-          lon = -34.8811, lat = -8.0589
-        )
-        dest <- data.frame(
-          id = "espinheiro",
-          lon = -34.8895, lat = -8.0435
-        )
-
         route_lines <- r5r::detailed_itineraries(
-          r5r_core,
-          origins = origin,
-          destinations = dest,
-          mode = "WALK",
+          r5r_core, origins = origin,
+          destinations = dest, mode = "WALK",
           max_trip_duration = 120L,
-          shortest_path = TRUE
-        )
+          shortest_path = TRUE)
         route_lines
       } else {
         message("  No Recife PBF found")
@@ -1477,81 +1486,82 @@ tryCatch({
       }
     }
   }, error = function(e) {
-    message("  Route computation failed: ",
-            conditionMessage(e))
+    message("  Route failed: ", conditionMessage(e))
     NULL
   })
 
   if (!is.null(routes_rec) && nrow(routes_rec) > 0) {
     message("[Recife] Generating route figure...")
-    route_sf_rec <- st_transform(routes_rec, 4326)
+    # Extend route to match euclidean endpoints
+    route_sf_rec <- extend_route(routes_rec,
+      origin$lon, origin$lat, dest$lon, dest$lat)
 
     bb_rec <- st_bbox(route_sf_rec)
-    pad_x <- 0.2 * (bb_rec["xmax"] - bb_rec["xmin"])
-    pad_y <- 0.2 * (bb_rec["ymax"] - bb_rec["ymin"])
+    pad_x <- 0.3 * max(0.003,
+      bb_rec["xmax"] - bb_rec["xmin"])
+    pad_y <- 0.3 * max(0.003,
+      bb_rec["ymax"] - bb_rec["ymin"])
     bb_rec["xmin"] <- bb_rec["xmin"] - pad_x
     bb_rec["xmax"] <- bb_rec["xmax"] + pad_x
     bb_rec["ymin"] <- bb_rec["ymin"] - pad_y
     bb_rec["ymax"] <- bb_rec["ymax"] + pad_y
-    bb_sfc_rec <- st_as_sfc(bb_rec)
 
     basemap_rec <- tryCatch({
-      tiles <- get_tiles(
-        x = bb_sfc_rec, provider = "OpenStreetMap",
+      tiles <- get_tiles(x = st_as_sfc(bb_rec),
+        provider = "CartoDB.Positron",
         crop = TRUE, zoom = 15)
       st_as_stars(tiles)
-    }, error = function(e) {
-      message("  Basemap download failed: ",
-              conditionMessage(e))
-      NULL
-    })
-
-    origin_pt_rec <- st_as_sf(
-      data.frame(lon = -34.8811, lat = -8.0589,
-                 label = "Boa Vista (south bank)"),
-      coords = c("lon", "lat"), crs = 4326
-    )
-    dest_pt_rec <- st_as_sf(
-      data.frame(lon = -34.8895, lat = -8.0435,
-                 label = "Espinheiro (north bank)"),
-      coords = c("lon", "lat"), crs = 4326
-    )
+    }, error = function(e) NULL)
 
     p_rec <- ggplot()
     if (!is.null(basemap_rec)) {
-      p_rec <- p_rec +
-        layer_spatial(basemap_rec, dpi = 300)
+      p_rec <- p_rec + layer_spatial(basemap_rec, dpi = 300)
     }
     p_rec <- p_rec +
-      geom_sf(data = route_sf_rec, color = "#002D72",
-              linewidth = 2, alpha = 0.8) +
-      geom_sf(data = origin_pt_rec, color = "#d73027",
-              size = 4, shape = 16) +
-      geom_sf(data = dest_pt_rec, color = "#1a9850",
-              size = 4, shape = 17) +
       annotate("segment",
-               x = -34.8811, y = -8.0589,
-               xend = -34.8895, yend = -8.0435,
-               linetype = "dotted",
-               color = "red", linewidth = 0.8) +
-      coord_sf(
-        xlim = c(bb_rec["xmin"], bb_rec["xmax"]),
-        ylim = c(bb_rec["ymin"], bb_rec["ymax"])
-      ) +
+        x = origin$lon, y = origin$lat,
+        xend = dest$lon, yend = dest$lat,
+        linetype = "dotted", color = "#d73027",
+        linewidth = 1) +
+      geom_sf(data = route_sf_rec, color = "#002D72",
+              linewidth = 2.5, alpha = 0.85) +
+      geom_sf(data = st_as_sf(origin,
+        coords = c("lon", "lat"), crs = 4326),
+        color = "#d73027", size = 5, shape = 16) +
+      geom_sf(data = st_as_sf(dest,
+        coords = c("lon", "lat"), crs = 4326),
+        color = "#1a9850", size = 5, shape = 17) +
+      annotate("label",
+        x = origin$lon, y = origin$lat - 0.002,
+        label = "Boa Vista\n(origin)",
+        size = 3.5, fontface = "bold",
+        fill = "white", alpha = 0.8) +
+      annotate("label",
+        x = dest$lon, y = dest$lat + 0.002,
+        label = "Bras\u00edlia Teimosa\n(destination)",
+        size = 3.5, fontface = "bold",
+        fill = "white", alpha = 0.8) +
+      coord_sf(xlim = c(bb_rec["xmin"], bb_rec["xmax"]),
+               ylim = c(bb_rec["ymin"], bb_rec["ymax"])) +
       labs(
-        title = "Walking Route: Crossing the Capibaribe",
+        title = "Water Barrier: Boa Vista to Bras\u00edlia Teimosa",
         subtitle = paste0(
-          "Recife (PE) \u2014 bridge detour vs ",
-          "euclidean distance (dotted)"
-        )
+          "Recife (PE) \u2014 water/estuary barrier ",
+          "between origin and destination\n",
+          "Dotted red = euclidean, solid blue = walking"),
+        caption = paste0(
+          "Map tiles: CartoDB Positron. ",
+          "Route: r5r on OpenStreetMap.")
       ) +
-      theme_void() +
+      theme_void(base_size = 12) +
       theme(
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(color = "grey40")
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey40",
+                                      size = 10),
+        plot.caption = element_text(color = "grey60", size = 8)
       )
-    save_fig(p_rec, "routes-recife-river.png",
-             width = 9, height = 8)
+    save_fig(p_rec, "routes-recife-water.png",
+             width = 10, height = 9)
   }
 
   saveRDS(list(routes = routes_rec),
@@ -1574,96 +1584,259 @@ message(strrep("=", 70))
 tryCatch({
   message("\n[Diagram] Generating pipeline figure...")
 
-  # Use Varginha data already in memory
-  # Transform all layers to a projected CRS for shearing
-  vga_tracts <- st_transform(tracts_sf_vga, 4326)
-  vga_stations <- st_transform(electoral_sf_vga, 4326)
+  library(ggnewscale)
 
-  # Affine shear/rotation function (from user's example)
+  # Use Varginha data already in memory
+  vga_tracts_d <- st_transform(tracts_sf_vga, 4326)
+  vga_stations_d <- st_transform(electoral_sf_vga, 4326)
+  vga_tracts_d$pop_total <- pop_total_vga
+  vga_tracts_d$pct_lula <- if (length(cand_13_col) > 0) {
+    interpolated_vga[, cand_13_col] /
+      interpolated_vga[, qt_comp_col] * 100
+  } else { rep(50, nrow(vga_tracts_d)) }
+
+  # 1) Municipality boundary from geobr (not tract union)
+  message("  Downloading municipality boundary from geobr...")
+  muni_sf <- geobr::read_municipality(3170701, year = 2022)
+  muni_sf <- st_transform(muni_sf, 4326)
+
+  # 2) Population raster from fresh WorldPop download
+  message("  Computing pop-weighted rep points (fresh WorldPop raster)...")
+  if (!"id" %in% names(tracts_sf_vga))
+    tracts_sf_vga$id <- as.character(tracts_sf_vga$code_tract)
+  pts_pop_fresh <- compute_representative_points(
+    tracts_sf_vga, method = "pop_weighted", tract_id = "id")
+  pop_raster_vga <- attr(pts_pop_fresh, "pop_raster")
+
+  pop_sf_raster <- NULL
+  if (!is.null(pop_raster_vga)) {
+    pop_df <- as.data.frame(pop_raster_vga, xy = TRUE, na.rm = TRUE)
+    if (ncol(pop_df) >= 3) {
+      names(pop_df)[3] <- "pop"
+      pop_df <- pop_df[pop_df$pop > 0, ]
+      if (nrow(pop_df) > 8000) {
+        set.seed(42)
+        pop_df <- pop_df[sample(nrow(pop_df), 8000), ]
+      }
+      pop_sf_raster <- st_as_sf(pop_df, coords = c("x", "y"),
+                                 crs = terra::crs(pop_raster_vga))
+      pop_sf_raster <- st_transform(pop_sf_raster, 4326)
+      # Crop raster to municipality boundary
+      muni_buf <- st_buffer(muni_sf, 0)
+      pop_sf_raster <- st_intersection(pop_sf_raster, muni_buf)
+      message(sprintf("  Raster: %d cells (cropped to municipality)",
+                      nrow(pop_sf_raster)))
+    }
+  }
+
+  # Pop-weighted representative points
+  pts_pop_d <- st_transform(pts_pop_fresh, 4326)
+
+  # Affine shear/rotation function — less rotation for legibility
   rotate_data_geom <- function(data, x_add = 0, y_add = 0) {
     shear_m <- matrix(c(2, 1.2, 0, 1), 2, 2)
-    rot_angle <- pi / 20
+    rot_angle <- pi / 40  # less rotation (was pi/20)
     rot_m <- matrix(c(cos(rot_angle), sin(rot_angle),
-                       -sin(rot_angle), cos(rot_angle)),
-                     2, 2)
+                       -sin(rot_angle), cos(rot_angle)), 2, 2)
     geom <- st_geometry(data)
     new_geom <- (geom * shear_m * rot_m) + c(x_add, y_add)
     st_set_geometry(data, new_geom)
   }
 
-  # Compute interpolated pct for top layer
-  if (length(cand_13_col) > 0) {
-    vga_tracts$pct_lula <- interpolated_vga[, cand_13_col] /
-      interpolated_vga[, qt_comp_col] * 100
+  # 7 layers with tight spacing (slight overlap for visual stacking)
+  y_step <- 0.17
+  n_layers <- if (!is.null(pop_sf_raster)) 7 else 5
+  y_offsets <- seq(0, by = y_step, length.out = n_layers)
+
+  tracts_outline <- st_sf(geometry = st_geometry(vga_tracts_d))
+
+  # Sample routes from a few tracts to nearest stations
+  set.seed(42)
+  sample_idx <- sample(seq_len(nrow(vga_tracts_d)),
+                        min(8, nrow(vga_tracts_d)))
+  tract_centroids_d <- st_centroid(vga_tracts_d)
+  route_lines <- do.call(c, lapply(sample_idx, function(i) {
+    nearest_j <- which.min(time_matrix_vga[i, ])
+    pt1 <- st_coordinates(tract_centroids_d[i, ])
+    pt2 <- st_coordinates(vga_stations_d[nearest_j, ])
+    st_sfc(st_linestring(rbind(pt1, pt2)), crs = 4326)
+  }))
+  route_sf_d <- st_sf(id = seq_along(route_lines),
+                       geometry = route_lines)
+
+  # Transform all 7 layers
+  if (!is.null(pop_sf_raster)) {
+    L1 <- rotate_data_geom(muni_sf, y_add = y_offsets[1])
+    L2 <- rotate_data_geom(vga_tracts_d, y_add = y_offsets[2])
+    L3_muni <- rotate_data_geom(muni_sf, y_add = y_offsets[3])
+    L3r <- rotate_data_geom(pop_sf_raster, y_add = y_offsets[3])
+    L4_muni <- rotate_data_geom(muni_sf, y_add = y_offsets[4])
+    L4p <- rotate_data_geom(pts_pop_d, y_add = y_offsets[4])
+    L5t <- rotate_data_geom(tracts_outline, y_add = y_offsets[5])
+    L5s <- rotate_data_geom(vga_stations_d, y_add = y_offsets[5])
+    L6t <- rotate_data_geom(tracts_outline, y_add = y_offsets[6])
+    L6r <- rotate_data_geom(route_sf_d, y_add = y_offsets[6])
+    L7 <- rotate_data_geom(vga_tracts_d, y_add = y_offsets[7])
+
+    layer_labels <- c(
+      "1. Municipality\n   boundary",
+      "2. Census tracts\n   (population)",
+      "3. Population\n   raster (WorldPop)",
+      "4. Pop-weighted\n   representative points",
+      "5. Polling\n   stations",
+      "6. Walking\n   routes",
+      "7. Interpolated\n   results")
+    layer_bboxes <- list(
+      st_bbox(L1), st_bbox(L2), st_bbox(L3r),
+      st_bbox(L4p), st_bbox(L5t), st_bbox(L6t), st_bbox(L7))
+    arrow_labels <- c(
+      "Subdivide into\ncensus tracts",
+      "Overlay population\ndensity grid",
+      "Compute weighted\ncentroids",
+      "Locate polling\nstations",
+      "Calculate walking\ntravel times",
+      "Sinkhorn IDW\ninterpolation")
   } else {
-    vga_tracts$pct_lula <- 50
+    L1 <- rotate_data_geom(muni_sf, y_add = y_offsets[1])
+    L2 <- rotate_data_geom(vga_tracts_d, y_add = y_offsets[2])
+    L5t <- rotate_data_geom(tracts_outline, y_add = y_offsets[3])
+    L5s <- rotate_data_geom(vga_stations_d, y_add = y_offsets[3])
+    L6t <- rotate_data_geom(tracts_outline, y_add = y_offsets[4])
+    L6r <- rotate_data_geom(route_sf_d, y_add = y_offsets[4])
+    L7 <- rotate_data_geom(vga_tracts_d, y_add = y_offsets[5])
+
+    layer_labels <- c(
+      "1. Municipality\n   boundary",
+      "2. Census tracts\n   (population)",
+      "3. Polling\n   stations",
+      "4. Walking\n   routes",
+      "5. Interpolated\n   results")
+    layer_bboxes <- list(
+      st_bbox(L1), st_bbox(L2),
+      st_bbox(L5t), st_bbox(L6t), st_bbox(L7))
+    arrow_labels <- c(
+      "Subdivide into\ncensus tracts",
+      "Locate polling\nstations",
+      "Calculate walking\ntravel times",
+      "Sinkhorn IDW\ninterpolation")
   }
-  vga_tracts$pop_t <- pop_total_vga
 
-  # Layer offsets (vertical stacking)
-  y_step <- 0.06
+  # LEFT SIDE labels
+  bb_all <- Reduce(function(a, b) {
+    c(xmin = min(a["xmin"], b["xmin"]),
+      ymin = min(a["ymin"], b["ymin"]),
+      xmax = max(a["xmax"], b["xmax"]),
+      ymax = max(a["ymax"], b["ymax"]))
+  }, layer_bboxes)
+  label_x <- bb_all["xmin"] - 0.10
+  labels_df <- data.frame(
+    x = rep(label_x, length(layer_labels)),
+    y = sapply(layer_bboxes, function(bb) mean(c(bb["ymin"], bb["ymax"]))),
+    label = layer_labels
+  )
 
-  # Build the stacked figure
+  # RIGHT SIDE arrows — short, uniform, all pointing UP
+  layer_centers <- sapply(layer_bboxes,
+    function(bb) mean(c(bb["ymin"], bb["ymax"])))
+  n_arrows <- length(layer_bboxes) - 1
+  arrow_x <- bb_all["xmax"] + 0.06
+  arrow_half_len <- (y_step / 3) / 2  # short arrows (1/3 of gap)
+  arrows_df <- data.frame(
+    x = rep(arrow_x, n_arrows),
+    xend = rep(arrow_x, n_arrows),
+    y = (layer_centers[1:n_arrows] +
+         layer_centers[2:(n_arrows + 1)]) / 2 - arrow_half_len,
+    yend = (layer_centers[1:n_arrows] +
+            layer_centers[2:(n_arrows + 1)]) / 2 + arrow_half_len,
+    label = arrow_labels,
+    label_y = (layer_centers[1:n_arrows] +
+               layer_centers[2:(n_arrows + 1)]) / 2
+  )
+
+  # Explicit coordinate limits to show all labels/arrows
+  x_lim <- c(label_x - 0.15, arrow_x + 0.20)
+  y_lim <- c(bb_all["ymin"] - 0.06, bb_all["ymax"] + 0.06)
+
+  # Build plot
   p_pipe <- ggplot() +
-    # Layer 1 (bottom): Municipality boundary
-    geom_sf(
-      data = rotate_data_geom(
-        st_sf(geometry = st_sfc(st_union(st_geometry(vga_tracts)),
-                                crs = st_crs(vga_tracts))),
-        y_add = 0),
-      fill = "#FCDE70", color = "grey30",
-      linewidth = 0.3) +
+    geom_sf(data = L1, fill = "#FCECC9",
+            color = "#8B7355", linewidth = 0.6) +
+    geom_sf(data = L2, aes(fill = pop_total),
+            color = "grey50", linewidth = 0.08) +
+    scale_fill_viridis_c(option = "viridis", direction = -1,
+                          name = "Population", guide = "none")
 
-    # Layer 2: Census tracts colored by population
-    geom_sf(
-      data = rotate_data_geom(vga_tracts, y_add = y_step),
-      aes(fill = pop_t),
-      color = "white", linewidth = 0.05) +
-    scale_fill_viridis_c(
-      option = "viridis", direction = -1,
-      name = "Population", guide = "none") +
+  # Population raster layer (with grey municipality outline behind)
+  if (!is.null(pop_sf_raster)) {
+    p_pipe <- p_pipe +
+      new_scale_fill() +
+      geom_sf(data = L3_muni, fill = "#E8E8E8",
+              color = "grey50", linewidth = 0.3) +
+      new_scale_color() +
+      geom_sf(data = L3r, aes(color = pop),
+              size = 0.3, alpha = 0.7) +
+      scale_color_viridis_c(option = "inferno", direction = -1,
+                             guide = "none") +
+      # Pop-weighted representative points (with grey outline)
+      new_scale_color() +
+      geom_sf(data = L4_muni, fill = "#E8E8E8",
+              color = "grey50", linewidth = 0.3) +
+      geom_sf(data = L4p, color = "#e66101",
+              size = 1.5, alpha = 0.8)
+  }
 
-    # Layer 3: Tracts outline + polling stations
-    geom_sf(
-      data = rotate_data_geom(
-        st_sf(geometry = st_geometry(vga_tracts)),
-        y_add = 2 * y_step),
-      fill = "grey95", color = "grey60",
-      linewidth = 0.1) +
-    geom_sf(
-      data = rotate_data_geom(
-        vga_stations, y_add = 2 * y_step),
-      color = "#d73027", size = 1.5, alpha = 0.8) +
-
-    # Layer 4 (top): Interpolated results
-    geom_sf(
-      data = rotate_data_geom(vga_tracts, y_add = 3 * y_step),
-      aes(color = pct_lula),
-      fill = NA, linewidth = 0.3) +
-    scale_color_distiller(
-      palette = "RdYlBu", direction = -1,
-      name = "Lula %", guide = "none") +
-
+  p_pipe <- p_pipe +
+    geom_sf(data = L5t, fill = "#E8E8E8",
+            color = "grey50", linewidth = 0.08) +
+    geom_sf(data = L5s, color = "#d73027",
+            size = 2.5, alpha = 0.9) +
+    geom_sf(data = L6t, fill = "#E8E8E8",
+            color = "grey50", linewidth = 0.08) +
+    geom_sf(data = L6r, color = "#002D72",
+            linewidth = 0.8, alpha = 0.7) +
+    # Interpolated results — FILLED polygons
+    new_scale_fill() +
+    geom_sf(data = L7, aes(fill = pct_lula),
+            color = "white", linewidth = 0.05) +
+    scale_fill_distiller(palette = "RdYlBu", direction = -1,
+                          guide = "none") +
+    # Labels on the left
+    geom_text(data = labels_df,
+              aes(x = x, y = y, label = label),
+              size = 4.5, hjust = 1, fontface = "bold",
+              color = "grey25", lineheight = 0.9) +
+    # Arrows pointing UP (short, uniform) + process labels
+    geom_segment(data = arrows_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+      linewidth = 1.0, color = "grey40") +
+    geom_text(data = arrows_df,
+      aes(x = x + 0.02, y = label_y, label = label),
+      size = 3.8, hjust = 0, color = "grey40",
+      fontface = "italic", lineheight = 0.85) +
+    coord_sf(xlim = x_lim, ylim = y_lim, expand = FALSE,
+             clip = "off") +
     theme_void() +
     theme(
-      plot.background = element_rect(
-        fill = "white", color = "white"),
-      plot.title = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(color = "grey40")
+      plot.background = element_rect(fill = "white",
+                                      color = "white"),
+      plot.title = element_text(face = "bold", size = 16,
+                                 hjust = 0.5),
+      plot.subtitle = element_text(color = "grey40", size = 11,
+                                    hjust = 0.5),
+      plot.margin = margin(5, 5, 5, 5)
     ) +
     labs(
-      title = paste0(
-        "Pipeline: From Spatial Data to ",
-        "Tract-Level Estimates"
-      ),
+      title = paste0("Interpolation Pipeline: From Spatial ",
+                      "Data to Tract-Level Estimates"),
       subtitle = paste0(
-        "Census tracts \u2192 Polling stations \u2192 ",
-        "Travel times \u2192 Interpolated results"
-      )
+        "Varginha (MG) \u2014 ",
+        nrow(vga_tracts_d), " census tracts, ",
+        nrow(vga_stations_d), " polling stations")
     )
 
   save_fig(p_pipe, "pipeline-stacked-maps.png",
-           width = 10, height = 12, dpi = 250)
+           width = 14, height = 16, dpi = 250)
 
   message("  [Diagram] Done.")
 }, error = function(e) {
@@ -1752,6 +1925,531 @@ tryCatch({
   message("  [Optimization diagram] Done.")
 }, error = function(e) {
   message("  [Optimization diagram] FAILED: ",
+          conditionMessage(e))
+})
+
+
+# ═════════════════════════════════════════════════════════════════════
+# 11. FLORIANOPOLIS (SC) — Water barrier (bay crossing)
+# ═════════════════════════════════════════════════════════════════════
+
+message("\n", strrep("=", 70))
+message("FLORIANOPOLIS (SC) — Water barrier (bay crossing)")
+message(strrep("=", 70))
+
+tryCatch({
+  cache_dir <- get_interpElections_cache_dir()
+  flor_r5r_dir <- file.path(
+    cache_dir, "networks", "r5r", "florianopolis_routes")
+  dir.create(flor_r5r_dir, recursive = TRUE,
+             showWarnings = FALSE)
+
+  pbf_files <- list.files(flor_r5r_dir, pattern = "\\.pbf$",
+                          full.names = TRUE)
+  if (length(pbf_files) == 0) {
+    message("  Downloading OSM data for Florianopolis...")
+    flor_bb <- st_as_sf(
+      data.frame(lon = c(-48.62, -48.48),
+                 lat = c(-27.68, -27.56)),
+      coords = c("lon", "lat"), crs = 4326)
+    r5r_result <- download_r5r_data(
+      area_sf = flor_bb,
+      output_dir = flor_r5r_dir, verbose = TRUE)
+    pbf_files <- list.files(flor_r5r_dir, pattern = "\\.pbf$",
+                            full.names = TRUE)
+  }
+
+  if (length(pbf_files) > 0) {
+    message("  Setting up r5r for Florianopolis...")
+    r5r_core <- r5r::setup_r5(flor_r5r_dir, verbose = FALSE)
+
+    origin_df_fl <- data.frame(
+      id = "coqueiros", lon = -48.581466, lat = -27.611141)
+    dest_df_fl <- data.frame(
+      id = "costeira", lon = -48.524405, lat = -27.633252)
+
+    message("  Computing cross-bay route...")
+    routes_flor <- r5r::detailed_itineraries(
+      r5r_core, origins = origin_df_fl,
+      destinations = dest_df_fl, mode = "WALK",
+      max_trip_duration = 180L, shortest_path = TRUE)
+    r5r::stop_r5(r5r_core)
+
+    if (!is.null(routes_flor) && nrow(routes_flor) > 0) {
+      message("[Florianopolis] Generating route figure...")
+      # Extend route to match euclidean endpoints
+      route_sf_fl <- extend_route(routes_flor,
+        origin_df_fl$lon, origin_df_fl$lat,
+        dest_df_fl$lon, dest_df_fl$lat)
+      bb_fl <- st_bbox(route_sf_fl)
+      pad_x <- 0.35 * max(0.005,
+        bb_fl["xmax"] - bb_fl["xmin"])
+      pad_y <- 0.35 * max(0.005,
+        bb_fl["ymax"] - bb_fl["ymin"])
+      bb_fl["xmin"] <- bb_fl["xmin"] - pad_x
+      bb_fl["xmax"] <- bb_fl["xmax"] + pad_x
+      bb_fl["ymin"] <- bb_fl["ymin"] - pad_y
+      bb_fl["ymax"] <- bb_fl["ymax"] + pad_y
+
+      basemap_fl <- tryCatch({
+        tiles <- get_tiles(x = st_as_sfc(bb_fl),
+          provider = "CartoDB.Positron",
+          crop = TRUE, zoom = 13)
+        st_as_stars(tiles)
+      }, error = function(e) NULL)
+
+      p_fl <- ggplot()
+      if (!is.null(basemap_fl)) {
+        p_fl <- p_fl + layer_spatial(basemap_fl, dpi = 300)
+      }
+      p_fl <- p_fl +
+        annotate("segment",
+          x = origin_df_fl$lon, y = origin_df_fl$lat,
+          xend = dest_df_fl$lon, yend = dest_df_fl$lat,
+          linetype = "dotted", color = "#d73027",
+          linewidth = 1) +
+        geom_sf(data = route_sf_fl, color = "#002D72",
+                linewidth = 2.5, alpha = 0.85) +
+        geom_sf(data = st_as_sf(origin_df_fl,
+          coords = c("lon", "lat"), crs = 4326),
+          color = "#d73027", size = 5, shape = 16) +
+        geom_sf(data = st_as_sf(dest_df_fl,
+          coords = c("lon", "lat"), crs = 4326),
+          color = "#1a9850", size = 5, shape = 17) +
+        annotate("label",
+          x = origin_df_fl$lon - 0.005,
+          y = origin_df_fl$lat,
+          label = "Coqueiros\n(mainland)",
+          size = 3.5, fontface = "bold",
+          fill = "white", alpha = 0.8) +
+        annotate("label",
+          x = dest_df_fl$lon + 0.005,
+          y = dest_df_fl$lat,
+          label = "Costeira do\nPirajuba\u00e9 (island)",
+          size = 3.5, fontface = "bold",
+          fill = "white", alpha = 0.8) +
+        coord_sf(xlim = c(bb_fl["xmin"], bb_fl["xmax"]),
+                 ylim = c(bb_fl["ymin"], bb_fl["ymax"])) +
+        labs(
+          title = "Water Barrier: Coqueiros to Costeira do Pirajuba\u00e9",
+          subtitle = paste0(
+            "Florian\u00f3polis (SC) \u2014 bay crossing ",
+            "between mainland and island\n",
+            "Dotted red = euclidean, solid blue = walking"),
+          caption = paste0(
+            "Map tiles: CartoDB Positron. ",
+            "Route: r5r on OpenStreetMap.")
+        ) +
+        theme_void(base_size = 12) +
+        theme(
+          plot.title = element_text(face = "bold", size = 15),
+          plot.subtitle = element_text(color = "grey40",
+                                        size = 10),
+          plot.caption = element_text(color = "grey60",
+                                       size = 8)
+        )
+      save_fig(p_fl, "routes-florianopolis-water.png",
+               width = 10, height = 9)
+
+      saveRDS(list(routes = routes_flor),
+              file.path(out_data, "florianopolis_routes.rds"))
+    }
+  }
+  message("  [Florianopolis] Done.")
+}, error = function(e) {
+  message("  [Florianopolis] FAILED: ", conditionMessage(e))
+})
+
+
+# ═════════════════════════════════════════════════════════════════════
+# 12. MULTI-CITY VORONOI — Cuiaba, Manaus, Natal
+# ═════════════════════════════════════════════════════════════════════
+
+message("\n", strrep("=", 70))
+message("MULTI-CITY VORONOI — Cuiaba, Manaus, Natal")
+message(strrep("=", 70))
+
+tryCatch({
+  voronoi_cities <- list(
+    list(name = "Cuiab\u00e1", uf = "MT"),
+    list(name = "Manaus",  uf = "AM"),
+    list(name = "Natal",   uf = "RN")
+  )
+
+  voronoi_results <- list()
+  for (city in voronoi_cities) {
+    message(sprintf("\n  [%s] Running full pipeline...",
+                    city$name))
+    r <- tryCatch({
+      result <- interpolate_election_br(
+        city$name, uf = city$uf, year = 2022,
+        cargo = "presidente",
+        what = c("candidates", "turnout"),
+        keep = c("weights", "sources_sf", "time_matrix"))
+
+      tracts <- result$tracts_sf
+      elec <- result$sources_sf
+      W <- result$weights
+      calib <- result$calib_cols
+      tracts_df <- st_drop_geometry(tracts)
+      elec_df <- st_drop_geometry(elec)
+      pop_mat <- as.matrix(tracts_df[, calib$tracts])
+      src_mat <- as.matrix(elec_df[, calib$sources])
+      storage.mode(pop_mat) <- "double"
+      storage.mode(src_mat) <- "double"
+
+      fitted_sink <- W %*% src_mat
+      tract_pts <- st_centroid(tracts)
+      elec_pts <- st_transform(elec, st_crs(tracts))
+      dist_mat <- st_distance(tract_pts, elec_pts)
+      nearest_idx <- apply(dist_mat, 1, which.min)
+      fitted_vor <- src_mat[nearest_idx, , drop = FALSE]
+
+      sse_s <- sum((fitted_sink - pop_mat)^2)
+      sse_v <- sum((fitted_vor - pop_mat)^2)
+      message(sprintf(
+        "  [%s] SSE: Sinkhorn=%.0f, Voronoi=%.0f (%.1fx)",
+        city$name, sse_s, sse_v,
+        sse_v / max(sse_s, 1)))
+
+      city_data <- list(
+        city = city$name,
+        pop_matrix = pop_mat, source_matrix = src_mat,
+        fitted_sinkhorn = fitted_sink,
+        fitted_voronoi = fitted_vor,
+        sse_sinkhorn = sse_s, sse_voronoi = sse_v,
+        calib_cols = calib,
+        n_tracts = nrow(tracts),
+        n_stations = nrow(elec))
+      saveRDS(city_data, file.path(out_data,
+        sprintf("%s_2022.rds",
+          tolower(gsub("[^a-zA-Z]", "", city$name)))))
+      city_data
+    }, error = function(e) {
+      message(sprintf("  [%s] FAILED: %s",
+                      city$name, conditionMessage(e)))
+      NULL
+    })
+    if (!is.null(r)) voronoi_results[[city$name]] <- r
+  }
+
+  # Combined figures with all 4 cities
+  palmas_data <- readRDS(file.path(out_data, "palmas_2022.rds"))
+
+  all_sse <- data.frame(
+    city = "Palmas (TO)",
+    sse_sinkhorn = palmas_data$sse_sinkhorn,
+    sse_voronoi = palmas_data$sse_voronoi,
+    stringsAsFactors = FALSE)
+
+  for (nm in names(voronoi_results)) {
+    r <- voronoi_results[[nm]]
+    uf <- voronoi_cities[[which(
+      sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
+    all_sse <- rbind(all_sse, data.frame(
+      city = sprintf("%s (%s)", nm, uf),
+      sse_sinkhorn = r$sse_sinkhorn,
+      sse_voronoi = r$sse_voronoi,
+      stringsAsFactors = FALSE))
+  }
+  all_sse$ratio <- all_sse$sse_voronoi /
+    pmax(all_sse$sse_sinkhorn, 1)
+  all_sse$city <- factor(all_sse$city,
+    levels = all_sse$city[order(all_sse$ratio)])
+
+  # SSE ratio bar chart
+  p <- ggplot(all_sse, aes(x = city, y = ratio)) +
+    geom_col(fill = "#4575b4", alpha = 0.85, width = 0.6) +
+    geom_text(aes(label = sprintf("%.0fx", ratio)),
+              hjust = -0.2, size = 4.5, fontface = "bold") +
+    geom_hline(yintercept = 1, linetype = "dashed",
+               color = "grey50") +
+    coord_flip(ylim = c(0, max(all_sse$ratio) * 1.15)) +
+    labs(
+      title = "Voronoi vs Sinkhorn: SSE Ratio by City",
+      subtitle = paste0(
+        "How many times worse is Voronoi (nearest-station) ",
+        "compared to Sinkhorn IDW?"),
+      x = "", y = "SSE(Voronoi) / SSE(Sinkhorn)",
+      caption = paste0(
+        "SSE = sum of squared errors in age bracket recovery. ",
+        "Higher ratio = larger Sinkhorn advantage.")
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40",
+                                    size = 11),
+      plot.caption = element_text(color = "grey50", size = 8,
+                                   hjust = 0),
+      axis.text = element_text(size = 12)
+    )
+  save_fig(p, "voronoi-sse-ratio-cities.png",
+           width = 10, height = 6)
+
+  # Combined scatter plot
+  all_scatter <- list()
+  brackets_pal <- palmas_data$calib_cols$tracts
+  for (k in seq_along(brackets_pal)) {
+    all_scatter[[length(all_scatter) + 1]] <- data.frame(
+      observed = palmas_data$pop_matrix[, k],
+      predicted = palmas_data$fitted_sinkhorn[, k],
+      bracket = brackets_pal[k],
+      method = "Sinkhorn", city = "Palmas (TO)")
+    all_scatter[[length(all_scatter) + 1]] <- data.frame(
+      observed = palmas_data$pop_matrix[, k],
+      predicted = palmas_data$fitted_voronoi[, k],
+      bracket = brackets_pal[k],
+      method = "Voronoi", city = "Palmas (TO)")
+  }
+  for (nm in names(voronoi_results)) {
+    r <- voronoi_results[[nm]]
+    uf <- voronoi_cities[[which(
+      sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
+    city_label <- sprintf("%s (%s)", nm, uf)
+    brackets <- r$calib_cols$tracts
+    for (k in seq_along(brackets)) {
+      all_scatter[[length(all_scatter) + 1]] <- data.frame(
+        observed = r$pop_matrix[, k],
+        predicted = r$fitted_sinkhorn[, k],
+        bracket = brackets[k],
+        method = "Sinkhorn", city = city_label)
+      all_scatter[[length(all_scatter) + 1]] <- data.frame(
+        observed = r$pop_matrix[, k],
+        predicted = r$fitted_voronoi[, k],
+        bracket = brackets[k],
+        method = "Voronoi", city = city_label)
+    }
+  }
+  scatter_df_v <- do.call(rbind, all_scatter)
+
+  p <- ggplot(scatter_df_v,
+    aes(x = observed, y = predicted, color = method)) +
+    geom_point(alpha = 0.15, size = 0.5) +
+    geom_abline(slope = 1, intercept = 0,
+                linetype = "dashed", color = "grey40") +
+    scale_color_manual(values = c(
+      "Sinkhorn" = "#4575b4", "Voronoi" = "#d73027")) +
+    facet_grid(city ~ method, scales = "free") +
+    labs(
+      title = "Predicted vs Observed: Sinkhorn vs Voronoi",
+      subtitle = paste0(
+        "Age bracket demographics across 4 Brazilian cities"),
+      x = "Census population (observed)",
+      y = "Predicted population", color = ""
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40",
+                                    size = 11),
+      legend.position = "none",
+      strip.text = element_text(face = "bold", size = 10)
+    )
+  save_fig(p, "voronoi-vs-sinkhorn-scatter.png",
+           width = 10, height = 12)
+
+  # Combined residual boxplot
+  all_resid <- list()
+  for (k in seq_along(brackets_pal)) {
+    all_resid[[length(all_resid) + 1]] <- data.frame(
+      residual = palmas_data$fitted_sinkhorn[, k] -
+        palmas_data$pop_matrix[, k],
+      bracket = brackets_pal[k],
+      method = "Sinkhorn", city = "Palmas (TO)")
+    all_resid[[length(all_resid) + 1]] <- data.frame(
+      residual = palmas_data$fitted_voronoi[, k] -
+        palmas_data$pop_matrix[, k],
+      bracket = brackets_pal[k],
+      method = "Voronoi", city = "Palmas (TO)")
+  }
+  for (nm in names(voronoi_results)) {
+    r <- voronoi_results[[nm]]
+    uf <- voronoi_cities[[which(
+      sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
+    city_label <- sprintf("%s (%s)", nm, uf)
+    brackets <- r$calib_cols$tracts
+    for (k in seq_along(brackets)) {
+      all_resid[[length(all_resid) + 1]] <- data.frame(
+        residual = r$fitted_sinkhorn[, k] - r$pop_matrix[, k],
+        bracket = brackets[k],
+        method = "Sinkhorn", city = city_label)
+      all_resid[[length(all_resid) + 1]] <- data.frame(
+        residual = r$fitted_voronoi[, k] - r$pop_matrix[, k],
+        bracket = brackets[k],
+        method = "Voronoi", city = city_label)
+    }
+  }
+  resid_df_v <- do.call(rbind, all_resid)
+
+  p <- ggplot(resid_df_v,
+    aes(x = bracket, y = residual, fill = method)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed",
+               color = "grey50") +
+    scale_fill_manual(values = c(
+      "Sinkhorn" = "#4575b4", "Voronoi" = "#d73027")) +
+    facet_wrap(~city, ncol = 2, scales = "free_y") +
+    labs(
+      title = "Calibration Residuals: Sinkhorn vs Voronoi",
+      subtitle = paste0(
+        "Fitted minus census, by age bracket and city"),
+      x = "Age bracket", y = "Residual", fill = ""
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40",
+                                    size = 11),
+      axis.text.x = element_text(angle = 45, hjust = 1,
+                                  size = 8),
+      legend.position = "bottom",
+      strip.text = element_text(face = "bold", size = 11)
+    )
+  save_fig(p, "voronoi-vs-sinkhorn-residuals.png",
+           width = 12, height = 10)
+
+  message("  [Multi-city Voronoi] Done.")
+}, error = function(e) {
+  message("  [Multi-city Voronoi] FAILED: ",
+          conditionMessage(e))
+})
+
+
+# ═════════════════════════════════════════════════════════════════════
+# 13. LULA VOTES vs HOUSEHOLD HEAD INCOME (censobr)
+# ═════════════════════════════════════════════════════════════════════
+
+message("\n", strrep("=", 70))
+message("LULA VOTES vs INCOME — correlation (censobr)")
+message(strrep("=", 70))
+
+tryCatch({
+  income_cities <- list(
+    list(name = "S\u00e3o Paulo", ibge = "3550308", uf = "SP",
+         gpu = TRUE,  sk = 5L),
+    list(name = "Salvador",      ibge = "2927408", uf = "BA",
+         gpu = TRUE,  sk = 15L),
+    list(name = "Porto Alegre",  ibge = "4314902", uf = "RS",
+         gpu = FALSE, sk = 15L),
+    list(name = "Cuiab\u00e1",   ibge = "5103403", uf = "MT",
+         gpu = FALSE, sk = 15L)
+  )
+
+  income_results <- list()
+
+  for (city in income_cities) {
+    message(sprintf("\n  [%s] Running pipeline (K=%d)...",
+                    city$name, city$sk))
+
+    result_inc <- tryCatch({
+      interpolate_election_br(
+        city$name, uf = city$uf, year = 2022,
+        cargo = "presidente",
+        what = c("candidates", "turnout"),
+        keep = c("weights", "sources_sf"),
+        use_gpu = city$gpu,
+        sinkhorn_iter = city$sk,
+        force = TRUE
+      )
+    }, error = function(e) {
+      message(sprintf("    FAILED: %s", conditionMessage(e)))
+      NULL
+    })
+
+    if (is.null(result_inc)) next
+
+    # Extract % Lula
+    interp_inc <- result_inc$interpolated
+    interp_cols_inc <- result_inc$interp_cols
+    cand_13_inc <- grep("^CAND_13$", interp_cols_inc, value = TRUE)
+
+    if (length(cand_13_inc) == 0) {
+      message(sprintf("    [%s] No CAND_13 column", city$name))
+      next
+    }
+
+    pct_lula_inc <- interp_inc[, cand_13_inc] /
+      interp_inc[, "QT_COMPARECIMENTO"] * 100
+    tract_codes_inc <- as.character(result_inc$tracts_sf$code_tract)
+
+    # Download income data
+    message(sprintf("  [%s] Downloading censobr income...", city$name))
+    renda <- censobr::read_tracts(2022, "ResponsavelRenda") |>
+      dplyr::filter(as.character(code_muni) == city$ibge) |>
+      dplyr::select(code_tract, renda = V06004) |>
+      dplyr::collect() |>
+      dplyr::mutate(
+        code_tract = as.character(code_tract),
+        renda = as.numeric(stringr::str_replace_all(
+          as.character(renda), ",", ".")))
+
+    message(sprintf("  [%s] Income data: %d tracts",
+                    city$name, nrow(renda)))
+
+    df <- data.frame(code_tract = tract_codes_inc,
+                     pct_lula = pct_lula_inc,
+                     stringsAsFactors = FALSE)
+    df <- merge(df, renda, by = "code_tract", all.x = TRUE)
+    df <- df[!is.na(df$renda) & df$renda > 0, ]
+    df$log_income <- log(df$renda + 1)
+    df$city <- sprintf("%s (%s)", city$name, city$uf)
+
+    r_val <- cor(df$log_income, df$pct_lula, use = "complete.obs")
+    message(sprintf("  [%s] Matched: %d tracts, r = %.3f",
+                    city$name, nrow(df), r_val))
+
+    income_results[[city$name]] <- df
+  }
+
+  if (length(income_results) > 0) {
+    all_income <- do.call(rbind, income_results)
+
+    # Compute r per city for panel labels
+    r_by_city <- all_income |>
+      group_by(city) |>
+      summarize(
+        r = cor(log_income, pct_lula, use = "complete.obs"),
+        n = n(), .groups = "drop"
+      ) |>
+      mutate(label = sprintf("r = %.3f (n = %d)", r, n))
+
+    p <- ggplot(all_income, aes(x = log_income, y = pct_lula)) +
+      geom_point(alpha = 0.3, color = "#4575b4", size = 1) +
+      geom_smooth(method = "lm", se = TRUE,
+                  color = "#d73027", linewidth = 0.8) +
+      geom_text(data = r_by_city,
+                aes(x = -Inf, y = Inf, label = label),
+                hjust = -0.1, vjust = 1.5, size = 4,
+                color = "grey30", inherit.aes = FALSE) +
+      facet_wrap(~city, ncol = 2, scales = "free") +
+      labs(
+        title = "Lula Vote Share vs Household Head Income",
+        subtitle = paste0(
+          "2022 presidential election \u2014 ",
+          "ecological correlation at census tract level"),
+        x = "log(Average monthly income + 1)",
+        y = "% votes for Lula (PT)",
+        caption = paste0(
+          "Income: IBGE Census 2022 ",
+          "(ResponsavelRenda via censobr). ",
+          "Votes: interpolated from TSE data ",
+          "(Sinkhorn IDW interpolation).")
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey40", size = 11),
+        plot.caption = element_text(color = "grey50",
+                                     size = 8, hjust = 0),
+        strip.text = element_text(face = "bold", size = 12)
+      )
+    save_fig(p, "lula-income-correlation.png",
+             width = 12, height = 10)
+  }
+  message("  [Income Correlation] Done.")
+}, error = function(e) {
+  message("  [Income Correlation] FAILED: ",
           conditionMessage(e))
 })
 
