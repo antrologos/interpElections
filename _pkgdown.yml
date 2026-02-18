@@ -12,49 +12,37 @@ navbar:
       text: Articles
       menu:
         - text: Getting Started
-          href: articles/introduction.html
-        - text: Understanding the Model
-          href: articles/understanding-the-model.html
+          href: articles/get-started.html
         - text: "---"
-        - text: "Use Cases"
-        - text: Brazilian Elections
-          href: articles/brazilian-elections.html
-        - text: Custom Data
-          href: articles/custom-data.html
+        - text: "Technical"
+        - text: Methodology
+          href: articles/methodology.html
         - text: "---"
         - text: "Advanced"
         - text: Working with Results
           href: articles/working-with-results.html
-        - text: Performance & Configuration
-          href: articles/performance-and-configuration.html
 
 articles:
   - title: Getting Started
     navbar: ~
     contents:
-      - introduction
-      - understanding-the-model
+      - get-started
 
-  - title: Use Cases
-    navbar: ~
+  - title: Technical
     contents:
-      - brazilian-elections
-      - custom-data
+      - methodology
 
   - title: Advanced
-    navbar: ~
     contents:
       - working-with-results
-      - performance-and-configuration
 
 reference:
-  - title: Core IDW Engine
+  - title: Core Sinkhorn Engine
     desc: Build weights, evaluate the objective, and optimize decay parameters.
     contents:
-      - idw_weights
-      - idw_interpolate
-      - idw_objective
-      - idw_gradient
+      - sinkhorn_balance
+      - sinkhorn_weights
+      - sinkhorn_objective
       - optimize_alpha
 
   - title: High-Level Wrappers
@@ -71,6 +59,7 @@ reference:
       - coef.interpElections_result
       - residuals.interpElections_result
       - as.data.frame.interpElections_result
+      - plot_interactive
 
   - title: Brazilian Data Helpers
     desc: Download and prepare census, electoral, and geographic data for Brazil.
@@ -81,7 +70,9 @@ reference:
       - br_download_votes
       - br_download_turnout
       - br_download_geocode
+      - br_download_party_legends
       - compute_travel_times
+      - compute_representative_points
       - download_r5r_data
       - muni_crosswalk
 

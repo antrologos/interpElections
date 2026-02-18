@@ -22,9 +22,16 @@ tests/testthat/Rplots.pdf
 
 # Vignette build artifacts
 vignettes/*.R
+!vignettes/precompute.R
 vignettes/*.html
 /doc/
 /Meta/
+
+# Pre-computed vignette data (too large for git; regenerate with precompute.R)
+vignettes/precomputed/
+
+# Misc artifacts
+Rplots.pdf
 
 # pkgdown site (built by GitHub Actions)
 /docs/

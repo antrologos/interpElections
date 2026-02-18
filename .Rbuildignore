@@ -9,3 +9,6 @@
 ^docs$
 ^pkgdown$
 ^\.github$
+^vignettes/precomputed$
+^vignettes/figures$
+^vignettes/precompute\.R$
