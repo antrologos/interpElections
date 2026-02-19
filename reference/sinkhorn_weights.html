@@ -42,7 +42,7 @@ and column marginal constraints."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Compute Sinkhorn-balanced IDW weights</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/sinkhorn.R" class="external-link"><code>R/sinkhorn.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/sinkhorn.R" class="external-link"><code>R/sinkhorn.R</code></a></small>
       <div class="d-none name"><code>sinkhorn_weights.Rd</code></div>
     </div>
 
@@ -60,6 +60,8 @@ and column marginal constraints.</p>
 <span>  offset <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  row_targets <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  col_targets <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  pop_matrix <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  source_matrix <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  max_iter <span class="op">=</span> <span class="fl">1000L</span>,</span>
 <span>  tol <span class="op">=</span> <span class="fl">1e-10</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -95,6 +97,18 @@ is the population vector and <code>m = ncol(time_matrix)</code>. Default: <code>
 Default: <code>NULL</code> (<code>rep(1, m)</code> for source conservation).</p></dd>
 
 
+<dt id="arg-pop-matrix">pop_matrix<a class="anchor" aria-label="anchor" href="#arg-pop-matrix"></a></dt>
+<dd><p>Numeric matrix [n x k] or NULL. Population per zone
+per demographic bracket. When provided together with <code>source_matrix</code>,
+enables per-bracket Sinkhorn mode. Default: NULL.</p></dd>
+
+
+<dt id="arg-source-matrix">source_matrix<a class="anchor" aria-label="anchor" href="#arg-source-matrix"></a></dt>
+<dd><p>Numeric matrix [m x k] or NULL. Source counts per
+demographic bracket. Must be provided together with <code>pop_matrix</code>.
+Default: NULL.</p></dd>
+
+
 <dt id="arg-max-iter">max_iter<a class="anchor" aria-label="anchor" href="#arg-max-iter"></a></dt>
 <dd><p>Integer. Max Sinkhorn iterations. Default: 1000.</p></dd>
 
@@ -111,12 +125,20 @@ approximately equal to <code>col_targets</code>. Preserves dimnames from
 <code>time_matrix</code>. Carries attributes from <code><a href="sinkhorn_balance.html">sinkhorn_balance()</a></code>.</p>
     </div>
     <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>When <code>pop_matrix</code> and <code>source_matrix</code> are provided, per-bracket Sinkhorn
+balancing is used: each demographic column gets its own Sinkhorn transport
+(with row targets rescaled to match source totals), then all bracket
+contributions are summed and a final aggregate Sinkhorn enforces the
+overall <code>row_targets</code> / <code>col_targets</code> constraints.</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="sinkhorn_balance.html">sinkhorn_balance()</a></code> for the core algorithm,
 <code><a href="optimize_alpha.html">optimize_alpha()</a></code> to find optimal alpha values.</p>
 <p>Other Sinkhorn:
-<code><a href="sinkhorn_balance.html">sinkhorn_balance()</a></code>,
-<code><a href="sinkhorn_objective.html">sinkhorn_objective()</a></code></p></div>
+<code><a href="sinkhorn_balance.html">sinkhorn_balance</a>()</code>,
+<code><a href="sinkhorn_objective.html">sinkhorn_objective</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -142,7 +164,7 @@ approximately equal to <code>col_targets</code>. Preserves dimnames from
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

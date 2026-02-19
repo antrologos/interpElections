@@ -64,7 +64,7 @@
       <h1>Methodology</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
       <div class="d-none name"><code>methodology.Rmd</code></div>
     </div>
 
@@ -108,7 +108,7 @@ station.</p>
 just demographics. In Brazilian cities, the age composition of a
 neighborhood is strongly correlated with its socioeconomic profile.
 Consider two neighborhoods in Rio de Janeiro:</p>
-<p><img src="figures/age-pyramids-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-rocinha-copacabana.png" alt="" width="100%"></p>
 <p><strong>Rocinha</strong>, one of Brazil’s largest favelas, has a
 young population: large cohorts in the 18–29 age range, tapering off
 sharply after 50. <strong>Copacabana</strong>, one of Rio’s wealthiest
@@ -244,11 +244,16 @@ representative points to stations
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
 that minimize demographic mismatch (<code><a href="../reference/optimize_alpha.html">optimize_alpha()</a></code>)</li>
 <li>
-<strong>Interpolation</strong>: apply the optimized weight matrix to
-any station-level variable
+<strong>Interpolation</strong>: build the per-bracket Sinkhorn
+weight matrix (<code><a href="../reference/sinkhorn_weights.html">sinkhorn_weights()</a></code>) and apply it to any
+station-level variable
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>X</mi><mo accent="true">̂</mo></mover><mo>=</mo><mi>W</mi><mo>×</mo><mi>V</mi></mrow><annotation encoding="application/x-tex">\hat{X} = W \times V</annotation></semantics></math>)</li>
 </ol>
-<p><img src="figures/pipeline-stacked-maps.png" class="r-plt" alt="" width="100%"></p>
+<p>The convenience function <code><a href="../reference/interpolate_election_br.html">interpolate_election_br()</a></code> wraps
+all six steps into a single call for Brazilian municipalities, handling
+data downloads, geocoding, and default parameter selection
+automatically.</p>
+<p><img src="figures/pipeline-stacked-maps.png" alt="" width="100%"></p>
 <p>The figure above illustrates the spatial data layers involved.
 Starting from the bottom: the municipality boundary, census tracts
 colored by population, polling station locations, and the final
@@ -262,63 +267,94 @@ interpolated results at the tract level.</p>
 <h3 id="census-population-data">4. Census Population Data<a class="anchor" aria-label="anchor" href="#census-population-data"></a>
 </h3>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">pop_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/br_prepare_population.html">br_prepare_population</a></span><span class="op">(</span><span class="st">"Varginha"</span>, year <span class="op">=</span> <span class="fl">2010</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">pop_data</span><span class="op">)</span></span></code></pre></div>
-<pre><code>  code_tract    code_muni pop_18_20 pop_21_24 pop_25_29 pop_30_39 pop_40_49 pop_50_59 pop_60_69
-1 3170701xxxxx  3170701      82       103       125       258       220       178       142
-2 3170701xxxxx  3170701      45        62        71       130       115        93        80
+<code class="sourceCode R"><span><span class="va">pop_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/br_prepare_population.html">br_prepare_population</a></span><span class="op">(</span><span class="st">"3170701"</span>, year <span class="op">=</span> <span class="fl">2022</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">pop_data</span><span class="op">[</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span><span class="op">)</span></span></code></pre></div>
+<pre><code>  code_tract    code_muni pop_00_04 pop_05_09 pop_10_14 pop_15_19 pop_20_24 pop_25_29 pop_30_39 pop_40_49
+1 3170701xxxxx  3170701      68        68        62        88        68        58       144       129
+2 3170701xxxxx  3170701      37        36        47        38        47        44        83        95
 ...</code></pre>
-<p>The <code>pop_*</code> columns contain census population counts by
-age bracket. These brackets are chosen to match the TSE voter
-registration age groups — they are the <strong>calibration
-variables</strong> that bridge census tracts and polling stations.</p>
+<p>The data frame also includes 28 calibration columns
+(<code>pop_hom_alf_18_19</code>, <code>pop_hom_nalf_18_19</code>, …,
+<code>pop_mul_nalf_60_69</code>) that cross gender × literacy × 7 age
+brackets. These <strong>calibration variables</strong> bridge census
+tracts and polling stations.</p>
 <table class="table">
+<colgroup>
+<col width="25%">
+<col width="25%">
+<col width="25%">
+<col width="25%">
+</colgroup>
 <thead><tr class="header">
-<th>Census column</th>
-<th>Age range</th>
+<th>Age bracket</th>
+<th>Census (wide)</th>
+<th>Full calibration columns</th>
 <th>TSE equivalent</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td><code>pop_18_20</code></td>
-<td>18–20 years</td>
-<td><code>votantes_18_20</code></td>
+<td>18–19</td>
+<td>2/5 of <code>pop_15_19</code>
+</td>
+<td><code>pop_{hom,mul}_{alf,nalf}_18_19</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_18_19</code></td>
 </tr>
 <tr class="even">
-<td><code>pop_21_24</code></td>
-<td>21–24 years</td>
-<td><code>votantes_21_24</code></td>
+<td>20–24</td>
+<td><code>pop_20_24</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_20_24</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_20_24</code></td>
 </tr>
 <tr class="odd">
+<td>25–29</td>
 <td><code>pop_25_29</code></td>
-<td>25–29 years</td>
-<td><code>votantes_25_29</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_25_29</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_25_29</code></td>
 </tr>
 <tr class="even">
+<td>30–39</td>
 <td><code>pop_30_39</code></td>
-<td>30–39 years</td>
-<td><code>votantes_30_39</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_30_39</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_30_39</code></td>
 </tr>
 <tr class="odd">
+<td>40–49</td>
 <td><code>pop_40_49</code></td>
-<td>40–49 years</td>
-<td><code>votantes_40_49</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_40_49</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_40_49</code></td>
 </tr>
 <tr class="even">
+<td>50–59</td>
 <td><code>pop_50_59</code></td>
-<td>50–59 years</td>
-<td><code>votantes_50_59</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_50_59</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_50_59</code></td>
 </tr>
 <tr class="odd">
+<td>60–69</td>
 <td><code>pop_60_69</code></td>
-<td>60–69 years</td>
-<td><code>votantes_60_69</code></td>
+<td><code>pop_{hom,mul}_{alf,nalf}_60_69</code></td>
+<td><code>vot_{hom,mul}_{alf,nalf}_60_69</code></td>
 </tr>
 </tbody>
 </table>
+<p><strong>How the 7 brackets are built.</strong> The TSE voter profile
+data records voters in 12 finer age bins (18, 19, 20, 21–24, 25–29,
+30–34, 35–39, 40–44, 45–49, 50–54, 55–59, 60–64, 65–69).
+<code><a href="../reference/br_prepare_electoral.html">br_prepare_electoral()</a></code> aggregates these into the 7 groups
+above so they align with the census age brackets. For the 2022 Census —
+which reports a 15–19 group instead of 18–20 — the package applies a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>/</mi><mn>5</mn></mrow><annotation encoding="application/x-tex">2/5</annotation></semantics></math>
+proxy to approximate the 18–19 voting-age share.</p>
 <p>These 7 matched brackets are the key insight: they are observed at
-<strong>both</strong> levels, enabling calibration.</p>
-<p><img src="figures/pop-pyramid.png" class="r-plt" alt="" width="90%"></p>
+<strong>both</strong> levels (census tracts and polling stations),
+enabling calibration. The package also supports <strong>full
+calibration</strong> with <code>calib_type = "full"</code>, which
+crosses gender (male/female) × literacy (literate/illiterate) × 7 age
+groups to produce <strong>28 calibration columns</strong>. This provides
+a stronger spatial signal because the optimizer must simultaneously
+match the spatial distribution of each subgroup. Full calibration is the
+default in <code><a href="../reference/interpolate_election_br.html">interpolate_election_br()</a></code>.</p>
+<p><img src="figures/pop-pyramid.png" alt="" width="90%"></p>
 </div>
 <div class="section level3">
 <h3 id="census-tract-geometries">5. Census Tract Geometries<a class="anchor" aria-label="anchor" href="#census-tract-geometries"></a>
@@ -329,7 +365,7 @@ variables</strong> that bridge census tracts and polling stations.</p>
 green areas (parks, water bodies with zero population), transforms to
 EPSG:5880 (equal-area projection for accurate spatial operations), and
 joins the population columns.</p>
-<p><img src="figures/tracts-pop-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/tracts-pop-map.png" alt="" width="100%"></p>
 <p>Note the urban-rural gradient: small, densely populated tracts in the
 city center; large, sparsely populated tracts on the periphery.</p>
 </div>
@@ -380,7 +416,7 @@ each column (type, cargo, candidate name, party)</li>
 <code>"demographics"</code>: <code>GENERO_*</code> and
 <code>EDUC_*</code> columns</li>
 </ul>
-<p><img src="figures/electoral-stations-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/electoral-stations-map.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="calibration-variables-comparing-source-and-target">7. Calibration Variables: Comparing Source and Target<a class="anchor" aria-label="anchor" href="#calibration-variables-comparing-source-and-target"></a>
@@ -399,7 +435,7 @@ voted at this station?” (from TSE)</li>
 Copacabana in Section 1. The demographic signature that varies across
 neighborhoods is precisely what the method uses to calibrate the
 weights.</p>
-<p><img src="figures/age-pyramids-comparison.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-comparison.png" alt="" width="100%"></p>
 <p>The shapes are similar but totals differ: the census counts
 residents, the TSE counts registered voters. Not everyone of voting age
 is registered, and registration rates vary by age bracket.</p>
@@ -452,7 +488,7 @@ Three methods are available:</p>
 irregularly shaped tracts</strong> in rural and peri-urban areas.
 Consider the southern periphery of São Paulo, where census tracts extend
 over several square kilometers of mixed urban and forested land:</p>
-<p><img src="figures/rep-points-saopaulo-comparison.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/rep-points-saopaulo-comparison.png" alt="" width="100%"></p>
 <p>The three-panel comparison shows the same set of large tracts in
 south São Paulo. The red dots (centroids) frequently fall in uninhabited
 areas — in the middle of Mata Atlântica forest or in empty fields. The
@@ -461,7 +497,7 @@ but may still be far from where people actually live. The green dots
 (pop-weighted) use the WorldPop population raster to find the most
 densely populated cell within each tract, placing the representative
 point where residents actually are.</p>
-<p><img src="figures/rep-points-zoom-inset.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/rep-points-zoom-inset.png" alt="" width="80%"></p>
 <p>Zooming into the largest tract, the centroid falls in dense forest
 while the pop-weighted point correctly identifies the settlement area.
 This difference can affect travel time calculations by tens of
@@ -513,7 +549,7 @@ time. Two examples:</p>
 Corcovado/Sumaré hills. A polling station in Laranjeiras sits on the
 other side. In a straight line, the distance is modest — but the walking
 route must navigate around the steep terrain:</p>
-<p><img src="figures/routes-rj-botafogo-laranjeiras.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-rj-botafogo-laranjeiras.png" alt="" width="100%"></p>
 <p>The solid blue line shows the actual walking route computed by r5r on
 the OSM road network. The dotted red line shows the straight-line
 distance. In mountainous terrain, these can differ by a factor of
@@ -523,14 +559,14 @@ distance. In mountainous terrain, these can differ by a factor of
 Brasília Teimosa peninsula are separated by Recife’s waterways. The
 walking route must navigate around the estuary and cross bridges, adding
 significant distance compared to the straight line.</p>
-<p><img src="figures/routes-recife-water.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-recife-water.png" alt="" width="100%"></p>
 <p><strong>Example 3: Water barrier (Florianópolis)</strong></p>
 <p>Florianópolis, capital of Santa Catarina, is split between the
 mainland and an island in the Atlantic. A point in Coqueiros (mainland)
 and a destination at Costeira do Pirajubaé (island) are separated by the
 bay. The walking route must detour to one of the bridges connecting the
 two sides:</p>
-<p><img src="figures/routes-florianopolis-water.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-florianopolis-water.png" alt="" width="100%"></p>
 <p>These examples illustrate why Euclidean distance is a poor proxy for
 actual accessibility — and why the routing engine matters.</p>
 </div>
@@ -563,10 +599,10 @@ get this value</li>
 <p>The OSM data is downloaded via <code><a href="../reference/download_r5r_data.html">download_r5r_data()</a></code>,
 which fetches state-level <code>.pbf</code> files and clips them to the
 municipality bounding box using osmium.</p>
-<p><img src="figures/tt-heatmap.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/tt-heatmap.png" alt="" width="90%"></p>
 <p>The heatmap shows spatial structure: a block-diagonal pattern where
 nearby tract-station pairs have short travel times.</p>
-<p><img src="figures/tt-accessibility-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/tt-accessibility-map.png" alt="" width="100%"></p>
 <p>Tracts in the center have short travel times to the nearest station;
 peripheral tracts are farther away.</p>
 <p><strong>The offset</strong>: before applying the IDW kernel, we add 1
@@ -622,7 +658,7 @@ tract’s estimate? With a decay parameter
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
 and station
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 <p>where:</p>
 <ul>
 <li>
@@ -663,7 +699,7 @@ decay parameter for tract
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span>,</span>
 <span>        legend.position <span class="op">=</span> <span class="st">"right"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/weight-decay-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/weight-decay-1.png" alt="" width="100%"></p>
 <ul>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">\alpha = 0.5</annotation></semantics></math>:
@@ -988,7 +1024,7 @@ within 15–50 iterations:</p>
 <span>       x <span class="op">=</span> <span class="st">"Iteration"</span>, y <span class="op">=</span> <span class="st">"Max marginal error (log scale)"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/sinkhorn-convergence-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/sinkhorn-convergence-1.png" alt="" width="100%"></p>
 </div>
 <div class="section level4">
 <h4 id="the-formal-algorithm">12.5 The formal algorithm<a class="anchor" aria-label="anchor" href="#the-formal-algorithm"></a>
@@ -1048,7 +1084,7 @@ for iter in 1..max_iter:
 <span>       x <span class="op">=</span> <span class="st">"Station"</span>, y <span class="op">=</span> <span class="st">"Tract"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/sinkhorn-comparison-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/sinkhorn-comparison-1.png" alt="" width="100%"></p>
 <p>Sinkhorn redistributes weight: over-weighted tracts (near many
 stations) get less, under-weighted tracts get more. The geographic
 “shape” of each row is preserved, but the “scale” changes to match
@@ -1066,6 +1102,238 @@ non-negative</li>
 </li>
 <li>Unreachable tracts (all-zero rows) remain zero and are flagged</li>
 </ul>
+</div>
+</div>
+<div class="section level3">
+<h3 id="per-bracket-sinkhorn-matching-each-age-group-separately">12.7 Per-Bracket Sinkhorn: Matching Each Age Group Separately<a class="anchor" aria-label="anchor" href="#per-bracket-sinkhorn-matching-each-age-group-separately"></a>
+</h3>
+<div class="section level4">
+<h4 id="the-problem-age-groups-have-different-geographies">The problem: age groups have different geographies<a class="anchor" aria-label="anchor" href="#the-problem-age-groups-have-different-geographies"></a>
+</h4>
+<p>Think about the spatial distribution of voters by age. Young adults
+(18–24) cluster near universities, cheap rental apartments, and transit
+corridors. Elderly voters (60–69) concentrate in established
+neighborhoods, retirement communities, and areas with healthcare
+facilities. These spatial patterns differ substantially — yet a single
+weight matrix must allocate <em>all</em> age groups simultaneously.</p>
+<p>With <strong>aggregate</strong> Sinkhorn (Sections 12.1–12.6), the
+weight matrix has one set of row targets: total population per tract,
+summed across all age brackets. The optimizer must find one set of
+weights that simultaneously matches 7 (or 28, with full calibration)
+different demographic distributions. This is an inherent compromise:
+weights that correctly distribute 18–20 year-olds may systematically
+misallocate 60–69 year-olds, and vice versa.</p>
+<p>Consider a concrete scenario. Tract A is near a university with many
+young voters at station 1. Tract B is in a retirement neighborhood with
+elderly voters at station 3. Both tracts might have similar total
+populations, but their age profiles point to different stations. An
+aggregate weight matrix that averages over all age groups cannot capture
+this distinction.</p>
+</div>
+<div class="section level4">
+<h4 id="the-per-bracket-extension">The per-bracket extension<a class="anchor" aria-label="anchor" href="#the-per-bracket-extension"></a>
+</h4>
+<p><strong>Per-bracket Sinkhorn</strong> solves this by running a
+separate transport problem for each demographic bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">k = 1, \ldots, K</annotation></semantics></math>.
+Instead of one weight matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>W</mi><annotation encoding="application/x-tex">W</annotation></semantics></math>,
+we build
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
+bracket-specific matrices
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo>,</mo><mi>…</mi><mo>,</mo><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>K</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup></mrow><annotation encoding="application/x-tex">W^{(1)}, \ldots, W^{(K)}</annotation></semantics></math>,
+each with its own row and column constraints:</p>
+<p><strong>For each bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>:</strong></p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>Row targets</strong>:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>r</mi><mi>i</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mi>/</mi><msub><mo>∑</mo><mi>i</mi></msub><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>⋅</mo><msub><mo>∑</mo><mi>j</mi></msub><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}</annotation></semantics></math>
+— the census population of bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+in tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>,
+rescaled so that the total row mass matches the total column mass for
+bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>.</li>
+<li>
+<strong>Column targets</strong>:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>c</mi><mi>j</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">c_j^{(k)} = S_{jk}</annotation></semantics></math>
+— the number of voters of bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+at station
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>.</li>
+<li>
+<strong>Sinkhorn balance</strong>: apply the standard algorithm from
+Section 12 with targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><msup><mi>r</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo>,</mo><msup><mi>c</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">(r^{(k)}, c^{(k)})</annotation></semantics></math>
+on the same IDW kernel
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
+to produce
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><annotation encoding="application/x-tex">W^{(k)}</annotation></semantics></math>.</li>
+</ol>
+<p>The rescaling in step 1 ensures that
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mo>∑</mo><mi>i</mi></msub><msubsup><mi>r</mi><mi>i</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mo>∑</mo><mi>j</mi></msub><msubsup><mi>c</mi><mi>j</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup></mrow><annotation encoding="application/x-tex">\sum_i r_i^{(k)} = \sum_j c_j^{(k)}</annotation></semantics></math>,
+which is the condition for Sinkhorn convergence.</p>
+<p><strong>Aggregate and finalize:</strong></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mtext mathvariant="normal">total</mtext></msub><mo>=</mo><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup></mrow><annotation encoding="application/x-tex">W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}</annotation></semantics></math></p>
+<p>followed by a final aggregate Sinkhorn pass with column targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">c_j = 1</annotation></semantics></math>
+and row targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>r</mi><mi>i</mi></msub><mo>=</mo><msub><mtext mathvariant="normal">pop</mtext><mi>i</mi></msub><mi>/</mi><mo>∑</mo><mtext mathvariant="normal">pop</mtext><mo>×</mo><mi>M</mi></mrow><annotation encoding="application/x-tex">r_i = \text{pop}_i / \sum \text{pop} \times M</annotation></semantics></math>
+to enforce overall source conservation (each station distributes exactly
+100% of its data).</p>
+</div>
+<div class="section level4">
+<h4 id="why-this-works-better">Why this works better<a class="anchor" aria-label="anchor" href="#why-this-works-better"></a>
+</h4>
+<p>Each bracket’s transport problem is simpler: it only needs to match
+one demographic column. The young-voter transport will naturally assign
+more weight to nearby stations with many young voters. The elderly-voter
+transport does the same for elderly voters. These bracket-specific
+solutions will generally differ because the spatial distribution of each
+age group is different.</p>
+<p>The aggregation step combines these bracket-specific patterns. A
+tract near a university gets more weight from the young-bracket
+transport on nearby youth-heavy stations, while still receiving
+appropriate weight from the elderly-bracket transport on nearby
+elderly-heavy stations. The final Sinkhorn pass ensures overall column
+sums remain 1.</p>
+</div>
+<div class="section level4">
+<h4 id="worked-example">Worked example<a class="anchor" aria-label="anchor" href="#worked-example"></a>
+</h4>
+<p>We extend the toy example from Section 11 with two brackets whose
+spatial distributions differ sharply:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Bracket 1 ("young"): concentrated near station 1</span></span>
+<span><span class="co"># Bracket 2 ("old"): concentrated near station 3</span></span>
+<span><span class="va">pop_young</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">60</span>, <span class="fl">100</span>, <span class="fl">50</span>, <span class="fl">30</span>, <span class="fl">20</span><span class="op">)</span>   <span class="co"># young pop per tract</span></span>
+<span><span class="va">pop_old</span>   <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">40</span>, <span class="fl">200</span>, <span class="fl">100</span>, <span class="fl">170</span>, <span class="fl">230</span><span class="op">)</span> <span class="co"># old pop per tract</span></span>
+<span></span>
+<span><span class="va">src_young</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">150</span>, <span class="fl">70</span>, <span class="fl">40</span><span class="op">)</span>  <span class="co"># young voters per station</span></span>
+<span><span class="va">src_old</span>   <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">330</span>, <span class="fl">310</span><span class="op">)</span> <span class="co"># old voters per station</span></span>
+<span></span>
+<span><span class="va">pop_mat_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>young <span class="op">=</span> <span class="va">pop_young</span>, old <span class="op">=</span> <span class="va">pop_old</span><span class="op">)</span></span>
+<span><span class="va">src_mat_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>young <span class="op">=</span> <span class="va">src_young</span>, old <span class="op">=</span> <span class="va">src_old</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Per-bracket weights: each bracket gets its own Sinkhorn transport</span></span>
+<span><span class="va">W_total</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">5</span>, <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">k</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">rb</span> <span class="op">&lt;-</span> <span class="va">pop_mat_toy</span><span class="op">[</span>, <span class="va">k</span><span class="op">]</span></span>
+<span>  <span class="va">cb</span> <span class="op">&lt;-</span> <span class="va">src_mat_toy</span><span class="op">[</span>, <span class="va">k</span><span class="op">]</span></span>
+<span>  <span class="va">rb_scaled</span> <span class="op">&lt;-</span> <span class="va">rb</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">rb</span><span class="op">)</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">cb</span><span class="op">)</span>   <span class="co"># rescale so sum(r) == sum(c)</span></span>
+<span>  <span class="va">W_k</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sinkhorn_balance.html">sinkhorn_balance</a></span><span class="op">(</span><span class="va">W_raw</span>, <span class="va">rb_scaled</span>, <span class="va">cb</span><span class="op">)</span></span>
+<span>  <span class="va">W_total</span> <span class="op">&lt;-</span> <span class="va">W_total</span> <span class="op">+</span> <span class="va">W_k</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="co"># Final aggregate Sinkhorn to enforce column-sum = 1</span></span>
+<span><span class="va">pop_total_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">rowSums</a></span><span class="op">(</span><span class="va">pop_mat_toy</span><span class="op">)</span></span>
+<span><span class="va">m_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">W_total</span><span class="op">)</span></span>
+<span><span class="va">rt</span> <span class="op">&lt;-</span> <span class="va">pop_total_toy</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">pop_total_toy</span><span class="op">)</span> <span class="op">*</span> <span class="va">m_toy</span></span>
+<span><span class="va">W_pb</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sinkhorn_balance.html">sinkhorn_balance</a></span><span class="op">(</span><span class="va">W_total</span>, <span class="va">rt</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">1</span>, <span class="va">m_toy</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Compare: aggregate-only vs per-bracket</span></span>
+<span><span class="va">W_agg</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sinkhorn_balance.html">sinkhorn_balance</a></span><span class="op">(</span><span class="va">W_raw</span>, <span class="va">rt</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">1</span>, <span class="va">m_toy</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Interpolate BOTH brackets</span></span>
+<span><span class="va">young_hat_agg</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W_agg</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_young</span><span class="op">)</span></span>
+<span><span class="va">young_hat_pb</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W_pb</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_young</span><span class="op">)</span></span>
+<span><span class="va">old_hat_agg</span>   <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W_agg</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_old</span><span class="op">)</span></span>
+<span><span class="va">old_hat_pb</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W_pb</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_old</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"=== Young bracket ===\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; === Young bracket ===</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Census truth:             "</span>, <span class="va">pop_young</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Census truth:              60 100 50 30 20</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Aggregate Sinkhorn:       "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">young_hat_agg</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Aggregate Sinkhorn:        45 83 45 40 48</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-bracket Sinkhorn:     "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">young_hat_pb</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-bracket Sinkhorn:      45 87 46 38 45</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Aggregate SSE:   "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">young_hat_agg</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Aggregate SSE:    1408</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-bracket SSE: "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">young_hat_pb</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-bracket SSE:  1095</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n=== Old bracket ===\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; === Old bracket ===</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Census truth:             "</span>, <span class="va">pop_old</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Census truth:              40 200 100 170 230</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Aggregate Sinkhorn:       "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">old_hat_agg</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Aggregate Sinkhorn:        31 239 107 159 204</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-bracket Sinkhorn:     "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">old_hat_pb</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-bracket Sinkhorn:      31 228 105 164 212</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Aggregate SSE:   "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">old_hat_agg</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Aggregate SSE:    2466</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-bracket SSE: "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">old_hat_pb</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-bracket SSE:  1250</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n=== Total SSE across both brackets ===\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; === Total SSE across both brackets ===</span></span>
+<span><span class="va">total_agg</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">young_hat_agg</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">old_hat_agg</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span></span>
+<span><span class="va">total_pb</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">young_hat_pb</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">old_hat_pb</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Aggregate:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">total_agg</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Aggregate: 3874</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-bracket:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">total_pb</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-bracket: 2345</span></span></code></pre></div>
+<p>The per-bracket approach recovers both demographic distributions more
+accurately because each bracket’s transport is tailored to its own
+spatial pattern, rather than being forced into a one-size-fits-all
+compromise.</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Visual comparison: aggregate vs per-bracket recovery</span></span>
+<span><span class="va">comparison_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  tract <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="fl">4</span><span class="op">)</span>,</span>
+<span>  value <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">pop_young</span>, <span class="va">pop_old</span>, <span class="va">young_hat_pb</span>, <span class="va">old_hat_pb</span><span class="op">)</span>,</span>
+<span>  bracket <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Young"</span>, <span class="st">"Old"</span>, <span class="st">"Young"</span>, <span class="st">"Old"</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>,</span>
+<span>  source <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Census truth"</span>, <span class="st">"Census truth"</span>,</span>
+<span>                  <span class="st">"Per-bracket estimate"</span>, <span class="st">"Per-bracket estimate"</span><span class="op">)</span>,</span>
+<span>               each <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">comparison_df</span>,</span>
+<span>       <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">tract</span><span class="op">)</span>, y <span class="op">=</span> <span class="va">value</span>, fill <span class="op">=</span> <span class="va">source</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_bar.html" class="external-link">geom_col</a></span><span class="op">(</span>position <span class="op">=</span> <span class="st">"dodge"</span>, width <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/facet_wrap.html" class="external-link">facet_wrap</a></span><span class="op">(</span><span class="op">~</span><span class="va">bracket</span>, scales <span class="op">=</span> <span class="st">"free_y"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_fill_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Census truth"</span> <span class="op">=</span> <span class="st">"#4575b4"</span>,</span>
+<span>                                <span class="st">"Per-bracket estimate"</span> <span class="op">=</span> <span class="st">"#fdae61"</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Per-Bracket Sinkhorn: Recovery of Age-Group Profiles"</span>,</span>
+<span>       x <span class="op">=</span> <span class="st">"Tract"</span>, y <span class="op">=</span> <span class="st">"Population"</span>, fill <span class="op">=</span> <span class="st">""</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span>,</span>
+<span>        legend.position <span class="op">=</span> <span class="st">"bottom"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="methodology_files/figure-html/per-bracket-comparison-plot-1.png" alt="" width="100%"></p>
+</div>
+<div class="section level4">
+<h4 id="connection-to-the-optimizer">Connection to the optimizer<a class="anchor" aria-label="anchor" href="#connection-to-the-optimizer"></a>
+</h4>
+<p>During PB-SGD optimization (Section 14), the per-bracket Sinkhorn is
+performed in <strong>log-domain on 3D tensors</strong> of shape
+<code>[ka × batch × m]</code>, where <code>ka</code> is the number of
+active demographic brackets and <code>batch</code> is the number of
+sampled tracts per SGD step. This vectorizes all
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
+separate transport problems into a single batched matrix computation on
+GPU or CPU, making it nearly as fast as a single aggregate Sinkhorn
+pass. Section 14.3 derives the log-domain Sinkhorn updates, and Section
+14.4 presents the complete 3D-tensor pseudocode.</p>
+<p>After optimization, <code><a href="../reference/sinkhorn_weights.html">sinkhorn_weights()</a></code> builds the final
+weight matrix using the same per-bracket logic with full convergence (up
+to 1000 Sinkhorn iterations, or until marginal error falls below
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mi>−</mi><mn>10</mn></mrow></msup><annotation encoding="application/x-tex">10^{-10}</annotation></semantics></math>):</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">W</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sinkhorn_weights.html">sinkhorn_weights</a></span><span class="op">(</span><span class="va">time_matrix</span>, <span class="va">alpha</span>, offset <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  row_targets <span class="op">=</span> <span class="va">row_targets</span>,</span>
+<span>  pop_matrix <span class="op">=</span> <span class="va">pop_matrix</span>,</span>
+<span>  source_matrix <span class="op">=</span> <span class="va">source_matrix</span><span class="op">)</span></span></code></pre></div>
+<p>When <code>pop_matrix</code> and <code>source_matrix</code> are
+provided, the function automatically uses per-bracket mode. Without
+them, it falls back to single-Sinkhorn mode for backward
+compatibility.</p>
 </div>
 </div>
 </div>
@@ -1101,7 +1369,7 @@ brackets simultaneously.</p>
 <h4 id="the-iterative-procedure">13.2 The iterative procedure<a class="anchor" aria-label="anchor" href="#the-iterative-procedure"></a>
 </h4>
 <p>The optimization is a loop:</p>
-<p><img src="figures/optimization-loop-diagram.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/optimization-loop-diagram.png" alt="" width="80%"></p>
 <p>In words:</p>
 <ol style="list-style-type: decimal">
 <li>
@@ -1142,16 +1410,29 @@ in the direction that reduces error</li>
 <p>where:</p>
 <ul>
 <li>
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>V</mi><mo accent="true">̂</mo></mover><mo>=</mo><msub><mi>W</mi><mtext mathvariant="normal">sinkhorn</mtext></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>×</mo><mi>S</mi></mrow><annotation encoding="application/x-tex">\hat{V} = W_{\text{sinkhorn}}(\alpha) \times S</annotation></semantics></math>
-— interpolated voter demographics per tract</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>V</mi><mo accent="true">̂</mo></mover><mo>=</mo><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>×</mo><mi>S</mi></mrow><annotation encoding="application/x-tex">\hat{V} = W(\alpha) \times S</annotation></semantics></math>
+— interpolated voter demographics per tract, with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>W</mi><annotation encoding="application/x-tex">W</annotation></semantics></math>
+built via per-bracket Sinkhorn (Section 12.7)</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>P</mi><annotation encoding="application/x-tex">P</annotation></semantics></math>
 — census demographics per tract</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
-= age bracket index (7 brackets)</li>
+= demographic bracket index
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">K = 7</annotation></semantics></math>
+for age-only calibration,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>28</mn></mrow><annotation encoding="application/x-tex">K = 28</annotation></semantics></math>
+for full gender × literacy × age calibration)</li>
 </ul>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<p>The weight matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">W(\alpha)</annotation></semantics></math>
+is the sum of per-bracket transport matrices
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><annotation encoding="application/x-tex">W^{(k)}</annotation></semantics></math>,
+each balanced to match bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>’s
+row/column targets, followed by a final aggregate Sinkhorn pass.</p>
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Simplified case: all tracts share the same alpha</span></span>
 <span><span class="va">tt_adj</span> <span class="op">&lt;-</span> <span class="va">tt_toy</span> <span class="op">+</span> <span class="fl">1</span></span>
 <span><span class="va">pop_matrix_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">pop_toy</span>, ncol <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
@@ -1165,9 +1446,107 @@ in the direction that reduces error</li>
 <span>    pop_matrix <span class="op">=</span> <span class="va">pop_matrix_toy</span>,</span>
 <span>    source_matrix <span class="op">=</span> <span class="va">src_matrix_toy</span>,</span>
 <span>    row_targets <span class="op">=</span> <span class="va">pop_toy</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">pop_toy</span><span class="op">)</span> <span class="op">*</span> <span class="fl">3</span>,</span>
-<span>    sinkhorn_iter <span class="op">=</span> <span class="fl">50</span></span>
+<span>    sk_iter <span class="op">=</span> <span class="fl">50</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.09e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.68e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.52e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.68e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.28e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 7.43e-10)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.03e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.40e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.88e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.48e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.24e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 4.19e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.35e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 6.76e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 8.45e-09)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.05e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.29e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.57e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.90e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.28e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.72e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.22e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.79e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 4.43e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.16e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.98e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 6.89e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 7.90e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 9.03e-08)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.03e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.16e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.32e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.48e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.66e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 1.86e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.08e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.31e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.57e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 2.85e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.15e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.48e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 3.84e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 4.23e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 4.64e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.09e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 5.58e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 6.11e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 6.68e-07)</span></span>
+<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
+<span><span class="co">#&gt; 7.29e-07)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>alpha <span class="op">=</span> <span class="va">alpha_range</span>, sse <span class="op">=</span> <span class="va">sse_values</span><span class="op">)</span>,</span>
 <span>       <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">alpha</span>, y <span class="op">=</span> <span class="va">sse</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
@@ -1181,22 +1560,55 @@ in the direction that reduces error</li>
 <span>       x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression</a></span><span class="op">(</span><span class="va">alpha</span><span class="op">)</span>, y <span class="op">=</span> <span class="st">"SSE"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/objective-landscape-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/objective-landscape-1.png" alt="" width="100%"></p>
 <p>The landscape has a clear minimum. In practice, each tract has its
 own alpha, creating a high-dimensional optimization problem.</p>
 </div>
 <div class="section level4">
-<h4 id="why-k-5-sinkhorn-iterations-during-optimization">13.4 Why K = 5 Sinkhorn iterations during optimization?<a class="anchor" aria-label="anchor" href="#why-k-5-sinkhorn-iterations-during-optimization"></a>
+<h4 id="sinkhorn-iterations-during-optimization-sk_iter">13.4 Sinkhorn iterations during optimization
+(<code>sk_iter</code>)<a class="anchor" aria-label="anchor" href="#sinkhorn-iterations-during-optimization-sk_iter"></a>
 </h4>
-<p>Full Sinkhorn convergence (K = 1000) is expensive. During
-optimization, we only need the gradient to point in roughly the right
-direction. K = 5 iterations give an approximate balance that produces a
-useful gradient. The final weight computation (after optimization
-converges) uses full Sinkhorn convergence.</p>
+<p>The objective function
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">f(\alpha)</annotation></semantics></math>
+depends on Sinkhorn-balanced weights. In principle, exact Sinkhorn
+convergence would require hundreds of iterations per evaluation. But
+during SGD optimization, we only need gradients that point in
+approximately the right direction — not exact ones. This opens a key
+tradeoff:</p>
+<ul>
+<li>
+<strong>Too few iterations</strong> (e.g.,
+<code>sk_iter = 3</code>): the per-bracket transport is poorly
+approximated. Row and column targets are far from satisfied. Gradients
+are noisy and may point in wrong directions, causing the optimizer to
+diverge or get stuck.</li>
+<li>
+<strong>Too many iterations</strong> (e.g.,
+<code>sk_iter = 50</code>): the transport is nearly exact, but memory
+grows as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="monospace">𝚜𝚔_𝚒𝚝𝚎𝚛</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">O(k_a \times b \times m \times
+\texttt{sk\_iter})</annotation></semantics></math> because torch must
+store intermediate tensors for backpropagation through all unrolled
+iterations. On GPU, this can exceed available VRAM for large
+cities.</li>
+<li>
+<strong>The sweet spot</strong> (<code>sk_iter = 15</code>):
+experiments across municipalities of varying sizes (Varginha, Niteroi,
+Belo Horizonte, São Paulo) showed that 15 iterations achieve
+near-optimal spatial variation in the resulting alpha vectors while
+keeping memory usage well within GPU limits. Beyond 15, the marginal
+improvement in gradient quality is negligible.</li>
+</ul>
+<p>The default <code>sk_iter = 15</code> balances gradient accuracy
+against memory cost. The <strong>final</strong> weight computation after
+optimization (via <code><a href="../reference/sinkhorn_weights.html">sinkhorn_weights()</a></code>) uses full
+convergence-based Sinkhorn with up to 1000 iterations, so the final
+interpolation is always exact regardless of <code>sk_iter</code> during
+training.</p>
 </div>
 </div>
 <div class="section level3">
-<h3 id="optimization-torch-adam-with-log-domain-sinkhorn">14. Optimization: Torch ADAM with Log-Domain Sinkhorn<a class="anchor" aria-label="anchor" href="#optimization-torch-adam-with-log-domain-sinkhorn"></a>
+<h3 id="optimization-per-bracket-sgd-with-log-domain-sinkhorn">14. Optimization: Per-Bracket SGD with Log-Domain Sinkhorn<a class="anchor" aria-label="anchor" href="#optimization-per-bracket-sgd-with-log-domain-sinkhorn"></a>
 </h3>
 <div class="section level4">
 <h4 id="why-automatic-differentiation">14.1 Why automatic differentiation?<a class="anchor" aria-label="anchor" href="#why-automatic-differentiation"></a>
@@ -1222,7 +1634,7 @@ backward.</p>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
 is large and travel times vary widely, some weights become
 astronomically small:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Demonstrate the underflow problem</span></span>
 <span><span class="va">tt_demo</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">5</span>, <span class="fl">20</span>, <span class="fl">60</span>, <span class="fl">120</span>, <span class="fl">200</span><span class="op">)</span>  <span class="co"># travel times (minutes)</span></span>
 <span><span class="va">alpha_high</span> <span class="op">&lt;-</span> <span class="fl">8</span></span>
@@ -1239,16 +1651,16 @@ astronomically small:</p>
 <span><span class="co">#&gt; Zero weights cause division by zero in Sinkhorn scaling</span></span></code></pre></div>
 <p>In 32-bit floating point (standard for GPU computation), numbers
 smaller than about
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
 underflow to zero. When a weight becomes exactly zero, the Sinkhorn
 row/column scaling produces
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>0</mn><mi>/</mi><mn>0</mn><mo>=</mo><mtext mathvariant="normal">NaN</mtext></mrow><annotation encoding="application/x-tex">0/0 = \text{NaN}</annotation></semantics></math>,
 and the optimization collapses.</p>
 <p><strong>The log-domain solution</strong>: instead of storing the tiny
 weights directly, store their <strong>logarithms</strong>. A weight of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mo>−</mo><mn>20</mn></mrow></msup><annotation encoding="application/x-tex">10^{-20}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mi>−</mi><mn>20</mn></mrow></msup><annotation encoding="application/x-tex">10^{-20}</annotation></semantics></math>
 has
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>20</mn></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo>−</mo><mn>46</mn></mrow><annotation encoding="application/x-tex">\log(10^{-20}) = -46</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>20</mn></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>−</mi><mn>46</mn></mrow><annotation encoding="application/x-tex">\log(10^{-20}) = -46</annotation></semantics></math>,
 which is perfectly representable in float32.</p>
 </div>
 <div class="section level4">
@@ -1276,88 +1688,223 @@ primitive available in torch:</p>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">c_j = 1</annotation></semantics></math>,
 so
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\log c_j = 0</annotation></semantics></math>):</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>=</mo><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j = -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>=</mo><mi>−</mi><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j = -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
 <p>And the log-kernel is simply:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
-<h4 id="the-complete-log-domain-sinkhorn-algorithm">14.4 The complete log-domain Sinkhorn algorithm<a class="anchor" aria-label="anchor" href="#the-complete-log-domain-sinkhorn-algorithm"></a>
+<h4 id="the-complete-per-bracket-log-domain-sinkhorn-algorithm">14.4 The complete per-bracket log-domain Sinkhorn algorithm<a class="anchor" aria-label="anchor" href="#the-complete-per-bracket-log-domain-sinkhorn-algorithm"></a>
 </h4>
-<pre><code>Input: log_t[n,m], alpha[n], log_r[n], K_sink iterations
+<p>The optimizer performs Sinkhorn transport <strong>per
+bracket</strong> on 3D tensors. Before reading the pseudocode, it helps
+to understand the tensor shapes involved:</p>
+<table class="table">
+<thead><tr class="header">
+<th>Symbol</th>
+<th>Shape</th>
+<th>Meaning</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>log_t</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n \times m]</annotation></semantics></math></td>
+<td>Log travel times (precomputed once)</td>
+</tr>
+<tr class="even">
+<td><code>alpha</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n]</annotation></semantics></math></td>
+<td>Decay parameters (what we’re optimizing)</td>
+</tr>
+<tr class="odd">
+<td><code>P</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n \times k_a]</annotation></semantics></math></td>
+<td>Census population per tract and bracket</td>
+</tr>
+<tr class="even">
+<td><code>V</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>m</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[m \times k_a]</annotation></semantics></math></td>
+<td>Voter counts per station and bracket</td>
+</tr>
+<tr class="odd">
+<td><code>r_mat</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times n]</annotation></semantics></math></td>
+<td>Row targets: bracket × tract</td>
+</tr>
+<tr class="even">
+<td><code>c_mat</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times m]</annotation></semantics></math></td>
+<td>Column targets: bracket × station</td>
+</tr>
+<tr class="odd">
+<td><code>log_K_3d</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times b \times m]</annotation></semantics></math></td>
+<td>3D log-kernel (broadcast)</td>
+</tr>
+<tr class="even">
+<td><code>log_u</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mn>1</mn><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times b \times 1]</annotation></semantics></math></td>
+<td>Log row-scaling factors</td>
+</tr>
+<tr class="odd">
+<td><code>log_v</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mn>1</mn><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times 1 \times m]</annotation></semantics></math></td>
+<td>Log column-scaling factors</td>
+</tr>
+<tr class="even">
+<td><code>W_all</code></td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times b \times m]</annotation></semantics></math></td>
+<td>Per-bracket weight tensors</td>
+</tr>
+</tbody>
+</table>
+<p>The first dimension
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>)
+indexes demographic brackets. The second dimension
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>b</mi><annotation encoding="application/x-tex">b</annotation></semantics></math>)
+indexes the sampled tracts in the mini-batch. The third dimension
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>m</mi><annotation encoding="application/x-tex">m</annotation></semantics></math>)
+indexes stations. All
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
+brackets share the same log-kernel — only the row/column targets differ
+— so the Sinkhorn updates can be computed in a single vectorized
+operation across brackets.</p>
+<pre><code>Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka], sk_iter, batch_size
 
-# Log-kernel
-log_K[i,j] = -alpha[i] * log_t[i,j]
+# Preprocess: per-bracket row/column targets (done once)
+for each bracket b in 1..ka:
+    r_mat[b,:] = P[:,b] / sum(P[:,b]) * sum(V[:,b])  # rescale rows
+    c_mat[b,:] = V[:,b]
 
-# Initialize scaling factors
-log_u = zeros(n, 1)
-log_v = zeros(1, m)
+# --- PB-SGD step (repeated for max_steps iterations) ---
+# Sample mini-batch of b tracts
+idx = sample(1..n, batch_size)
+r_batch = r_mat[:, idx]                    # [ka x b]
 
-for k = 1 to K_sink:
-    # Row update
-    log_u[i] = log_r[i] - logsumexp_j(log_K[i,j] + log_v[j])
-    # Column update
-    log_v[j] = 0 - logsumexp_i(log_K[i,j] + log_u[i])
+# Column scaling: adjust column targets to match the mini-batch
+# (see explanation below)
+c_batch = c_mat * (rowSums(r_batch) / rowSums(r_mat))  # [ka x m]
 
-# Recover balanced weights
-W[i,j] = exp(log_u[i] + log_K[i,j] + log_v[j])
+# Build 3D log-targets (unsqueeze for broadcasting)
+log_r_3d = log(r_batch)                     # [ka x b x 1]
+log_c_3d = log(c_batch)                     # [ka x 1 x m]
 
-# Forward pass: interpolated demographics
-V_hat = W @ source_matrix
+# Log-kernel for batch (same kernel for all brackets)
+log_K[i,j] = -alpha[idx[i]] * log_t[idx[i], j]   # [b x m]
+log_K_3d = log_K expanded to [ka x b x m]   # broadcast across brackets
 
-# Loss
-loss = sum((V_hat - pop_matrix)^2)</code></pre>
+# Log-domain Sinkhorn iterations (per bracket, batched)
+log_u = zeros(ka, b, 1)
+log_v = zeros(ka, 1, m)
+
+for k = 1 to sk_iter:
+    log_u = log_r_3d - logsumexp_j(log_K_3d + log_v)   # row update
+    log_v = log_c_3d - logsumexp_i(log_K_3d + log_u)   # column update
+
+# Recover weights, aggregate brackets, and column-normalize
+W_all = exp(log_u + log_K_3d + log_v)       # [ka x b x m]
+W_total = sum(W_all, dim=bracket)            # [b x m]
+W_norm = W_total / colSums(W_total)          # column-normalize
+
+# Compute loss (scaled for batch → full-data estimate)
+V_scaled = V * (b / n)
+V_hat = W_norm @ V_scaled                    # [b x ka]
+loss = sum((V_hat - P[idx,:])^2) * (n / b)</code></pre>
 <p>Every operation — log, exp, logsumexp, matrix multiply, subtraction,
 squaring — has a defined backward pass in torch. The gradient
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>α</mi></msub><mi>f</mi></mrow><annotation encoding="application/x-tex">\nabla_\alpha f</annotation></semantics></math>
-flows backward through all
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
-Sinkhorn iterations automatically.</p>
-<p>This matches the implementation in <code>optimize-torch.R</code>
-(lines 161–181 of the package source).</p>
+flows backward through all <code>sk_iter</code> Sinkhorn iterations
+automatically.</p>
+<p><strong>Why scale the column targets?</strong> When we sample a
+mini-batch of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>b</mi><annotation encoding="application/x-tex">b</annotation></semantics></math>
+tracts from the full set of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>n</mi><annotation encoding="application/x-tex">n</annotation></semantics></math>,
+the row targets for the batch (<code>r_batch</code>) sum to less than
+the full row targets (<code>r_mat</code>). But the column targets (voter
+counts at stations) remain the same — we haven’t sampled stations, only
+tracts. If we used the full column targets, the Sinkhorn problem would
+be inconsistent: row sums would be much smaller than column sums, and
+the algorithm would fail to converge. The fix is to scale each bracket’s
+column targets by the ratio
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext mathvariant="normal">sum</mtext><mrow><mo stretchy="true" form="prefix">(</mo><msubsup><mi>r</mi><mtext mathvariant="normal">batch</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mtext mathvariant="normal">sum</mtext><mrow><mo stretchy="true" form="prefix">(</mo><msubsup><mi>r</mi><mtext mathvariant="normal">full</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\text{sum}(r_{\text{batch}}^{(k)}) / \text{sum}(r_{\text{full}}^{(k)})</annotation></semantics></math>,
+so that the mini-batch Sinkhorn problem has matching row and column
+totals. This ensures that each mini-batch step solves a well-posed
+transport problem that is consistent with the full-data objective.</p>
+<p><strong>Key design choices:</strong></p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>3D tensors</strong>: all
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
+brackets are batched into a single <code>[ka × b × m]</code> tensor,
+enabling efficient GPU parallelism</li>
+<li>
+<strong>Per-bracket targets</strong>: each bracket has its own
+row/column targets, giving each age group its own spatial transport
+solution</li>
+<li>
+<strong>Batch scaling</strong>: <code>V_scaled</code> is scaled by
+<code>b/n</code> and the loss by <code>n/b</code> so that the gradient
+is an unbiased estimate of the full-data gradient, regardless of batch
+size</li>
+</ol>
 </div>
 <div class="section level4">
-<h4 id="adam-optimizer-with-learning-rate-scheduling">14.5 ADAM optimizer with learning rate scheduling<a class="anchor" aria-label="anchor" href="#adam-optimizer-with-learning-rate-scheduling"></a>
+<h4 id="pb-sgd-per-bracket-stochastic-gradient-descent">14.5 PB-SGD: Per-Bracket Stochastic Gradient Descent<a class="anchor" aria-label="anchor" href="#pb-sgd-per-bracket-stochastic-gradient-descent"></a>
 </h4>
-<p>We use the <strong>ADAM</strong> optimizer (Adaptive Moment
-Estimation), which maintains per-parameter learning rates that adapt
-based on first and second moment estimates of the gradient. This is
-particularly well-suited to our problem because different tracts may
-have very different gradient magnitudes.</p>
-<p>The learning rate schedule uses <strong>multi-phase
-annealing</strong>:</p>
-<ul>
+<p>We use <strong>ADAM</strong> (Adaptive Moment Estimation) as the
+underlying optimizer, with <strong>mini-batch sampling</strong> and
+<strong>per-bracket Sinkhorn transport</strong>. At each of the 800
+PB-SGD steps:</p>
+<ol style="list-style-type: decimal">
 <li>
-<strong>Phase 1</strong>: linear warmup (10 steps from LR = 0 to
-<code>gpu_lr_init</code>)</li>
+<strong>Sample</strong> a mini-batch of <code>batch_size</code>
+tracts (default 500)</li>
 <li>
-<strong>Subsequent phases</strong>: each runs inner iterations with
-decreasing LR</li>
+<strong>Per-bracket Sinkhorn</strong>: each demographic column gets
+its own log-domain Sinkhorn transport on <code>[ka x batch x m]</code>
+tensors</li>
 <li>
-<strong>LR decays</strong> by <code>gpu_lr_decay</code> (default
-0.6) between phases</li>
+<strong>Aggregate</strong> bracket contributions and
+column-normalize</li>
 <li>
-<strong>Gradient clipping</strong> at norm 1.0 prevents
+<strong>Compute loss</strong>: scaled SSE between interpolated and
+observed values</li>
+<li>
+<strong>Gradient masking</strong>: only update optimizer moments for
+sampled tracts</li>
+<li>
+<strong>Gradient clipping</strong> at norm 5.0 prevents
 divergence</li>
 <li>
 <strong>Alpha clamped</strong> to
-<code>[lower_bound, upper_bound]</code> (default [0, 20]) after each
-step</li>
-</ul>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<code>[lower_bound, upper_bound]</code> (default [0.01, 20])</li>
+</ol>
+<p>The learning rate halves at steps 200, 400, and 600.</p>
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">optim_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/optimize_alpha.html">optimize_alpha</a></span><span class="op">(</span></span>
 <span>  time_matrix   <span class="op">=</span> <span class="va">time_matrix</span>,</span>
 <span>  pop_matrix    <span class="op">=</span> <span class="va">pop_matrix</span>,</span>
 <span>  source_matrix <span class="op">=</span> <span class="va">source_matrix</span>,</span>
 <span>  row_targets   <span class="op">=</span> <span class="va">row_targets</span>,</span>
-<span>  sinkhorn_iter <span class="op">=</span> <span class="fl">5</span>,       <span class="co"># K=5 inside ADAM (fast, approximate)</span></span>
-<span>  use_gpu       <span class="op">=</span> <span class="cn">FALSE</span>,   <span class="co"># CPU for small problems</span></span>
-<span>  gpu_iterations <span class="op">=</span> <span class="fl">20</span>,     <span class="co"># 20 outer LR phases</span></span>
-<span>  gpu_lr_init   <span class="op">=</span> <span class="fl">0.1</span>,     <span class="co"># initial learning rate</span></span>
-<span>  gpu_lr_decay  <span class="op">=</span> <span class="fl">0.6</span>      <span class="co"># LR multiplier between phases</span></span>
+<span>  batch_size    <span class="op">=</span> <span class="fl">500</span>,     <span class="co"># mini-batch size (full-batch if n &lt;= 500)</span></span>
+<span>  sk_iter       <span class="op">=</span> <span class="fl">15</span>,      <span class="co"># Sinkhorn iterations per step</span></span>
+<span>  max_steps     <span class="op">=</span> <span class="fl">800</span>,     <span class="co"># total SGD steps</span></span>
+<span>  lr_init       <span class="op">=</span> <span class="fl">0.05</span>,    <span class="co"># initial learning rate</span></span>
+<span>  use_gpu       <span class="op">=</span> <span class="cn">FALSE</span>    <span class="co"># CPU for small problems</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/optim-convergence.png" class="r-plt" alt="" width="90%"></p>
-<p>Rapid descent in the first few phases, then fine-tuning as the
-learning rate decays.</p>
+<p><img src="figures/optim-convergence.png" alt="" width="90%"></p>
+<p>The typical loss curve shows three phases: (1) <strong>rapid
+descent</strong> in the first ~200 steps as the optimizer finds the
+right ballpark for each alpha, (2) a <strong>slower refinement</strong>
+phase (steps 200–600) where the learning rate halves twice and the
+optimizer fine-tunes per-tract parameters, and (3) a
+<strong>plateau</strong> in the final 200 steps where improvements
+become marginal.</p>
+<p>Because the loss is computed on a random mini-batch at each step, the
+curve will <strong>fluctuate</strong> — this is normal and expected for
+stochastic optimization. The package tracks the best loss seen across
+all steps and returns the corresponding alpha values, so transient
+spikes do not affect the final result.</p>
 <p><strong>Key tuning parameters</strong>:</p>
 <table class="table">
 <colgroup>
@@ -1372,25 +1919,24 @@ learning rate decays.</p>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td><code>sinkhorn_iter</code></td>
-<td>5</td>
-<td>Sinkhorn iterations per ADAM step. Higher = more accurate
-gradient.</td>
+<td><code>batch_size</code></td>
+<td>500</td>
+<td>Tracts per SGD step. Smaller = less memory.</td>
 </tr>
 <tr class="even">
-<td><code>gpu_iterations</code></td>
-<td>20</td>
-<td>Number of outer LR phases.</td>
+<td><code>sk_iter</code></td>
+<td>15</td>
+<td>Sinkhorn iterations per step. Higher = more accurate transport.</td>
 </tr>
 <tr class="odd">
-<td><code>gpu_lr_init</code></td>
-<td>0.1</td>
-<td>Initial learning rate. Reduce for numerical stability.</td>
+<td><code>max_steps</code></td>
+<td>800</td>
+<td>Total SGD steps.</td>
 </tr>
 <tr class="even">
-<td><code>gpu_lr_decay</code></td>
-<td>0.6</td>
-<td>LR multiplier between phases.</td>
+<td><code>lr_init</code></td>
+<td>0.05</td>
+<td>Initial learning rate. Halves at 200/400/600.</td>
 </tr>
 <tr class="odd">
 <td><code>dtype</code></td>
@@ -1402,7 +1948,7 @@ gradient.</td>
 <td>
 <code>lower_bound</code> / <code>upper_bound</code>
 </td>
-<td>0, 20</td>
+<td>0.01, 20</td>
 <td>Alpha clamp range.</td>
 </tr>
 </tbody>
@@ -1416,10 +1962,10 @@ gradient.</td>
 <div class="section level3">
 <h3 id="the-effect-of-alpha-spatial-interpretation">15. The Effect of Alpha: Spatial Interpretation<a class="anchor" aria-label="anchor" href="#the-effect-of-alpha-spatial-interpretation"></a>
 </h3>
-<p><img src="figures/alpha-histogram.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/alpha-histogram.png" alt="" width="80%"></p>
 <p>Most alphas cluster in a moderate range, with tails extending toward
 0 (uniform allocation) and the upper bound (nearest-station-only).</p>
-<p><img src="figures/alpha-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/alpha-map.png" alt="" width="100%"></p>
 <ul>
 <li>
 <strong>Low alpha</strong> (blue, urban core): weight is spread
@@ -1429,7 +1975,7 @@ optimizer distributes influence broadly.</li>
 <strong>High alpha</strong> (red, periphery): weight is concentrated
 on the nearest station. Isolated tracts with one dominant station.</li>
 </ul>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># How alpha changes the weight distribution for a fixed tract</span></span>
 <span><span class="va">tt_one_tract</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">3</span>, <span class="fl">8</span>, <span class="fl">15</span>, <span class="fl">25</span>, <span class="fl">40</span><span class="op">)</span></span>
 <span><span class="va">alphas_demo</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">3</span>, <span class="fl">5</span>, <span class="fl">10</span><span class="op">)</span></span>
@@ -1450,7 +1996,7 @@ on the nearest station. Isolated tracts with one dominant station.</li>
 <span>       y <span class="op">=</span> <span class="st">"Normalized weight"</span>, fill <span class="op">=</span> <span class="st">""</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/alpha-effect-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/alpha-effect-1.png" alt="" width="100%"></p>
 <p>At
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha = 1</annotation></semantics></math>,
 weights are nearly uniform. At
@@ -1493,9 +2039,10 @@ is [N × 1]. For multiple variables:
 where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>V</mi><mtext mathvariant="normal">matrix</mtext></msub><annotation encoding="application/x-tex">V_{\text{matrix}}</annotation></semantics></math>
 is [M × P].</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">W</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sinkhorn_weights.html">sinkhorn_weights</a></span><span class="op">(</span><span class="va">time_matrix</span>, <span class="va">optim_result</span><span class="op">$</span><span class="va">alpha</span>,</span>
-<span>  offset <span class="op">=</span> <span class="fl">1</span>, row_targets <span class="op">=</span> <span class="va">row_targets</span><span class="op">)</span></span>
+<span>  offset <span class="op">=</span> <span class="fl">1</span>, row_targets <span class="op">=</span> <span class="va">row_targets</span>,</span>
+<span>  pop_matrix <span class="op">=</span> <span class="va">pop_matrix</span>, source_matrix <span class="op">=</span> <span class="va">source_matrix</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">electoral_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span></span>
 <span>  <span class="va">sources</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"CAND_13"</span>, <span class="st">"CAND_22"</span>, <span class="st">"QT_COMPARECIMENTO"</span><span class="op">)</span><span class="op">]</span></span>
@@ -1504,14 +2051,14 @@ is [M × P].</p>
 <span></span>
 <span><span class="va">pct_lula</span> <span class="op">&lt;-</span> <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"CAND_13"</span><span class="op">]</span> <span class="op">/</span></span>
 <span>  <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"QT_COMPARECIMENTO"</span><span class="op">]</span> <span class="op">*</span> <span class="fl">100</span></span></code></pre></div>
-<p><img src="figures/interp-lula.png" class="r-plt" alt="" width="100%"></p>
-<p><img src="figures/interp-bolsonaro.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/interp-lula.png" alt="" width="100%"></p>
+<p><img src="figures/interp-bolsonaro.png" alt="" width="100%"></p>
 <p>Geographic polarization becomes visible at the tract level — a
 spatial pattern that was previously impossible to observe with
 station-level data alone.</p>
 <p><strong>Calibration validation</strong>: interpolated demographics
 should match census demographics (the optimization objective).</p>
-<p><img src="figures/interp-scatter-calib.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/interp-scatter-calib.png" alt="" width="80%"></p>
 <p>Points cluster tightly around the 45-degree line, confirming that the
 optimization found good weights.</p>
 <p><strong>The reuse principle</strong>: the weight matrix
@@ -1531,7 +2078,7 @@ level — without re-optimizing alpha.</p>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mn>1</mn><mspace width="1.0em"></mspace><mo>∀</mo><mi>j</mi></mrow><annotation encoding="application/x-tex">\sum_i W_{ij} = 1 \quad \forall j</annotation></semantics></math></p>
 <p>Each station distributes exactly 100% of its data. Municipal totals
 are preserved exactly.</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">votes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">500</span>, <span class="fl">800</span>, <span class="fl">700</span><span class="op">)</span></span>
 <span><span class="va">interpolated_votes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W_balanced</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">votes</span><span class="op">)</span></span>
 <span></span>
@@ -1544,7 +2091,7 @@ are preserved exactly.</p>
 <p><strong>Row conservation</strong> (population proportionality):</p>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><munder><mo>∑</mo><mi>j</mi></munder><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mi>r</mi><mi>i</mi></msub><mo>=</mo><mfrac><msub><mtext mathvariant="normal">pop</mtext><mi>i</mi></msub><mrow><mo>∑</mo><mtext mathvariant="normal">pop</mtext></mrow></mfrac><mo>×</mo><mi>m</mi></mrow><annotation encoding="application/x-tex">\sum_j W_{ij} = r_i = \frac{\text{pop}_i}{\sum \text{pop}} \times m</annotation></semantics></math></p>
 <p><strong>Calibration residuals</strong>:</p>
-<p><img src="figures/residuals-boxplot.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/residuals-boxplot.png" alt="" width="90%"></p>
 <p>Residuals should be centered near zero with small magnitude. Outliers
 may indicate boundary effects (voters crossing municipality borders) or
 data quality issues.</p>
@@ -1555,7 +2102,7 @@ data quality issues.</p>
 <p>In Section 1, we showed that Rocinha and Copacabana have strikingly
 different age structures. Does the interpolation recover these
 patterns?</p>
-<p><img src="figures/age-recovery-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/age-recovery-rocinha-copacabana.png" alt="" width="100%"></p>
 <p>The blue bars show the census truth (population by age bracket) and
 the yellow bars show the Sinkhorn-interpolated voter profiles. The
 interpolation closely recovers the distinctive age patterns of both
@@ -1577,7 +2124,7 @@ Voronoi (Thiessen) polygons around each station and assigning each tract
 <p>We compare both methods across <strong>four Brazilian state
 capitals</strong> with diverse urban morphologies: Palmas (TO), Cuiabá
 (MT), Manaus (AM), and Natal (RN).</p>
-<p><img src="figures/voronoi-palmas-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/voronoi-palmas-map.png" alt="" width="100%"></p>
 <p>In the Voronoi approach, each tract inherits the complete demographic
 and electoral profile of a single station. This ignores the many-to-many
 structure: a tract near the boundary between two Voronoi cells gets none
@@ -1585,22 +2132,23 @@ of the influence from the station just across the boundary.</p>
 <p>How well do the two methods recover the census age structure? The
 following figure compares predicted versus observed demographic profiles
 across all four cities:</p>
-<p><img src="figures/voronoi-vs-sinkhorn-scatter.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/voronoi-vs-sinkhorn-scatter.png" alt="" width="100%"></p>
 <p>Sinkhorn points cluster tightly around the 45-degree line in every
 city. Voronoi points show much more scatter — many tracts have large
 prediction errors because they were assigned to a station with a very
 different demographic composition.</p>
-<p><img src="figures/voronoi-vs-sinkhorn-residuals.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/voronoi-vs-sinkhorn-residuals.png" alt="" width="100%"></p>
 <p>The residual boxplots confirm the pattern across all four cities:
 Sinkhorn residuals are tightly centered around zero, while Voronoi
 residuals have much larger spread.</p>
 <p>The aggregate SSE ratio quantifies the advantage:</p>
-<p><img src="figures/voronoi-sse-ratio-cities.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/voronoi-sse-ratio-cities.png" alt="" width="90%"></p>
 <p>In every city, the Sinkhorn method achieves dramatically lower
-squared error than Voronoi assignment — typically by a factor of
-100–1000x. The advantage is consistent across cities of different sizes
-and urban layouts, confirming that smooth, calibrated weighting is
-fundamentally superior to hard nearest-station assignment.</p>
+squared error than Voronoi assignment — by a factor of 275x (Cuiabá) to
+1,624x (Manaus), with Palmas at 601x and Natal at 639x. The advantage is
+consistent across cities of different sizes and urban layouts,
+confirming that smooth, calibrated weighting is fundamentally superior
+to hard nearest-station assignment.</p>
 </div>
 <div class="section level4">
 <h4 id="ecological-correlation-lula-vote-share-and-household-income">17.4 Ecological correlation: Lula vote share and household
@@ -1617,7 +2165,7 @@ obtained from the 2022 Census (via
 this correlation for four cities with very different socioeconomic
 profiles: São Paulo (SP), Salvador (BA), Porto Alegre (RS), and Cuiabá
 (MT).</p>
-<p><img src="figures/lula-income-correlation.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/lula-income-correlation.png" alt="" width="100%"></p>
 <p>The negative correlation is consistent across all four cities and
 with well-established patterns in Brazilian electoral geography:
 lower-income areas tend to vote more heavily for PT candidates, while
@@ -1638,27 +2186,30 @@ to reduce the influence of extreme values and improve linearity.</p>
 <div class="section level3">
 <h3 id="performance-and-tuning">18. Performance and Tuning<a class="anchor" aria-label="anchor" href="#performance-and-tuning"></a>
 </h3>
+<p>All timings below assume default PB-SGD parameters:
+<code>batch_size = 500</code>, <code>sk_iter = 15</code>,
+<code>max_steps = 800</code>, <code>dtype = "float32"</code>.</p>
 <table class="table">
 <thead><tr class="header">
 <th>Problem size (tracts)</th>
 <th>Recommendation</th>
-<th>Typical time</th>
+<th>Typical optimization time</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
 <td>&lt; 200</td>
 <td>CPU</td>
-<td>&lt; 5 seconds</td>
+<td>10–30 seconds</td>
 </tr>
 <tr class="even">
 <td>200–1,000</td>
 <td>CPU or GPU</td>
-<td>5–30 seconds</td>
+<td>30s – 2 min</td>
 </tr>
 <tr class="odd">
 <td>1,000–5,000</td>
 <td>GPU recommended</td>
-<td>30s – 2 min</td>
+<td>15s – 2 min</td>
 </tr>
 <tr class="even">
 <td>&gt; 5,000</td>
@@ -1667,41 +2218,111 @@ to reduce the influence of extreme values and improve linearity.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Practical runtimes</strong>:</p>
+<p><strong>Practical runtimes</strong> (optimization step only, from
+actual runs):</p>
 <ul>
-<li>Varginha (~280 tracts, ~37 stations): 2–4s CPU</li>
-<li>Igrejinha (~85 tracts, ~17 stations): 1–2s CPU</li>
-<li>Niteroi (~1,200 tracts, ~135 stations): 5–15s GPU</li>
-<li>Belo Horizonte (~5,100 tracts, ~407 stations): 30–60s GPU</li>
-<li>São Paulo capital (~18,000 tracts, ~3,000 stations): 5–10 min
-GPU</li>
+<li>Igrejinha (85 tracts, 17 stations): ~24s CPU</li>
+<li>Varginha (279 tracts, 37 stations): ~52s CPU</li>
+<li>Palmas (660 tracts, 71 stations): ~135s CPU</li>
+<li>Niterói (1,169 tracts, 135 stations): ~17s GPU</li>
+<li>Belo Horizonte (5,113 tracts, 407 stations): ~105s GPU</li>
+<li>Rio de Janeiro (13,370 tracts, 1,392 stations): ~10 min GPU</li>
 </ul>
-<p><strong>Memory</strong>: approximately
-<code>3 * sinkhorn_iter + 10</code> copies of the N × M matrix in GPU
-memory.</p>
+<p>Note that total wall-clock time for
+<code><a href="../reference/interpolate_election_br.html">interpolate_election_br()</a></code> also includes data downloads,
+travel time computation (via r5r), and weight matrix construction, which
+can dominate for larger cities.</p>
+<p><strong>Memory estimation.</strong> GPU memory during optimization
+has two main components:</p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>Full kernel matrix</strong> (always in memory):
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="normal">bytes</mtext></mrow><annotation encoding="application/x-tex">n \times m \times
+\text{bytes}</annotation></semantics></math> — e.g., 5,100 × 407 × 4 ≈ 8
+MB for Belo Horizonte in float32.</li>
+<li>
+<strong>3D Sinkhorn tensors</strong> (the main cost):
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mo>min</mo><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="monospace">𝚋𝚊𝚝𝚌𝚑_𝚜𝚒𝚣𝚎</mtext><mo>,</mo><mi>n</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="normal">bytes</mtext><mo>×</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>2</mn><mo>+</mo><mn>2</mn><mo>×</mo><mtext mathvariant="monospace">𝚜𝚔_𝚒𝚝𝚎𝚛</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">k_a \times
+\min(\texttt{batch\_size}, n) \times m \times \text{bytes} \times
+(2 + 2 \times \texttt{sk\_iter})</annotation></semantics></math> — torch
+must store intermediate tensors for backpropagation through all unrolled
+Sinkhorn iterations.</li>
+</ol>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
+is the number of active demographic brackets (7 for
+<code>calib_type = "age_only"</code>, up to 28 for
+<code>calib_type = "full"</code>) and <code>bytes</code> is 4 (float32)
+or 8 (float64).</p>
+<table class="table">
+<thead><tr class="header">
+<th>Municipality</th>
+<th>Tracts</th>
+<th>Stations</th>
+<th><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math></th>
+<th>Estimated GPU memory</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Varginha</td>
+<td>279</td>
+<td>37</td>
+<td>28</td>
+<td>~28 MB</td>
+</tr>
+<tr class="even">
+<td>Niterói</td>
+<td>1,169</td>
+<td>135</td>
+<td>28</td>
+<td>~242 MB</td>
+</tr>
+<tr class="odd">
+<td>Belo Horizonte</td>
+<td>5,113</td>
+<td>407</td>
+<td>28</td>
+<td>~729 MB</td>
+</tr>
+<tr class="even">
+<td>Rio de Janeiro</td>
+<td>13,370</td>
+<td>1,392</td>
+<td>28</td>
+<td>~2.5 GB</td>
+</tr>
+</tbody>
+</table>
+<p>These are actual values reported by the optimizer during
+precomputation. With <code>calib_type = "age_only"</code>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">k_a = 7</annotation></semantics></math>),
+memory is approximately 4× smaller. For very large cities on GPU,
+consider reducing <code>batch_size</code> or <code>sk_iter</code>, or
+switching to <code>dtype = "float32"</code> (the default) if using
+<code>"float64"</code>.</p>
 <p><strong>RStudio</strong>: torch inside RStudio IDE requires
-subprocess execution via callr (automatic and transparent to the user).
-Standalone R scripts run directly.</p>
+subprocess execution via <code>callr</code> (automatic and transparent
+to the user). Standalone R scripts run directly.</p>
 </div>
 <div class="section level3">
 <h3 id="setup-torch-java-and-r5r">19. Setup: Torch, Java, and r5r<a class="anchor" aria-label="anchor" href="#setup-torch-java-and-r5r"></a>
 </h3>
 <p><strong>Torch</strong> (required for optimization):</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/setup_torch.html">setup_torch</a></span><span class="op">(</span><span class="op">)</span>    <span class="co"># installs torch + libtorch/lantern binaries</span></span>
 <span><span class="fu"><a href="../reference/check_torch.html">check_torch</a></span><span class="op">(</span><span class="op">)</span>    <span class="co"># diagnoses installation (R package, binaries, GPU)</span></span></code></pre></div>
 <p>GPU support: Windows (CUDA), macOS (MPS for Apple Silicon), Linux
 (CUDA). CPU always works as fallback.</p>
 <p><strong>Java + r5r</strong> (required for travel time
 computation):</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/setup_java.html">setup_java</a></span><span class="op">(</span><span class="op">)</span>     <span class="co"># downloads and installs Java 21+</span></span>
 <span><span class="fu"><a href="../reference/check_r5r.html">check_r5r</a></span><span class="op">(</span><span class="op">)</span>      <span class="co"># checks Java version and r5r readiness</span></span>
 <span><span class="fu"><a href="../reference/setup_osmium.html">setup_osmium</a></span><span class="op">(</span><span class="op">)</span>   <span class="co"># installs osmium-tool for OSM clipping</span></span></code></pre></div>
 <p>Memory: <code>options(java.parameters = "-Xmx8g")</code> before
 loading r5r for large municipalities.</p>
 <p><strong>Cache management</strong>:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/get_interpElections_cache_dir.html">get_interpElections_cache_dir</a></span><span class="op">(</span><span class="op">)</span>    <span class="co"># where downloads are stored</span></span>
 <span><span class="fu"><a href="../reference/interpElections_cache.html">interpElections_cache</a></span><span class="op">(</span><span class="op">)</span>            <span class="co"># list cached files by category</span></span>
 <span><span class="fu"><a href="../reference/interpElections_cache_clean.html">interpElections_cache_clean</a></span><span class="op">(</span><span class="op">)</span>      <span class="co"># clear cache</span></span></code></pre></div>
@@ -1720,7 +2341,7 @@ loading r5r for large municipalities.</p>
 = number of polling stations</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
-= number of calibration age brackets (7)</li>
+= number of calibration brackets (7 for age-only, 28 for full)</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">t \in \mathbb{R}^{N \times M}</annotation></semantics></math>:
 travel time matrix (minutes)</li>
@@ -1746,15 +2367,15 @@ column targets
 <div class="section level4">
 <h4 id="idw-kernel">IDW kernel<a class="anchor" aria-label="anchor" href="#idw-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="log-domain-kernel">Log-domain kernel<a class="anchor" aria-label="anchor" href="#log-domain-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
-<h4 id="sinkhorn-iterations-log-domain">Sinkhorn iterations (log-domain)<a class="anchor" aria-label="anchor" href="#sinkhorn-iterations-log-domain"></a>
+<h4 id="sinkhorn-iterations-log-domain-single-bracket">Sinkhorn iterations (log-domain, single bracket)<a class="anchor" aria-label="anchor" href="#sinkhorn-iterations-log-domain-single-bracket"></a>
 </h4>
 <p>Initialize:
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>u</mi><mo>=</mo><msub><mn>𝟎</mn><mrow><mi>N</mi><mo>×</mo><mn>1</mn></mrow></msub></mrow><annotation encoding="application/x-tex">\log u = \mathbf{0}_{N \times 1}</annotation></semantics></math>,
@@ -1763,27 +2384,116 @@ column targets
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">k = 1</annotation></semantics></math>
 to
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>K</mi><mtext mathvariant="normal">sink</mtext></msub><annotation encoding="application/x-tex">K_{\text{sink}}</annotation></semantics></math>:
-<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo>←</mo><mo>log</mo><msub><mi>r</mi><mi>i</mi></msub><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>j</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>←</mo><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo>←</mo><mo>log</mo><msub><mi>r</mi><mi>i</mi></msub><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>j</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>←</mo><mi>−</mi><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
-<h4 id="balanced-weight-matrix">Balanced weight matrix<a class="anchor" aria-label="anchor" href="#balanced-weight-matrix"></a>
+<h4 id="balanced-weight-matrix-single-bracket">Balanced weight matrix (single bracket)<a class="anchor" aria-label="anchor" href="#balanced-weight-matrix-single-bracket"></a>
 </h4>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo>+</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">W_{ij} = \exp(\log u_i + \log K_{ij} + \log v_j)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
-<h4 id="objective-function">Objective function<a class="anchor" aria-label="anchor" href="#objective-function"></a>
+<h4 id="per-bracket-sinkhorn">Per-bracket Sinkhorn<a class="anchor" aria-label="anchor" href="#per-bracket-sinkhorn"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo stretchy="false" form="postfix">∥</mo><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mo>=</mo><munder><mo>∑</mo><mrow><mi>i</mi><mo>,</mo><mi>k</mi></mrow></munder><msup><mrow><mo stretchy="true" form="prefix">(</mo><munder><mo>∑</mo><mi>j</mi></munder><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i,k} \left( \sum_j W_{ij} S_{jk} - P_{ik} \right)^2</annotation></semantics></math></p>
+<p>For each demographic bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">k = 1, \ldots, K</annotation></semantics></math>:</p>
+<ol style="list-style-type: decimal">
+<li>Rescale row targets:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>r</mi><mi>i</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mi>/</mi><msub><mo>∑</mo><mi>i</mi></msub><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>⋅</mo><msub><mo>∑</mo><mi>j</mi></msub><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}</annotation></semantics></math>
+</li>
+<li>Set column targets:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>c</mi><mi>j</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">c_j^{(k)} = S_{jk}</annotation></semantics></math>
+</li>
+<li>Run Sinkhorn with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><msup><mi>r</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo>,</mo><msup><mi>c</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">(r^{(k)}, c^{(k)})</annotation></semantics></math>
+on kernel
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
+to get
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><annotation encoding="application/x-tex">W^{(k)}</annotation></semantics></math>
+</li>
+</ol>
+<p>Aggregate:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mtext mathvariant="normal">total</mtext></msub><mo>=</mo><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup></mrow><annotation encoding="application/x-tex">W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}</annotation></semantics></math></p>
+<p>Final balance: run Sinkhorn on
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mtext mathvariant="normal">total</mtext></msub><annotation encoding="application/x-tex">W_{\text{total}}</annotation></semantics></math>
+with aggregate row targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>r</mi><mi>i</mi></msub><mo>=</mo><msub><mtext mathvariant="normal">pop</mtext><mi>i</mi></msub><mi>/</mi><mo>∑</mo><mtext mathvariant="normal">pop</mtext><mo>×</mo><mi>M</mi></mrow><annotation encoding="application/x-tex">r_i = \text{pop}_i / \sum \text{pop} \times M</annotation></semantics></math>
+and column targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">c_j = 1</annotation></semantics></math>.</p>
+</div>
+<div class="section level4">
+<h4 id="per-bracket-sinkhorn-on-3d-tensors-pb-sgd">Per-bracket Sinkhorn on 3D tensors (PB-SGD)<a class="anchor" aria-label="anchor" href="#per-bracket-sinkhorn-on-3d-tensors-pb-sgd"></a>
+</h4>
+<p>During optimization, the per-bracket Sinkhorn is vectorized across
+brackets on 3D tensors. Let
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
+= number of active brackets,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>b</mi><annotation encoding="application/x-tex">b</annotation></semantics></math>
+= mini-batch size,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>
+= number of stations.</p>
+<p><strong>Preprocessing</strong> (done once before the SGD loop):</p>
+<p>Per-bracket row targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>r</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo>∈</mo><msup><mi>ℝ</mi><mi>N</mi></msup></mrow><annotation encoding="application/x-tex">r^{(k)} \in \mathbb{R}^N</annotation></semantics></math>
+and column targets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>c</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mo>∈</mo><msup><mi>ℝ</mi><mi>M</mi></msup></mrow><annotation encoding="application/x-tex">c^{(k)} \in \mathbb{R}^M</annotation></semantics></math>
+are stored in matrices:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>R</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>N</mi></mrow></msup></mrow><annotation encoding="application/x-tex">R \in \mathbb{R}^{k_a \times N}</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">C \in \mathbb{R}^{k_a \times M}</annotation></semantics></math>.</p>
+<p><strong>Per-step computation</strong> (for a sampled batch of indices
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ℬ</mi><annotation encoding="application/x-tex">\mathcal{B}</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mrow><mo stretchy="true" form="prefix">|</mo><mi>ℬ</mi><mo stretchy="true" form="postfix">|</mo></mrow><mo>=</mo><mi>b</mi></mrow><annotation encoding="application/x-tex">|\mathcal{B}| = b</annotation></semantics></math>):</p>
+<p>Mini-batch targets:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>R</mi><mtext mathvariant="normal">batch</mtext></msub><mo>=</mo><mi>R</mi><mrow><mo stretchy="true" form="prefix">[</mo><mo>:</mo><mo>,</mo><mi>ℬ</mi><mo stretchy="true" form="postfix">]</mo></mrow><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi></mrow></msup><mo>,</mo><mspace width="2.0em"></mspace><msub><mi>C</mi><mrow><mtext mathvariant="normal">batch</mtext><mo>,</mo><mi>k</mi></mrow></msub><mo>=</mo><msub><mi>C</mi><mi>k</mi></msub><mo>⋅</mo><mfrac><mrow><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>R</mi><mrow><mtext mathvariant="normal">batch</mtext><mo>,</mo><mi>k</mi><mi>i</mi></mrow></msub></mrow><mrow><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>R</mi><mrow><mi>k</mi><mi>i</mi></mrow></msub></mrow></mfrac><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">R_{\text{batch}} = R[:, \mathcal{B}] \in \mathbb{R}^{k_a \times b}, \qquad
+C_{\text{batch},k} = C_k \cdot \frac{\sum_i R_{\text{batch},ki}}{\sum_i R_{ki}} \in \mathbb{R}^{k_a \times M}</annotation></semantics></math></p>
+<p>Initialize:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>u</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mn>1</mn></mrow></msup><mo>=</mo><mn>𝟎</mn><mo>,</mo><mspace width="2.0em"></mspace><mo>log</mo><mi>v</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mn>1</mn><mo>×</mo><mi>M</mi></mrow></msup><mo>=</mo><mn>𝟎</mn></mrow><annotation encoding="application/x-tex">\log u \in \mathbb{R}^{k_a \times b \times 1} = \mathbf{0}, \qquad
+\log v \in \mathbb{R}^{k_a \times 1 \times M} = \mathbf{0}</annotation></semantics></math></p>
+<p>Log-kernel (shared across brackets):
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mrow><mi>ℬ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>i</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>ℬ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>i</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>b</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_{\mathcal{B}(i)} \cdot \log(t_{\mathcal{B}(i),j} + 1) \in \mathbb{R}^{b \times M}</annotation></semantics></math></p>
+<p>Broadcast to 3D:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msup><mi>K</mi><mrow><mn>3</mn><mi>D</mi></mrow></msup><mo>∈</mo><msup><mi>ℝ</mi><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">\log K^{3D} \in \mathbb{R}^{k_a \times b \times M}</annotation></semantics></math>
+(identical across the bracket dimension).</p>
+<p>For
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>ℓ</mo><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\ell = 1</annotation></semantics></math>
+to <code>sk_iter</code>:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>u</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>⋅</mi></mrow></msub><mo>←</mo><mo>log</mo><msubsup><mi>r</mi><mrow><mtext mathvariant="normal">batch</mtext><mo>,</mo><mi>i</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>j</mi></msub><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msubsup><mi>K</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>j</mi></mrow><mrow><mn>3</mn><mi>D</mi></mrow></msubsup><mo>+</mo><mo>log</mo><msub><mi>v</mi><mrow><mi>k</mi><mo>,</mo><mi>⋅</mi><mo>,</mo><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mn>1</mn><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">\log u_{k,i,\cdot} \leftarrow \log r^{(k)}_{\text{batch},i} - \text{logsumexp}_j\!\left(\log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times 1]</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mrow><mi>k</mi><mo>,</mo><mi>⋅</mi><mo>,</mo><mi>j</mi></mrow></msub><mo>←</mo><mo>log</mo><msubsup><mi>c</mi><mrow><mtext mathvariant="normal">batch</mtext><mo>,</mo><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msubsup><mi>K</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>j</mi></mrow><mrow><mn>3</mn><mi>D</mi></mrow></msubsup><mo>+</mo><mo>log</mo><msub><mi>u</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>⋅</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mn>1</mn><mo>×</mo><mi>M</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_{k,\cdot,j} \leftarrow \log c^{(k)}_{\text{batch},j} - \text{logsumexp}_i\!\left(\log K^{3D}_{k,i,j} + \log u_{k,i,\cdot}\right) \quad [k_a \times 1 \times M]</annotation></semantics></math></p>
+<p>Recover per-bracket weights and aggregate across brackets:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>j</mi></mrow><mtext mathvariant="normal">all</mtext></msubsup><mo>=</mo><mo>exp</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>u</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>⋅</mi></mrow></msub><mo>+</mo><mo>log</mo><msubsup><mi>K</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>j</mi></mrow><mrow><mn>3</mn><mi>D</mi></mrow></msubsup><mo>+</mo><mo>log</mo><msub><mi>v</mi><mrow><mi>k</mi><mo>,</mo><mi>⋅</mi><mo>,</mo><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>M</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">W^{\text{all}}_{k,i,j} = \exp\!\left(\log u_{k,i,\cdot} + \log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times M]</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">batch</mtext></msubsup><mo>=</mo><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>k</mi><mi>a</mi></msub></munderover><msubsup><mi>W</mi><mrow><mi>k</mi><mo>,</mo><mi>i</mi><mo>,</mo><mi>j</mi></mrow><mtext mathvariant="normal">all</mtext></msubsup><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mi>b</mi><mo>×</mo><mi>M</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">W^{\text{batch}}_{ij} = \sum_{k=1}^{k_a} W^{\text{all}}_{k,i,j} \quad [b \times M]</annotation></semantics></math></p>
+<p>Column-normalize:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">norm</mtext></msubsup><mo>=</mo><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">batch</mtext></msubsup><mi minsize="2.4" maxsize="2.4">/</mi><munder><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></munder><msubsup><mi>W</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow><mtext mathvariant="normal">batch</mtext></msubsup><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mi>b</mi><mo>×</mo><mi>M</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">W^{\text{norm}}_{ij} = W^{\text{batch}}_{ij} \bigg/ \sum_{i'} W^{\text{batch}}_{i'j} \quad [b \times M]</annotation></semantics></math></p>
+</div>
+<div class="section level4">
+<h4 id="mini-batch-loss">Mini-batch loss<a class="anchor" aria-label="anchor" href="#mini-batch-loss"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>V</mi><mo accent="true">̂</mo></mover><mo>=</mo><msup><mi>W</mi><mtext mathvariant="normal">norm</mtext></msup><mo>⋅</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>S</mi><mo>⋅</mo><mi>b</mi><mi>/</mi><mi>N</mi><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="1.0em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mi>b</mi><mo>×</mo><mi>K</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">\hat{V} = W^{\text{norm}} \cdot (S \cdot b/N) \quad [b \times K]</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>f</mi><mtext mathvariant="normal">batch</mtext></msub><mo>=</mo><mfrac><mi>N</mi><mi>b</mi></mfrac><munder><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>ℬ</mi></mrow></munder><munder><mo>∑</mo><mi>k</mi></munder><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">f_{\text{batch}} = \frac{N}{b} \sum_{i \in \mathcal{B}} \sum_k (\hat{V}_{ik} - P_{ik})^2</annotation></semantics></math></p>
+<p>The scaling factors
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi><mi>/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">b/N</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mi>/</mi><mi>b</mi></mrow><annotation encoding="application/x-tex">N/b</annotation></semantics></math>
+ensure that the gradient is an unbiased estimator of the full-data
+gradient.</p>
+</div>
+<div class="section level4">
+<h4 id="objective-function-full-data">Objective function (full data)<a class="anchor" aria-label="anchor" href="#objective-function-full-data"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo stretchy="false" form="postfix">∥</mo><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mo>=</mo><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i=1}^N \sum_{k=1}^K \left( \sum_{j=1}^M W_{ij} S_{jk} - P_{ik} \right)^2</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">W(\alpha) \in \mathbb{R}^{N \times M}</annotation></semantics></math>
+is the per-bracket Sinkhorn weight matrix.</p>
 </div>
 <div class="section level4">
 <h4 id="gradient">Gradient<a class="anchor" aria-label="anchor" href="#gradient"></a>
 </h4>
-<p>Computed by torch autograd through
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
-unrolled Sinkhorn iterations. Each operation in the forward pass (log,
-exp, logsumexp, matrix multiply, subtraction, squaring) has a defined
-backward pass in torch:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>α</mi></msub><mi>f</mi><mo>=</mo><mfrac><mi>∂</mi><mrow><mi>∂</mi><mi>α</mi></mrow></mfrac><mo stretchy="false" form="postfix">∥</mo><msub><mtext mathvariant="normal">sinkhorn</mtext><mi>K</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">kernel</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup></mrow><annotation encoding="application/x-tex">\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{sinkhorn}_K(\text{kernel}(\alpha)) \cdot S - P \|_F^2</annotation></semantics></math></p>
+<p>Computed by torch autograd through the unrolled per-bracket Sinkhorn
+iterations on 3D tensors. Each operation (log, exp, logsumexp, matrix
+multiply, subtraction, squaring) has a defined backward pass in
+torch:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>α</mi></msub><mi>f</mi><mo>=</mo><mfrac><mi>∂</mi><mrow><mi>∂</mi><mi>α</mi></mrow></mfrac><mo stretchy="false" form="postfix">∥</mo><mtext mathvariant="normal">pb_sinkhorn</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">kernel</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mi>P</mi><mo>,</mo><mi>S</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup></mrow><annotation encoding="application/x-tex">\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{pb\_sinkhorn}(\text{kernel}(\alpha), P, S) \cdot S - P \|_F^2</annotation></semantics></math></p>
+<p>The gradient flows backward through all <code>sk_iter</code> Sinkhorn
+iterations. Only the components corresponding to the sampled batch
+indices
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ℬ</mi><annotation encoding="application/x-tex">\mathcal{B}</annotation></semantics></math>
+are used to update ADAM moments (gradient masking).</p>
 </div>
 </div>
 </div>
@@ -1798,7 +2508,7 @@ backward pass in torch:</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>
