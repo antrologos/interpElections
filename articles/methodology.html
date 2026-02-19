@@ -64,7 +64,7 @@
       <h1>Methodology</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
       <div class="d-none name"><code>methodology.Rmd</code></div>
     </div>
 
@@ -108,7 +108,7 @@ station.</p>
 just demographics. In Brazilian cities, the age composition of a
 neighborhood is strongly correlated with its socioeconomic profile.
 Consider two neighborhoods in Rio de Janeiro:</p>
-<p><img src="figures/age-pyramids-rocinha-copacabana.png" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
 <p><strong>Rocinha</strong>, one of Brazil’s largest favelas, has a
 young population: large cohorts in the 18–29 age range, tapering off
 sharply after 50. <strong>Copacabana</strong>, one of Rio’s wealthiest
@@ -248,7 +248,7 @@ that minimize demographic mismatch (<code><a href="../reference/optimize_alpha.h
 any station-level variable
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>X</mi><mo accent="true">̂</mo></mover><mo>=</mo><mi>W</mi><mo>×</mo><mi>V</mi></mrow><annotation encoding="application/x-tex">\hat{X} = W \times V</annotation></semantics></math>)</li>
 </ol>
-<p><img src="figures/pipeline-stacked-maps.png" alt="" width="100%"></p>
+<p><img src="figures/pipeline-stacked-maps.png" class="r-plt" alt="" width="100%"></p>
 <p>The figure above illustrates the spatial data layers involved.
 Starting from the bottom: the municipality boundary, census tracts
 colored by population, polling station locations, and the final
@@ -318,7 +318,7 @@ variables</strong> that bridge census tracts and polling stations.</p>
 </table>
 <p>These 7 matched brackets are the key insight: they are observed at
 <strong>both</strong> levels, enabling calibration.</p>
-<p><img src="figures/pop-pyramid.png" alt="" width="90%"></p>
+<p><img src="figures/pop-pyramid.png" class="r-plt" alt="" width="90%"></p>
 </div>
 <div class="section level3">
 <h3 id="census-tract-geometries">5. Census Tract Geometries<a class="anchor" aria-label="anchor" href="#census-tract-geometries"></a>
@@ -329,7 +329,7 @@ variables</strong> that bridge census tracts and polling stations.</p>
 green areas (parks, water bodies with zero population), transforms to
 EPSG:5880 (equal-area projection for accurate spatial operations), and
 joins the population columns.</p>
-<p><img src="figures/tracts-pop-map.png" alt="" width="100%"></p>
+<p><img src="figures/tracts-pop-map.png" class="r-plt" alt="" width="100%"></p>
 <p>Note the urban-rural gradient: small, densely populated tracts in the
 city center; large, sparsely populated tracts on the periphery.</p>
 </div>
@@ -380,7 +380,7 @@ each column (type, cargo, candidate name, party)</li>
 <code>"demographics"</code>: <code>GENERO_*</code> and
 <code>EDUC_*</code> columns</li>
 </ul>
-<p><img src="figures/electoral-stations-map.png" alt="" width="100%"></p>
+<p><img src="figures/electoral-stations-map.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="calibration-variables-comparing-source-and-target">7. Calibration Variables: Comparing Source and Target<a class="anchor" aria-label="anchor" href="#calibration-variables-comparing-source-and-target"></a>
@@ -399,7 +399,7 @@ voted at this station?” (from TSE)</li>
 Copacabana in Section 1. The demographic signature that varies across
 neighborhoods is precisely what the method uses to calibrate the
 weights.</p>
-<p><img src="figures/age-pyramids-comparison.png" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-comparison.png" class="r-plt" alt="" width="100%"></p>
 <p>The shapes are similar but totals differ: the census counts
 residents, the TSE counts registered voters. Not everyone of voting age
 is registered, and registration rates vary by age bracket.</p>
@@ -452,7 +452,7 @@ Three methods are available:</p>
 irregularly shaped tracts</strong> in rural and peri-urban areas.
 Consider the southern periphery of São Paulo, where census tracts extend
 over several square kilometers of mixed urban and forested land:</p>
-<p><img src="figures/rep-points-saopaulo-comparison.png" alt="" width="100%"></p>
+<p><img src="figures/rep-points-saopaulo-comparison.png" class="r-plt" alt="" width="100%"></p>
 <p>The three-panel comparison shows the same set of large tracts in
 south São Paulo. The red dots (centroids) frequently fall in uninhabited
 areas — in the middle of Mata Atlântica forest or in empty fields. The
@@ -461,7 +461,7 @@ but may still be far from where people actually live. The green dots
 (pop-weighted) use the WorldPop population raster to find the most
 densely populated cell within each tract, placing the representative
 point where residents actually are.</p>
-<p><img src="figures/rep-points-zoom-inset.png" alt="" width="80%"></p>
+<p><img src="figures/rep-points-zoom-inset.png" class="r-plt" alt="" width="80%"></p>
 <p>Zooming into the largest tract, the centroid falls in dense forest
 while the pop-weighted point correctly identifies the settlement area.
 This difference can affect travel time calculations by tens of
@@ -513,7 +513,7 @@ time. Two examples:</p>
 Corcovado/Sumaré hills. A polling station in Laranjeiras sits on the
 other side. In a straight line, the distance is modest — but the walking
 route must navigate around the steep terrain:</p>
-<p><img src="figures/routes-rj-botafogo-laranjeiras.png" alt="" width="100%"></p>
+<p><img src="figures/routes-rj-botafogo-laranjeiras.png" class="r-plt" alt="" width="100%"></p>
 <p>The solid blue line shows the actual walking route computed by r5r on
 the OSM road network. The dotted red line shows the straight-line
 distance. In mountainous terrain, these can differ by a factor of
@@ -523,14 +523,14 @@ distance. In mountainous terrain, these can differ by a factor of
 Brasília Teimosa peninsula are separated by Recife’s waterways. The
 walking route must navigate around the estuary and cross bridges, adding
 significant distance compared to the straight line.</p>
-<p><img src="figures/routes-recife-water.png" alt="" width="100%"></p>
+<p><img src="figures/routes-recife-water.png" class="r-plt" alt="" width="100%"></p>
 <p><strong>Example 3: Water barrier (Florianópolis)</strong></p>
 <p>Florianópolis, capital of Santa Catarina, is split between the
 mainland and an island in the Atlantic. A point in Coqueiros (mainland)
 and a destination at Costeira do Pirajubaé (island) are separated by the
 bay. The walking route must detour to one of the bridges connecting the
 two sides:</p>
-<p><img src="figures/routes-florianopolis-water.png" alt="" width="100%"></p>
+<p><img src="figures/routes-florianopolis-water.png" class="r-plt" alt="" width="100%"></p>
 <p>These examples illustrate why Euclidean distance is a poor proxy for
 actual accessibility — and why the routing engine matters.</p>
 </div>
@@ -563,10 +563,10 @@ get this value</li>
 <p>The OSM data is downloaded via <code><a href="../reference/download_r5r_data.html">download_r5r_data()</a></code>,
 which fetches state-level <code>.pbf</code> files and clips them to the
 municipality bounding box using osmium.</p>
-<p><img src="figures/tt-heatmap.png" alt="" width="90%"></p>
+<p><img src="figures/tt-heatmap.png" class="r-plt" alt="" width="90%"></p>
 <p>The heatmap shows spatial structure: a block-diagonal pattern where
 nearby tract-station pairs have short travel times.</p>
-<p><img src="figures/tt-accessibility-map.png" alt="" width="100%"></p>
+<p><img src="figures/tt-accessibility-map.png" class="r-plt" alt="" width="100%"></p>
 <p>Tracts in the center have short travel times to the nearest station;
 peripheral tracts are farther away.</p>
 <p><strong>The offset</strong>: before applying the IDW kernel, we add 1
@@ -622,7 +622,7 @@ tract’s estimate? With a decay parameter
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
 and station
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 <p>where:</p>
 <ul>
 <li>
@@ -653,7 +653,6 @@ decay parameter for tract
 <span>                          levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"alpha = "</span>, <span class="va">alphas</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
-<span><span class="co">#&gt; Warning: package 'ggplot2' was built under R version 4.5.1</span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">decay_df</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">time</span>, y <span class="op">=</span> <span class="va">weight</span>, color <span class="op">=</span> <span class="va">alpha</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span>linewidth <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_continuous.html" class="external-link">scale_y_log10</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
@@ -664,7 +663,7 @@ decay parameter for tract
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span>,</span>
 <span>        legend.position <span class="op">=</span> <span class="st">"right"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/weight-decay-1.png" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/weight-decay-1.png" class="r-plt" alt="" width="100%"></p>
 <ul>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">\alpha = 0.5</annotation></semantics></math>:
@@ -989,7 +988,7 @@ within 15–50 iterations:</p>
 <span>       x <span class="op">=</span> <span class="st">"Iteration"</span>, y <span class="op">=</span> <span class="st">"Max marginal error (log scale)"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/sinkhorn-convergence-1.png" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/sinkhorn-convergence-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level4">
 <h4 id="the-formal-algorithm">12.5 The formal algorithm<a class="anchor" aria-label="anchor" href="#the-formal-algorithm"></a>
@@ -1049,7 +1048,7 @@ for iter in 1..max_iter:
 <span>       x <span class="op">=</span> <span class="st">"Station"</span>, y <span class="op">=</span> <span class="st">"Tract"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/sinkhorn-comparison-1.png" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/sinkhorn-comparison-1.png" class="r-plt" alt="" width="100%"></p>
 <p>Sinkhorn redistributes weight: over-weighted tracts (near many
 stations) get less, under-weighted tracts get more. The geographic
 “shape” of each row is preserved, but the “scale” changes to match
@@ -1102,7 +1101,7 @@ brackets simultaneously.</p>
 <h4 id="the-iterative-procedure">13.2 The iterative procedure<a class="anchor" aria-label="anchor" href="#the-iterative-procedure"></a>
 </h4>
 <p>The optimization is a loop:</p>
-<p><img src="figures/optimization-loop-diagram.png" alt="" width="80%"></p>
+<p><img src="figures/optimization-loop-diagram.png" class="r-plt" alt="" width="80%"></p>
 <p>In words:</p>
 <ol style="list-style-type: decimal">
 <li>
@@ -1182,7 +1181,7 @@ in the direction that reduces error</li>
 <span>       x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression</a></span><span class="op">(</span><span class="va">alpha</span><span class="op">)</span>, y <span class="op">=</span> <span class="st">"SSE"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/objective-landscape-1.png" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/objective-landscape-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The landscape has a clear minimum. In practice, each tract has its
 own alpha, creating a high-dimensional optimization problem.</p>
 </div>
@@ -1240,16 +1239,16 @@ astronomically small:</p>
 <span><span class="co">#&gt; Zero weights cause division by zero in Sinkhorn scaling</span></span></code></pre></div>
 <p>In 32-bit floating point (standard for GPU computation), numbers
 smaller than about
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
 underflow to zero. When a weight becomes exactly zero, the Sinkhorn
 row/column scaling produces
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>0</mn><mi>/</mi><mn>0</mn><mo>=</mo><mtext mathvariant="normal">NaN</mtext></mrow><annotation encoding="application/x-tex">0/0 = \text{NaN}</annotation></semantics></math>,
 and the optimization collapses.</p>
 <p><strong>The log-domain solution</strong>: instead of storing the tiny
 weights directly, store their <strong>logarithms</strong>. A weight of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mi>−</mi><mn>20</mn></mrow></msup><annotation encoding="application/x-tex">10^{-20}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mo>−</mo><mn>20</mn></mrow></msup><annotation encoding="application/x-tex">10^{-20}</annotation></semantics></math>
 has
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>20</mn></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>−</mi><mn>46</mn></mrow><annotation encoding="application/x-tex">\log(10^{-20}) = -46</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>20</mn></mrow></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo>−</mo><mn>46</mn></mrow><annotation encoding="application/x-tex">\log(10^{-20}) = -46</annotation></semantics></math>,
 which is perfectly representable in float32.</p>
 </div>
 <div class="section level4">
@@ -1277,9 +1276,9 @@ primitive available in torch:</p>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">c_j = 1</annotation></semantics></math>,
 so
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\log c_j = 0</annotation></semantics></math>):</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>=</mo><mi>−</mi><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j = -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>=</mo><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j = -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
 <p>And the log-kernel is simply:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="the-complete-log-domain-sinkhorn-algorithm">14.4 The complete log-domain Sinkhorn algorithm<a class="anchor" aria-label="anchor" href="#the-complete-log-domain-sinkhorn-algorithm"></a>
@@ -1356,7 +1355,7 @@ step</li>
 <span>  gpu_lr_init   <span class="op">=</span> <span class="fl">0.1</span>,     <span class="co"># initial learning rate</span></span>
 <span>  gpu_lr_decay  <span class="op">=</span> <span class="fl">0.6</span>      <span class="co"># LR multiplier between phases</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/optim-convergence.png" alt="" width="90%"></p>
+<p><img src="figures/optim-convergence.png" class="r-plt" alt="" width="90%"></p>
 <p>Rapid descent in the first few phases, then fine-tuning as the
 learning rate decays.</p>
 <p><strong>Key tuning parameters</strong>:</p>
@@ -1417,10 +1416,10 @@ gradient.</td>
 <div class="section level3">
 <h3 id="the-effect-of-alpha-spatial-interpretation">15. The Effect of Alpha: Spatial Interpretation<a class="anchor" aria-label="anchor" href="#the-effect-of-alpha-spatial-interpretation"></a>
 </h3>
-<p><img src="figures/alpha-histogram.png" alt="" width="80%"></p>
+<p><img src="figures/alpha-histogram.png" class="r-plt" alt="" width="80%"></p>
 <p>Most alphas cluster in a moderate range, with tails extending toward
 0 (uniform allocation) and the upper bound (nearest-station-only).</p>
-<p><img src="figures/alpha-map.png" alt="" width="100%"></p>
+<p><img src="figures/alpha-map.png" class="r-plt" alt="" width="100%"></p>
 <ul>
 <li>
 <strong>Low alpha</strong> (blue, urban core): weight is spread
@@ -1451,7 +1450,7 @@ on the nearest station. Isolated tracts with one dominant station.</li>
 <span>       y <span class="op">=</span> <span class="st">"Normalized weight"</span>, fill <span class="op">=</span> <span class="st">""</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/alpha-effect-1.png" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/alpha-effect-1.png" class="r-plt" alt="" width="100%"></p>
 <p>At
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha = 1</annotation></semantics></math>,
 weights are nearly uniform. At
@@ -1505,14 +1504,14 @@ is [M × P].</p>
 <span></span>
 <span><span class="va">pct_lula</span> <span class="op">&lt;-</span> <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"CAND_13"</span><span class="op">]</span> <span class="op">/</span></span>
 <span>  <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"QT_COMPARECIMENTO"</span><span class="op">]</span> <span class="op">*</span> <span class="fl">100</span></span></code></pre></div>
-<p><img src="figures/interp-lula.png" alt="" width="100%"></p>
-<p><img src="figures/interp-bolsonaro.png" alt="" width="100%"></p>
+<p><img src="figures/interp-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/interp-bolsonaro.png" class="r-plt" alt="" width="100%"></p>
 <p>Geographic polarization becomes visible at the tract level — a
 spatial pattern that was previously impossible to observe with
 station-level data alone.</p>
 <p><strong>Calibration validation</strong>: interpolated demographics
 should match census demographics (the optimization objective).</p>
-<p><img src="figures/interp-scatter-calib.png" alt="" width="80%"></p>
+<p><img src="figures/interp-scatter-calib.png" class="r-plt" alt="" width="80%"></p>
 <p>Points cluster tightly around the 45-degree line, confirming that the
 optimization found good weights.</p>
 <p><strong>The reuse principle</strong>: the weight matrix
@@ -1545,7 +1544,7 @@ are preserved exactly.</p>
 <p><strong>Row conservation</strong> (population proportionality):</p>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><munder><mo>∑</mo><mi>j</mi></munder><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mi>r</mi><mi>i</mi></msub><mo>=</mo><mfrac><msub><mtext mathvariant="normal">pop</mtext><mi>i</mi></msub><mrow><mo>∑</mo><mtext mathvariant="normal">pop</mtext></mrow></mfrac><mo>×</mo><mi>m</mi></mrow><annotation encoding="application/x-tex">\sum_j W_{ij} = r_i = \frac{\text{pop}_i}{\sum \text{pop}} \times m</annotation></semantics></math></p>
 <p><strong>Calibration residuals</strong>:</p>
-<p><img src="figures/residuals-boxplot.png" alt="" width="90%"></p>
+<p><img src="figures/residuals-boxplot.png" class="r-plt" alt="" width="90%"></p>
 <p>Residuals should be centered near zero with small magnitude. Outliers
 may indicate boundary effects (voters crossing municipality borders) or
 data quality issues.</p>
@@ -1556,7 +1555,7 @@ data quality issues.</p>
 <p>In Section 1, we showed that Rocinha and Copacabana have strikingly
 different age structures. Does the interpolation recover these
 patterns?</p>
-<p><img src="figures/age-recovery-rocinha-copacabana.png" alt="" width="100%"></p>
+<p><img src="figures/age-recovery-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
 <p>The blue bars show the census truth (population by age bracket) and
 the yellow bars show the Sinkhorn-interpolated voter profiles. The
 interpolation closely recovers the distinctive age patterns of both
@@ -1578,7 +1577,7 @@ Voronoi (Thiessen) polygons around each station and assigning each tract
 <p>We compare both methods across <strong>four Brazilian state
 capitals</strong> with diverse urban morphologies: Palmas (TO), Cuiabá
 (MT), Manaus (AM), and Natal (RN).</p>
-<p><img src="figures/voronoi-palmas-map.png" alt="" width="100%"></p>
+<p><img src="figures/voronoi-palmas-map.png" class="r-plt" alt="" width="100%"></p>
 <p>In the Voronoi approach, each tract inherits the complete demographic
 and electoral profile of a single station. This ignores the many-to-many
 structure: a tract near the boundary between two Voronoi cells gets none
@@ -1586,17 +1585,17 @@ of the influence from the station just across the boundary.</p>
 <p>How well do the two methods recover the census age structure? The
 following figure compares predicted versus observed demographic profiles
 across all four cities:</p>
-<p><img src="figures/voronoi-vs-sinkhorn-scatter.png" alt="" width="100%"></p>
+<p><img src="figures/voronoi-vs-sinkhorn-scatter.png" class="r-plt" alt="" width="100%"></p>
 <p>Sinkhorn points cluster tightly around the 45-degree line in every
 city. Voronoi points show much more scatter — many tracts have large
 prediction errors because they were assigned to a station with a very
 different demographic composition.</p>
-<p><img src="figures/voronoi-vs-sinkhorn-residuals.png" alt="" width="100%"></p>
+<p><img src="figures/voronoi-vs-sinkhorn-residuals.png" class="r-plt" alt="" width="100%"></p>
 <p>The residual boxplots confirm the pattern across all four cities:
 Sinkhorn residuals are tightly centered around zero, while Voronoi
 residuals have much larger spread.</p>
 <p>The aggregate SSE ratio quantifies the advantage:</p>
-<p><img src="figures/voronoi-sse-ratio-cities.png" alt="" width="90%"></p>
+<p><img src="figures/voronoi-sse-ratio-cities.png" class="r-plt" alt="" width="90%"></p>
 <p>In every city, the Sinkhorn method achieves dramatically lower
 squared error than Voronoi assignment — typically by a factor of
 100–1000x. The advantage is consistent across cities of different sizes
@@ -1618,7 +1617,7 @@ obtained from the 2022 Census (via
 this correlation for four cities with very different socioeconomic
 profiles: São Paulo (SP), Salvador (BA), Porto Alegre (RS), and Cuiabá
 (MT).</p>
-<p><img src="figures/lula-income-correlation.png" alt="" width="100%"></p>
+<p><img src="figures/lula-income-correlation.png" class="r-plt" alt="" width="100%"></p>
 <p>The negative correlation is consistent across all four cities and
 with well-established patterns in Brazilian electoral geography:
 lower-income areas tend to vote more heavily for PT candidates, while
@@ -1747,12 +1746,12 @@ column targets
 <div class="section level4">
 <h4 id="idw-kernel">IDW kernel<a class="anchor" aria-label="anchor" href="#idw-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="log-domain-kernel">Log-domain kernel<a class="anchor" aria-label="anchor" href="#log-domain-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="sinkhorn-iterations-log-domain">Sinkhorn iterations (log-domain)<a class="anchor" aria-label="anchor" href="#sinkhorn-iterations-log-domain"></a>
@@ -1764,7 +1763,7 @@ column targets
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">k = 1</annotation></semantics></math>
 to
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>K</mi><mtext mathvariant="normal">sink</mtext></msub><annotation encoding="application/x-tex">K_{\text{sink}}</annotation></semantics></math>:
-<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo>←</mo><mo>log</mo><msub><mi>r</mi><mi>i</mi></msub><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>j</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>←</mo><mi>−</mi><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo>←</mo><mo>log</mo><msub><mi>r</mi><mi>i</mi></msub><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>j</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>v</mi><mi>j</mi></msub><mo>←</mo><mo>−</mo><msub><mtext mathvariant="normal">logsumexp</mtext><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mo>log</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="balanced-weight-matrix">Balanced weight matrix<a class="anchor" aria-label="anchor" href="#balanced-weight-matrix"></a>
@@ -1799,7 +1798,7 @@ backward pass in torch:</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer>

@@ -44,7 +44,7 @@ municipality code (or name) and an election year."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>One-step interpolation for Brazilian elections</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/brazil-wrapper.R" class="external-link"><code>R/brazil-wrapper.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/brazil-wrapper.R" class="external-link"><code>R/brazil-wrapper.R</code></a></small>
       <div class="d-none name"><code>interpolate_election_br.Rd</code></div>
     </div>
 
@@ -82,6 +82,7 @@ municipality code (or name) and an election year.</p>
 <span>  keep <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  alpha <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  offset <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  calib_type <span class="op">=</span> <span class="st">"full"</span>,</span>
 <span>  use_gpu <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cache <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  force <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -279,6 +280,14 @@ alpha.</p></dd>
 <dd><p>Numeric. Travel time offset. Default: 1.</p></dd>
 
 
+<dt id="arg-calib-type">calib_type<a class="anchor" aria-label="anchor" href="#arg-calib-type"></a></dt>
+<dd><p>Character. Calibration column type:</p><ul><li><p><code>"full"</code> <strong>(default)</strong>: 28 columns crossing gender (male/female) ×
+literacy (literate/illiterate) × 7 age brackets. Provides stronger
+spatial signal for the optimizer.</p></li>
+<li><p><code>"age_only"</code>: 7 age-bracket-only columns (original behavior).</p></li>
+</ul></dd>
+
+
 <dt id="arg-use-gpu">use_gpu<a class="anchor" aria-label="anchor" href="#arg-use-gpu"></a></dt>
 <dd><p>Logical or NULL. Passed to <code><a href="optimize_alpha.html">optimize_alpha()</a></code>.</p></dd>
 
@@ -436,7 +445,7 @@ are prefixed: <code>PRESIDENTE_CAND_13</code>, <code>GOVERNADOR_PARTY_PT</code>,
 <code><a href="br_prepare_population.html">br_prepare_population()</a></code>, <code><a href="br_prepare_electoral.html">br_prepare_electoral()</a></code>,
 <code><a href="br_prepare_tracts.html">br_prepare_tracts()</a></code>.</p>
 <p>Other wrappers:
-<code><a href="interpolate_election.html">interpolate_election</a>()</code></p></div>
+<code><a href="interpolate_election.html">interpolate_election()</a></code></p></div>
     </div>
 
     <div class="section level2">
@@ -584,7 +593,7 @@ are prefixed: <code>PRESIDENTE_CAND_13</code>, <code>GOVERNADOR_PARTY_PT</code>,
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>

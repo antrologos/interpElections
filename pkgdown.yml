@@ -1,11 +1,11 @@
-pandoc: '3.6'
-pkgdown: 2.1.3
+pandoc: 3.1.11
+pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
   get-started: get-started.html
   methodology: methodology.html
   working-with-results: working-with-results.html
-last_built: 2026-02-18T21:32Z
+last_built: 2026-02-19T00:01Z
 urls:
   reference: https://antrologos.github.io/interpElections/reference
   article: https://antrologos.github.io/interpElections/articles
