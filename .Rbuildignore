@@ -12,3 +12,5 @@
 ^vignettes/precomputed$
 ^vignettes/figures$
 ^vignettes/precompute\.R$
+^scripts$
+^Rplots\.pdf$

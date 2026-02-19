@@ -30,6 +30,9 @@ vignettes/*.html
 # Pre-computed vignette data (too large for git; regenerate with precompute.R)
 vignettes/precomputed/
 
+# Development scripts (not part of the package)
+/scripts/
+
 # Misc artifacts
 Rplots.pdf
 
