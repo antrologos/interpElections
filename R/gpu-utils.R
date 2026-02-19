@@ -1,7 +1,7 @@
 #' Enable or disable GPU acceleration
 #'
 #' Sets package-wide options controlling whether [optimize_alpha()] uses
-#' GPU-accelerated optimization (torch ADAM) or CPU-only methods.
+#' GPU-accelerated optimization (PB-SGD) or CPU-only methods.
 #'
 #' @param enable Logical. `TRUE` to enable GPU, `FALSE` for CPU only.
 #' @param device Character or NULL. Torch device: `"cuda"`, `"mps"`, or
@@ -9,9 +9,10 @@
 #' @param dtype Character. `"float32"` or `"float64"`. Default: `"float32"`.
 #'
 #' @details
-#' When GPU is enabled, [optimize_alpha()] uses the torch ADAM optimizer
-#' by default. This requires the `torch` package to be installed with a
-#' working GPU backend (CUDA for NVIDIA, MPS for Apple Silicon).
+#' When GPU is enabled, [optimize_alpha()] uses torch-based PB-SGD
+#' (per-bracket stochastic gradient descent). This requires the `torch`
+#' package to be installed with a working GPU backend (CUDA for NVIDIA,
+#' MPS for Apple Silicon).
 #'
 #' The per-call `use_gpu` parameter in [optimize_alpha()] always overrides
 #' the global setting.
@@ -126,7 +127,7 @@ use_gpu <- function(enable = TRUE, device = NULL, dtype = "float32") {
   tryCatch({
     path <- attr(pkg_ns, "path") %||% ""
     # Source packages have R/*.R files; installed packages have R/*.rdb
-    if (nzchar(path) && file.exists(file.path(path, "R", "optimize-gpu.R"))) {
+    if (nzchar(path) && file.exists(file.path(path, "R", "optimize-torch.R"))) {
       path
     } else {
       ""

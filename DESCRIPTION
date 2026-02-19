@@ -9,10 +9,12 @@ Description: Interpolates voting counts and electoral demographics from
     polling locations into census tracts using inverse distance weighting
     with Sinkhorn-balanced weights and per-zone optimized decay parameters.
     Travel-time matrices are computed via the r5r routing engine.
-    Optimization uses torch autograd (ADAM) on CPU or GPU with log-domain
-    Sinkhorn iterations for numerical stability. Includes end-to-end
-    helpers for Brazilian electoral data that auto-download census,
-    electoral, and road network data.
+    Optimization uses per-bracket mini-batch stochastic gradient descent
+    (PB-SGD) with log-domain Sinkhorn projections on CPU or GPU via torch.
+    Each demographic bracket receives its own Sinkhorn balancing, and
+    mini-batching enables efficient scaling to large cities. Includes
+    end-to-end helpers for Brazilian electoral data that auto-download
+    census, electoral, and road network data.
 License: MIT + file LICENSE
 URL: https://antrologos.github.io/interpElections/,
     https://github.com/antrologos/interpElections

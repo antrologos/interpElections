@@ -10,17 +10,14 @@ optimize_alpha(
   source_matrix,
   row_targets = NULL,
   alpha_init = NULL,
-  sinkhorn_iter = 5L,
+  batch_size = 500L,
+  sk_iter = 15L,
+  max_steps = 800L,
+  lr_init = 0.05,
   use_gpu = NULL,
   device = NULL,
   dtype = "float32",
-  gpu_iterations = 20L,
-  gpu_lr_init = 0.1,
-  gpu_lr_decay = 0.6,
-  gpu_grad_tol = 1e-04,
-  gpu_grad_clip = 1,
-  gpu_warmup_steps = 10L,
-  lower_bound = 0,
+  lower_bound = 0.01,
   upper_bound = 20,
   offset = 1,
   verbose = TRUE
@@ -44,10 +41,17 @@ should attract, proportional to its share of total population. If NULL
 \item{alpha_init}{Numeric vector of length n, or a single value to be
 recycled. Initial guess for alpha. Default: \code{rep(1, n)}.}
 
-\item{sinkhorn_iter}{Integer. Number of Sinkhorn iterations per objective
-evaluation during optimization. Higher values give more accurate balancing
-but are slower. Default: 5 (sufficient for optimization; final weights
-use full convergence via \code{\link[=sinkhorn_weights]{sinkhorn_weights()}}).}
+\item{batch_size}{Integer. Number of zones (rows) sampled per SGD step.
+For cities with \code{n <= batch_size}, the full batch is used. Default: 500.}
+
+\item{sk_iter}{Integer. Number of log-domain Sinkhorn iterations per
+SGD step. Higher values give more accurate per-bracket transport but
+increase memory usage. Default: 15.}
+
+\item{max_steps}{Integer. Total number of SGD steps. Default: 800.}
+
+\item{lr_init}{Numeric. Initial ADAM learning rate. Halved at steps 200,
+400, and 600. Default: 0.05.}
 
 \item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
 \code{FALSE}, use CPU. If \code{NULL} (default), reads the package option
@@ -59,24 +63,7 @@ use full convergence via \code{\link[=sinkhorn_weights]{sinkhorn_weights()}}).}
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
-\item{gpu_iterations}{Integer. Number of outer ADAM phases with learning
-rate decay. Default: 20.}
-
-\item{gpu_lr_init}{Numeric. Initial ADAM learning rate. Default: 0.1.}
-
-\item{gpu_lr_decay}{Numeric. Learning rate decay factor per phase.
-Default: 0.6.}
-
-\item{gpu_grad_tol}{Numeric. Gradient norm threshold for convergence.
-Default: 1e-4.}
-
-\item{gpu_grad_clip}{Numeric or NULL. Maximum gradient norm for clipping.
-\code{NULL} disables clipping. Default: 1.0.}
-
-\item{gpu_warmup_steps}{Integer. Linear learning rate warmup steps at
-the start of phase 1. Default: 10.}
-
-\item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.}
+\item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.01.}
 
 \item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.}
 
@@ -91,29 +78,27 @@ A list of class \code{"interpElections_optim"} with components:
 \item{alpha}{Numeric vector. Optimal alpha values.}
 \item{value}{Numeric. Objective function value at optimum.}
 \item{method}{Character. Method used (e.g.,
-\code{"torch_adam_sinkhorn_cpu"}, \code{"torch_adam_sinkhorn_cuda"}).}
+\code{"pb_sgd_sinkhorn_cpu"}, \code{"pb_sgd_sinkhorn_cuda"}).}
 \item{convergence}{Integer. 0 = success.}
-\item{iterations}{Number of ADAM steps taken.}
+\item{iterations}{Number of SGD steps taken.}
 \item{elapsed}{\code{difftime} object. Wall-clock time.}
 \item{message}{Character. Additional information.}
-\item{history}{Numeric vector. Objective values at each step.}
+\item{history}{Numeric vector. Loss values at each step.}
 \item{grad_norm_final}{Numeric. Final gradient norm.}
 \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
-\item{sinkhorn_iter}{Integer. Sinkhorn iterations used.}
+\item{sk_iter}{Integer. Sinkhorn iterations per step.}
+\item{batch_size}{Integer. Mini-batch size used.}
 }
 }
 \description{
 Optimizes the per-zone decay parameters that minimize the squared error
-between Sinkhorn-balanced interpolated values and known population counts.
-Uses torch autograd for gradient computation with ADAM optimizer on both
-CPU and GPU.
+between per-bracket Sinkhorn-balanced interpolated values and known
+population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
+and log-domain Sinkhorn inside torch autograd. Each demographic bracket
+gets its own Sinkhorn transport; gradients flow through all unrolled
+iterations. Works on both CPU and GPU (CUDA/MPS).
 }
 \details{
-The weight matrix is balanced via log-domain Sinkhorn iterations
-(row sums proportional to population, column sums = 1) before computing
-the calibration loss. Gradients are obtained by differentiating through
-the unrolled Sinkhorn iterations via torch autograd.
-
 The optimization requires the \code{torch} R package. Install it with
 \code{\link[=setup_torch]{setup_torch()}} if not already available.
 
@@ -125,9 +110,10 @@ device. Fast for small/medium problems (< 2000 tracts).
 problems (> 2000 tracts).
 }
 
-Both paths use the same ADAM optimizer with log-domain Sinkhorn.
-Gradients are computed via torch autograd through the unrolled
-Sinkhorn iterations.
+Both paths use PB-SGD: mini-batch ADAM with per-bracket log-domain
+Sinkhorn. Gradients are computed via torch autograd through the unrolled
+Sinkhorn iterations. GPU memory usage is bounded by
+\code{ka * min(batch_size, n) * m * bytes_per_elem * (2 + 2 * sk_iter)}.
 }
 \examples{
 \dontrun{

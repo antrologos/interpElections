@@ -62,7 +62,9 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
 
   opt <- optimize_alpha(tt, pop_mat, src_mat, verbose = FALSE)
   W_manual <- sinkhorn_weights(tt, opt$alpha, offset = 1,
-                                row_targets = opt$row_targets)
+                                row_targets = opt$row_targets,
+                                pop_matrix = pop_mat,
+                                source_matrix = src_mat)
   manual <- W_manual %*% src_mat
 
   # Wrapper
@@ -78,9 +80,14 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   )
 
   expect_s3_class(result, "interpElections_result")
-  expect_equal(result$interpolated, manual, tolerance = 1e-6)
-  expect_equal(result$alpha, opt$alpha, tolerance = 1e-6)
-  expect_equal(result$optimization$value, opt$value, tolerance = 1e-6)
+  # PB-SGD is stochastic: two separate optimize_alpha() calls produce
+  # slightly different results due to different random mini-batch sampling.
+  # Verify structure and reasonableness rather than exact match.
+  expect_equal(nrow(result$interpolated), n)
+  expect_equal(ncol(result$interpolated), ncol(manual))
+  expect_true(all(is.finite(result$interpolated)))
+  expect_length(result$alpha, n)
+  expect_true(is.finite(result$optimization$value))
 
   # Lightweight by default: heavy objects are NULL
   expect_null(result$weights)
@@ -230,11 +237,15 @@ test_that("interpolate_election() with pre-supplied alpha skips optimization", {
   expect_null(result$optimization)
   expect_equal(result$alpha, alpha_fixed)
 
-  # Should match direct call with sinkhorn weights
+  # Should match direct call with sinkhorn weights (per-bracket)
+  pop_mat <- as.matrix(sf::st_drop_geometry(tracts)[, pop_cols])
   src_mat <- as.matrix(sf::st_drop_geometry(sources)[, src_cols])
+  storage.mode(pop_mat) <- "double"
   storage.mode(src_mat) <- "double"
   W_direct <- sinkhorn_weights(tt, alpha_fixed, offset = 1,
-                                row_targets = result$row_targets)
+                                row_targets = result$row_targets,
+                                pop_matrix = pop_mat,
+                                source_matrix = src_mat)
   direct <- W_direct %*% src_mat
   expect_equal(result$interpolated, direct)
 })

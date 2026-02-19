@@ -33,7 +33,7 @@ test_that("optimize_alpha use_gpu=FALSE uses torch CPU", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    gpu_iterations = 5L,
+    max_steps = 50L,
     verbose = FALSE
   )
   expect_s3_class(result, "interpElections_optim")

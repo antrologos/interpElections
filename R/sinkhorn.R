@@ -173,6 +173,12 @@ sinkhorn_balance <- function(W, row_targets = NULL, col_targets = NULL,
 #' decay parameters, then applies Sinkhorn balancing to enforce both row
 #' and column marginal constraints.
 #'
+#' When `pop_matrix` and `source_matrix` are provided, per-bracket Sinkhorn
+#' balancing is used: each demographic column gets its own Sinkhorn transport
+#' (with row targets rescaled to match source totals), then all bracket
+#' contributions are summed and a final aggregate Sinkhorn enforces the
+#' overall `row_targets` / `col_targets` constraints.
+#'
 #' @param time_matrix Numeric matrix \[n x m\]. Raw travel times.
 #'   Rows = target zones, columns = source points.
 #' @param alpha Numeric vector of length n. Decay parameters per target zone.
@@ -184,6 +190,12 @@ sinkhorn_balance <- function(W, row_targets = NULL, col_targets = NULL,
 #'   (uniform allocation).
 #' @param col_targets Numeric vector of length m. Desired column sums.
 #'   Default: `NULL` (`rep(1, m)` for source conservation).
+#' @param pop_matrix Numeric matrix \[n x k\] or NULL. Population per zone
+#'   per demographic bracket. When provided together with `source_matrix`,
+#'   enables per-bracket Sinkhorn mode. Default: NULL.
+#' @param source_matrix Numeric matrix \[m x k\] or NULL. Source counts per
+#'   demographic bracket. Must be provided together with `pop_matrix`.
+#'   Default: NULL.
 #' @param max_iter Integer. Max Sinkhorn iterations. Default: 1000.
 #' @param tol Numeric. Convergence tolerance. Default: 1e-10.
 #'
@@ -208,6 +220,7 @@ sinkhorn_balance <- function(W, row_targets = NULL, col_targets = NULL,
 #' @export
 sinkhorn_weights <- function(time_matrix, alpha, offset = 1,
                               row_targets = NULL, col_targets = NULL,
+                              pop_matrix = NULL, source_matrix = NULL,
                               max_iter = 1000L, tol = 1e-10) {
   if (!is.matrix(time_matrix) || !is.numeric(time_matrix)) {
     stop("time_matrix must be a numeric matrix", call. = FALSE)
@@ -221,14 +234,71 @@ sinkhorn_weights <- function(time_matrix, alpha, offset = 1,
   }
   .validate_alpha(alpha, nrow(time_matrix))
 
+  # Validate per-bracket args: both or neither
+  if (is.null(pop_matrix) != is.null(source_matrix)) {
+    stop("pop_matrix and source_matrix must both be provided or both be NULL",
+         call. = FALSE)
+  }
+
   t_adj <- .apply_offset(time_matrix, offset)
   if (any(t_adj <= 0)) {
     stop("time_matrix + offset must be strictly positive", call. = FALSE)
   }
 
-  W <- t_adj ^ (-alpha)
-  sinkhorn_balance(W, row_targets = row_targets, col_targets = col_targets,
-                    max_iter = max_iter, tol = tol)
+  n <- nrow(t_adj)
+  m <- ncol(t_adj)
+  K <- t_adj ^ (-alpha)
+  K[!is.finite(K)] <- 0
+
+  if (!is.null(pop_matrix) && !is.null(source_matrix)) {
+    # --- Per-bracket Sinkhorn mode ---
+    if (!is.matrix(pop_matrix) || !is.numeric(pop_matrix)) {
+      stop("pop_matrix must be a numeric matrix", call. = FALSE)
+    }
+    if (!is.matrix(source_matrix) || !is.numeric(source_matrix)) {
+      stop("source_matrix must be a numeric matrix", call. = FALSE)
+    }
+    if (nrow(pop_matrix) != n) {
+      stop(sprintf(
+        "pop_matrix has %d rows but time_matrix has %d rows (must match)",
+        nrow(pop_matrix), n), call. = FALSE)
+    }
+    if (nrow(source_matrix) != m) {
+      stop(sprintf(
+        "source_matrix has %d rows but time_matrix has %d columns (must match)",
+        nrow(source_matrix), m), call. = FALSE)
+    }
+    if (ncol(pop_matrix) != ncol(source_matrix)) {
+      stop(sprintf(
+        "pop_matrix has %d columns but source_matrix has %d columns (must match)",
+        ncol(pop_matrix), ncol(source_matrix)), call. = FALSE)
+    }
+    k <- ncol(pop_matrix)
+    W_total <- matrix(0, n, m)
+
+    suppressWarnings({
+      for (bi in seq_len(k)) {
+        rb <- pop_matrix[, bi]
+        cb <- source_matrix[, bi]
+        if (sum(cb) < 0.5 || sum(rb) < 0.5) next
+        # Rescale row targets so sum(rb) == sum(cb)
+        rb <- rb / sum(rb) * sum(cb)
+        W_b <- sinkhorn_balance(K, row_targets = rb, col_targets = cb,
+                                 max_iter = max_iter, tol = tol)
+        W_total <- W_total + W_b
+      }
+    })
+
+    # Final aggregate Sinkhorn
+    final_col <- col_targets %||% rep(1, m)
+    sinkhorn_balance(W_total, row_targets = row_targets,
+                      col_targets = final_col,
+                      max_iter = max_iter, tol = tol)
+  } else {
+    # --- Single Sinkhorn mode (backward compatible) ---
+    sinkhorn_balance(K, row_targets = row_targets, col_targets = col_targets,
+                      max_iter = max_iter, tol = tol)
+  }
 }
 
 
@@ -236,9 +306,9 @@ sinkhorn_weights <- function(time_matrix, alpha, offset = 1,
 # sinkhorn_objective: SSE with Sinkhorn-balanced weights
 # ============================================================
 
-#' Compute the Sinkhorn-balanced interpolation objective
+#' Compute the per-bracket Sinkhorn-balanced interpolation objective
 #'
-#' Calculates the sum of squared errors between Sinkhorn-balanced
+#' Calculates the sum of squared errors between per-bracket Sinkhorn-balanced
 #' IDW-interpolated values and known population. This is the R-level
 #' version of the loss function used by [optimize_alpha()].
 #'
@@ -248,16 +318,22 @@ sinkhorn_weights <- function(time_matrix, alpha, offset = 1,
 #' @param pop_matrix Numeric matrix \[n x k\]. Known population per zone.
 #' @param source_matrix Numeric matrix \[m x k\]. Known counts at source points.
 #' @param row_targets Numeric vector of length n. Desired row sums for
-#'   Sinkhorn balancing.
-#' @param sinkhorn_iter Integer. Number of Sinkhorn iterations. Default: 50.
+#'   the final aggregate Sinkhorn balancing.
+#' @param sk_iter Integer. Maximum Sinkhorn iterations per bracket and for
+#'   the final aggregate step. Default: 50.
 #'
 #' @return Single numeric value:
 #'   `sum((W_balanced %*% source_matrix - pop_matrix)^2)`.
 #'
 #' @details
-#' Applies `sinkhorn_iter` iterations of alternating row/column scaling to
-#' enforce population-proportional row margins while preserving source
-#' conservation (column sums = 1), then computes the calibration SSE.
+#' Builds a per-bracket weight matrix: for each demographic column, runs
+#' convergence-based Sinkhorn with bracket-specific row/column targets,
+#' then sums contributions and applies a final aggregate Sinkhorn to
+#' enforce overall row and column constraints. Computes the calibration
+#' SSE against the known population.
+#'
+#' Note: `time_matrix` is expected with offset already applied (i.e.,
+#' `time_matrix + offset`). Do not apply offset again.
 #'
 #' @seealso [optimize_alpha()] for the optimization wrapper,
 #'   [sinkhorn_weights()] for the final weight matrix.
@@ -265,7 +341,7 @@ sinkhorn_weights <- function(time_matrix, alpha, offset = 1,
 #' @family Sinkhorn
 #' @export
 sinkhorn_objective <- function(alpha, time_matrix, pop_matrix, source_matrix,
-                                row_targets, sinkhorn_iter = 50L) {
+                                row_targets, sk_iter = 50L) {
   .validate_matrices(time_matrix, pop_matrix, source_matrix, alpha)
 
   if (!is.numeric(row_targets) || length(row_targets) != nrow(time_matrix)) {
@@ -273,25 +349,32 @@ sinkhorn_objective <- function(alpha, time_matrix, pop_matrix, source_matrix,
                  nrow(time_matrix)), call. = FALSE)
   }
 
+  n <- nrow(time_matrix)
   m <- ncol(time_matrix)
+  k <- ncol(pop_matrix)
+
+  K <- time_matrix ^ (-alpha)
+  K[!is.finite(K)] <- 0
+
+  # Per-bracket Sinkhorn
+  W_total <- matrix(0, n, m)
+  suppressWarnings({
+    for (bi in seq_len(k)) {
+      rb <- pop_matrix[, bi]
+      cb <- source_matrix[, bi]
+      if (sum(cb) < 0.5 || sum(rb) < 0.5) next
+      rb <- rb / sum(rb) * sum(cb)
+      W_b <- sinkhorn_balance(K, row_targets = rb, col_targets = cb,
+                               max_iter = sk_iter, tol = 1e-10)
+      W_total <- W_total + W_b
+    }
+  })
+
+  # Final aggregate Sinkhorn
   col_targets <- rep(1, m)
-
-  W <- time_matrix ^ (-alpha)
-
-  # Fixed-count Sinkhorn iterations (no convergence check)
-  for (i in seq_len(sinkhorn_iter)) {
-    # Row scaling
-    rs <- rowSums(W)
-    rs[rs == 0] <- 1
-    W <- W * (row_targets / rs)
-
-    # Column scaling
-    cs <- colSums(W)
-    cs[cs == 0] <- 1
-    W <- t(t(W) * (col_targets / cs))
-  }
-
-  W[!is.finite(W)] <- 0
+  W <- sinkhorn_balance(W_total, row_targets = row_targets,
+                         col_targets = col_targets,
+                         max_iter = sk_iter, tol = 1e-10)
 
   v_hat <- W %*% source_matrix
   sum((v_hat - pop_matrix)^2)

@@ -216,3 +216,91 @@ test_that("sinkhorn_objective: rejects dimension mismatches", {
     "row_targets"
   )
 })
+
+
+# --- sinkhorn_weights() per-bracket mode ---
+
+test_that("sinkhorn_weights: per-bracket mode produces valid weights", {
+  set.seed(42)
+  n <- 6; m <- 4; k <- 2
+  tt <- matrix(runif(n * m, 1, 50), nrow = n)
+  alpha <- runif(n, 0.5, 2)
+  pop <- matrix(rpois(n * k, 80), nrow = n)
+  src <- matrix(rpois(m * k, 160), nrow = m)
+  storage.mode(pop) <- "double"
+  storage.mode(src) <- "double"
+
+  pop_total <- rowSums(pop)
+  r <- pop_total / sum(pop_total) * m
+
+  W <- sinkhorn_weights(tt, alpha, row_targets = r,
+                         pop_matrix = pop, source_matrix = src)
+
+  expect_true(is.matrix(W))
+  expect_equal(dim(W), c(n, m))
+  # Row sums should match targets
+  expect_equal(rowSums(W), r, tolerance = 1e-6)
+  # Column sums should be 1
+  expect_equal(colSums(W), rep(1, m), tolerance = 1e-6)
+  # Non-negative
+  expect_true(all(W >= 0))
+})
+
+test_that("sinkhorn_weights: per-bracket k=1 produces valid result", {
+  set.seed(7)
+  n <- 4; m <- 3
+  tt <- matrix(runif(n * m, 1, 30), nrow = n)
+  alpha <- rep(1, n)
+  pop <- matrix(rpois(n, 50), nrow = n)
+  src <- matrix(rpois(m, 100), nrow = m)
+  storage.mode(pop) <- "double"
+  storage.mode(src) <- "double"
+
+  pop_total <- rowSums(pop)
+  r <- pop_total / sum(pop_total) * m
+
+  W <- sinkhorn_weights(tt, alpha, row_targets = r,
+                         pop_matrix = pop, source_matrix = src)
+
+  expect_equal(rowSums(W), r, tolerance = 1e-6)
+  expect_equal(colSums(W), rep(1, m), tolerance = 1e-6)
+})
+
+test_that("sinkhorn_weights: errors when only one of pop/source provided", {
+  tt <- matrix(1:6, nrow = 2)
+  alpha <- c(1, 1)
+  pop <- matrix(c(10, 20), nrow = 2)
+
+  expect_error(
+    sinkhorn_weights(tt, alpha, pop_matrix = pop),
+    "both be provided"
+  )
+  expect_error(
+    sinkhorn_weights(tt, alpha, source_matrix = pop),
+    "both be provided"
+  )
+})
+
+test_that("sinkhorn_weights: per-bracket skips empty brackets", {
+  set.seed(5)
+  n <- 4; m <- 3; k <- 3
+  tt <- matrix(runif(n * m, 1, 30), nrow = n)
+  alpha <- rep(1, n)
+
+  pop <- matrix(rpois(n * k, 50), nrow = n)
+  src <- matrix(rpois(m * k, 100), nrow = m)
+  # Make bracket 2 empty
+  pop[, 2] <- 0
+  src[, 2] <- 0
+  storage.mode(pop) <- "double"
+  storage.mode(src) <- "double"
+
+  pop_total <- rowSums(pop)
+  r <- pop_total / sum(pop_total) * m
+
+  W <- sinkhorn_weights(tt, alpha, row_targets = r,
+                         pop_matrix = pop, source_matrix = src)
+
+  expect_true(is.matrix(W))
+  expect_equal(rowSums(W), r, tolerance = 1e-6)
+})

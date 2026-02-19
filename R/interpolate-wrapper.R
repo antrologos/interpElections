@@ -452,7 +452,9 @@ interpolate_election <- function(
   if (verbose) message(sprintf("[%d/%d] Interpolating...",
                                step_num, total_steps))
   W <- sinkhorn_weights(time_matrix, alpha, offset = offset,
-                         row_targets = row_targets)
+                         row_targets = row_targets,
+                         pop_matrix = pop_matrix,
+                         source_matrix = source_matrix)
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
     colnames(interpolated) <- colnames(interp_data)

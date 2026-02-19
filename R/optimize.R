@@ -1,14 +1,11 @@
 #' Find optimal decay parameters (alpha) for spatial interpolation
 #'
 #' Optimizes the per-zone decay parameters that minimize the squared error
-#' between Sinkhorn-balanced interpolated values and known population counts.
-#' Uses torch autograd for gradient computation with ADAM optimizer on both
-#' CPU and GPU.
-#'
-#' The weight matrix is balanced via log-domain Sinkhorn iterations
-#' (row sums proportional to population, column sums = 1) before computing
-#' the calibration loss. Gradients are obtained by differentiating through
-#' the unrolled Sinkhorn iterations via torch autograd.
+#' between per-bracket Sinkhorn-balanced interpolated values and known
+#' population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
+#' and log-domain Sinkhorn inside torch autograd. Each demographic bracket
+#' gets its own Sinkhorn transport; gradients flow through all unrolled
+#' iterations. Works on both CPU and GPU (CUDA/MPS).
 #'
 #' @param time_matrix Numeric matrix \[n x m\]. Raw travel times.
 #'   Rows = target zones, columns = source points.
@@ -22,10 +19,14 @@
 #'   (default), auto-computed as `rowSums(pop_matrix) / sum(pop_matrix) * m`.
 #' @param alpha_init Numeric vector of length n, or a single value to be
 #'   recycled. Initial guess for alpha. Default: `rep(1, n)`.
-#' @param sinkhorn_iter Integer. Number of Sinkhorn iterations per objective
-#'   evaluation during optimization. Higher values give more accurate balancing
-#'   but are slower. Default: 5 (sufficient for optimization; final weights
-#'   use full convergence via [sinkhorn_weights()]).
+#' @param batch_size Integer. Number of zones (rows) sampled per SGD step.
+#'   For cities with `n <= batch_size`, the full batch is used. Default: 500.
+#' @param sk_iter Integer. Number of log-domain Sinkhorn iterations per
+#'   SGD step. Higher values give more accurate per-bracket transport but
+#'   increase memory usage. Default: 15.
+#' @param max_steps Integer. Total number of SGD steps. Default: 800.
+#' @param lr_init Numeric. Initial ADAM learning rate. Halved at steps 200,
+#'   400, and 600. Default: 0.05.
 #' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
 #'   `FALSE`, use CPU. If `NULL` (default), reads the package option
 #'   `interpElections.use_gpu` (set via [use_gpu()]).
@@ -33,18 +34,7 @@
 #'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
 #'   `"float32"`. Float32 halves memory usage with negligible precision loss.
-#' @param gpu_iterations Integer. Number of outer ADAM phases with learning
-#'   rate decay. Default: 20.
-#' @param gpu_lr_init Numeric. Initial ADAM learning rate. Default: 0.1.
-#' @param gpu_lr_decay Numeric. Learning rate decay factor per phase.
-#'   Default: 0.6.
-#' @param gpu_grad_tol Numeric. Gradient norm threshold for convergence.
-#'   Default: 1e-4.
-#' @param gpu_grad_clip Numeric or NULL. Maximum gradient norm for clipping.
-#'   `NULL` disables clipping. Default: 1.0.
-#' @param gpu_warmup_steps Integer. Linear learning rate warmup steps at
-#'   the start of phase 1. Default: 10.
-#' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.
+#' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.01.
 #' @param upper_bound Numeric. Upper bound for alpha values. Default: 20.
 #' @param offset Numeric. Value added to travel times before exponentiation.
 #'   Default: 1.
@@ -55,15 +45,16 @@
 #'   \item{alpha}{Numeric vector. Optimal alpha values.}
 #'   \item{value}{Numeric. Objective function value at optimum.}
 #'   \item{method}{Character. Method used (e.g.,
-#'     `"torch_adam_sinkhorn_cpu"`, `"torch_adam_sinkhorn_cuda"`).}
+#'     `"pb_sgd_sinkhorn_cpu"`, `"pb_sgd_sinkhorn_cuda"`).}
 #'   \item{convergence}{Integer. 0 = success.}
-#'   \item{iterations}{Number of ADAM steps taken.}
+#'   \item{iterations}{Number of SGD steps taken.}
 #'   \item{elapsed}{`difftime` object. Wall-clock time.}
 #'   \item{message}{Character. Additional information.}
-#'   \item{history}{Numeric vector. Objective values at each step.}
+#'   \item{history}{Numeric vector. Loss values at each step.}
 #'   \item{grad_norm_final}{Numeric. Final gradient norm.}
 #'   \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
-#'   \item{sinkhorn_iter}{Integer. Sinkhorn iterations used.}
+#'   \item{sk_iter}{Integer. Sinkhorn iterations per step.}
+#'   \item{batch_size}{Integer. Mini-batch size used.}
 #' }
 #'
 #' @details
@@ -78,9 +69,10 @@
 #'     problems (> 2000 tracts).
 #' }
 #'
-#' Both paths use the same ADAM optimizer with log-domain Sinkhorn.
-#' Gradients are computed via torch autograd through the unrolled
-#' Sinkhorn iterations.
+#' Both paths use PB-SGD: mini-batch ADAM with per-bracket log-domain
+#' Sinkhorn. Gradients are computed via torch autograd through the unrolled
+#' Sinkhorn iterations. GPU memory usage is bounded by
+#' `ka * min(batch_size, n) * m * bytes_per_elem * (2 + 2 * sk_iter)`.
 #'
 #' @examples
 #' \dontrun{
@@ -102,17 +94,14 @@ optimize_alpha <- function(
     source_matrix,
     row_targets = NULL,
     alpha_init = NULL,
-    sinkhorn_iter = 5L,
+    batch_size = 500L,
+    sk_iter = 15L,
+    max_steps = 800L,
+    lr_init = 0.05,
     use_gpu = NULL,
     device = NULL,
     dtype = "float32",
-    gpu_iterations = 20L,
-    gpu_lr_init = 0.1,
-    gpu_lr_decay = 0.6,
-    gpu_grad_tol = 1e-4,
-    gpu_grad_clip = 1.0,
-    gpu_warmup_steps = 10L,
-    lower_bound = 0,
+    lower_bound = 0.01,
     upper_bound = 20,
     offset = 1,
     verbose = TRUE
@@ -158,10 +147,37 @@ optimize_alpha <- function(
   }
   .validate_alpha(alpha_init, n)
 
-  # Coerce sinkhorn_iter
-  sinkhorn_iter <- as.integer(sinkhorn_iter)
-  if (sinkhorn_iter < 1L) {
-    stop("sinkhorn_iter must be >= 1", call. = FALSE)
+  # Coerce and validate integer params
+  batch_size <- as.integer(batch_size)
+  sk_iter <- as.integer(sk_iter)
+  max_steps <- as.integer(max_steps)
+  if (is.na(sk_iter) || sk_iter < 1L) {
+    stop("sk_iter must be a positive integer (>= 1)", call. = FALSE)
+  }
+  if (is.na(max_steps) || max_steps < 1L) {
+    stop("max_steps must be a positive integer (>= 1)", call. = FALSE)
+  }
+  if (is.na(batch_size) || batch_size < 1L) {
+    stop("batch_size must be a positive integer (>= 1)", call. = FALSE)
+  }
+
+  # Validate lr_init
+  if (!is.numeric(lr_init) || length(lr_init) != 1 || !is.finite(lr_init) || lr_init <= 0) {
+    stop("lr_init must be a single positive number", call. = FALSE)
+  }
+
+  # Validate bounds
+  if (!is.numeric(lower_bound) || length(lower_bound) != 1 || !is.finite(lower_bound) ||
+      lower_bound < 0) {
+    stop("lower_bound must be a single non-negative number", call. = FALSE)
+  }
+  if (!is.numeric(upper_bound) || length(upper_bound) != 1 || !is.finite(upper_bound) ||
+      upper_bound <= 0) {
+    stop("upper_bound must be a single positive number", call. = FALSE)
+  }
+  if (lower_bound >= upper_bound) {
+    stop(sprintf("lower_bound (%.4f) must be less than upper_bound (%.4f)",
+                 lower_bound, upper_bound), call. = FALSE)
   }
 
   # Resolve GPU setting
@@ -191,18 +207,14 @@ optimize_alpha <- function(
     pop_matrix = pop_matrix,
     source_matrix = source_matrix,
     alpha_init = alpha_init,
-    row_targets = row_targets,
-    sinkhorn_iter = sinkhorn_iter,
+    batch_size = batch_size,
+    sk_iter = sk_iter,
+    max_steps = max_steps,
+    lr_init = lr_init,
     device = resolved_device,
     dtype = resolved_dtype,
-    iterations = gpu_iterations,
-    lr_init = gpu_lr_init,
-    lr_decay = gpu_lr_decay,
     lower_bound = lower_bound,
     upper_bound = upper_bound,
-    grad_tol = gpu_grad_tol,
-    grad_clip = gpu_grad_clip,
-    warmup_steps = gpu_warmup_steps,
     verbose = verbose
   )
 
@@ -217,15 +229,18 @@ optimize_alpha <- function(
     ), call. = FALSE)
     bad <- !is.finite(raw$alpha)
     raw$alpha[bad] <- alpha_init[bad]
-    raw$value <- sinkhorn_objective(
-      raw$alpha, t_adj, pop_matrix, source_matrix,
-      row_targets, sinkhorn_iter
-    )
   }
+
+  # Recompute objective with convergence-based Sinkhorn for consistency
+  # with the W that sinkhorn_weights() will produce
+  final_value <- sinkhorn_objective(
+    raw$alpha, t_adj, pop_matrix, source_matrix,
+    row_targets, sk_iter = 1000L
+  )
 
   result <- list(
     alpha = raw$alpha,
-    value = raw$value,
+    value = final_value,
     method = raw$method,
     convergence = raw$convergence,
     iterations = raw$iterations,
@@ -234,13 +249,14 @@ optimize_alpha <- function(
     history = raw$history %||% NULL,
     grad_norm_final = raw$grad_norm_final %||% NULL,
     row_targets = row_targets,
-    sinkhorn_iter = sinkhorn_iter
+    sk_iter = sk_iter,
+    batch_size = min(batch_size, nrow(t_adj))
   )
   class(result) <- "interpElections_optim"
 
   if (verbose) {
     message(sprintf(
-      "  Converged in %d steps (%.1fs), objective=%s",
+      "  Completed %d steps (%.1fs), objective=%s",
       result$iterations,
       as.numeric(elapsed, units = "secs"),
       format(round(result$value), big.mark = ",")
@@ -258,6 +274,8 @@ print.interpElections_optim <- function(x, ...) {
   cat(sprintf("  Convergence: %d\n", x$convergence))
   cat(sprintf("  Alpha range: [%.3f, %.3f]\n", min(x$alpha), max(x$alpha)))
   cat(sprintf("  N tracts:    %d\n", length(x$alpha)))
+  cat(sprintf("  Steps:       %d (batch=%d, sk_iter=%d)\n",
+              x$iterations, x$batch_size %||% NA, x$sk_iter %||% NA))
   cat(sprintf("  Elapsed:     %.1f secs\n", as.numeric(x$elapsed, units = "secs")))
   invisible(x)
 }

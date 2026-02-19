@@ -220,9 +220,25 @@ message("\n[Varginha] Generating figures...")
 # --- Methodology vignette figures ---
 
 # 3.2: Population pyramid (percentages, younger at bottom)
+# pop_matrix_vga may have 28 columns (full calibration: 4 categories x 7 ages)
+# or 7 columns (age-only). Aggregate to 7 age brackets for the pyramid.
+n_ages <- 7L
+n_calib_cols <- ncol(pop_matrix_vga)
+age_totals <- if (n_calib_cols == n_ages) {
+  colSums(pop_matrix_vga)
+} else {
+  # Full calibration: columns are ordered by category, 7 ages each
+  # Sum columns i, i+7, i+14, i+21 for each age bracket i
+  sapply(seq_len(n_ages), function(i) {
+    cols <- seq(i, n_calib_cols, by = n_ages)
+    sum(pop_matrix_vga[, cols])
+  })
+}
+# Determine bracket labels based on election year (2022 uses 18-19 not 18-20)
+age_labels <- c("18-19", "20-24", "25-29", "30-39", "40-49", "50-59", "60-69")
 pop_brackets_vga <- data.frame(
-  bracket = c("18-20", "21-24", "25-29", "30-39", "40-49", "50-59", "60-69"),
-  total = colSums(pop_matrix_vga)
+  bracket = age_labels,
+  total = age_totals
 )
 pop_brackets_vga$pct <- pop_brackets_vga$total / sum(pop_brackets_vga$total) * 100
 pop_brackets_vga$bracket <- factor(pop_brackets_vga$bracket,
@@ -269,7 +285,15 @@ p <- ggplot() +
 save_fig(p, "electoral-stations-map.png")
 
 # 3.5: Age pyramids comparison (census vs electoral, percentages)
-elec_totals <- colSums(source_matrix_vga)
+# Aggregate source_matrix across gender x literacy categories (same as pop)
+elec_totals <- if (ncol(source_matrix_vga) == n_ages) {
+  colSums(source_matrix_vga)
+} else {
+  sapply(seq_len(n_ages), function(i) {
+    cols <- seq(i, ncol(source_matrix_vga), by = n_ages)
+    sum(source_matrix_vga[, cols])
+  })
+}
 census_pcts <- pop_brackets_vga$total / sum(pop_brackets_vga$total) * 100
 elec_pcts <- elec_totals / sum(elec_totals) * 100
 pyramid_df <- data.frame(
@@ -335,7 +359,7 @@ if (!is.null(optim_vga$history) && length(optim_vga$history) > 1) {
                              optim_vga$method,
                              optim_vga$iterations,
                              as.numeric(optim_vga$elapsed, units = "secs")),
-         x = "ADAM step", y = "Objective (SSE, log scale)") +
+         x = "PB-SGD step", y = "Objective (SSE, log scale)") +
     theme_minimal() +
     theme(plot.title = element_text(face = "bold"))
   save_fig(p, "optim-convergence.png", width = 7, height = 5)
@@ -1862,7 +1886,7 @@ tryCatch({
       "3. Sinkhorn\nbalance",
       "4. Interpolate\nage profiles",
       "5. Compare with\ncensus (SSE)",
-      "6. Adjust alpha\n(ADAM gradient)"
+      "6. Adjust alpha\n(PB-SGD step)"
     ),
     fill = c("#e0e0e0", "#abdda4", "#abdda4",
              "#abdda4", "#fdae61", "#fdae61")
@@ -2349,7 +2373,7 @@ tryCatch({
         what = c("candidates", "turnout"),
         keep = c("weights", "sources_sf"),
         use_gpu = city$gpu,
-        sinkhorn_iter = city$sk,
+        sk_iter = city$sk,
         force = TRUE
       )
     }, error = function(e) {

@@ -12,7 +12,7 @@ test_that("optimize_alpha finds lower objective than initial", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    gpu_iterations = 5L,
+    max_steps = 50L,
     verbose = FALSE
   )
 
@@ -40,12 +40,12 @@ test_that("optimize_alpha respects lower_bound", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    lower_bound = 0,
-    gpu_iterations = 5L,
+    lower_bound = 0.01,
+    max_steps = 50L,
     verbose = FALSE
   )
 
-  expect_true(all(result$alpha >= 0))
+  expect_true(all(result$alpha >= 0.01))
 })
 
 test_that("optimize_alpha returns proper structure", {
@@ -62,7 +62,7 @@ test_that("optimize_alpha returns proper structure", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    gpu_iterations = 3L,
+    max_steps = 30L,
     verbose = FALSE
   )
 
@@ -72,10 +72,12 @@ test_that("optimize_alpha returns proper structure", {
   expect_true("convergence" %in% names(result))
   expect_true("elapsed" %in% names(result))
   expect_true("row_targets" %in% names(result))
-  expect_true("sinkhorn_iter" %in% names(result))
+  expect_true("sk_iter" %in% names(result))
+  expect_true("batch_size" %in% names(result))
   expect_true("history" %in% names(result))
   expect_true("grad_norm_final" %in% names(result))
-  expect_equal(result$sinkhorn_iter, 5L)
+  expect_equal(result$sk_iter, 15L)
+  expect_equal(result$batch_size, n)  # effective batch = min(500, n)
   expect_length(result$row_targets, n)
 })
 
@@ -90,7 +92,7 @@ test_that("optimize_alpha print method works", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    gpu_iterations = 3L,
+    max_steps = 30L,
     verbose = FALSE
   )
 
@@ -111,7 +113,7 @@ test_that("optimize_alpha auto-computes row_targets when NULL", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    gpu_iterations = 3L,
+    max_steps = 30L,
     verbose = FALSE
   )
 
@@ -125,12 +127,11 @@ test_that("optimize_alpha errors without torch", {
   skip_if_not_installed("torch")
 
   # This test checks the error message format — we can't truly test
-
   # without torch since we need it to run. Just verify the function exists.
   expect_true(is.function(optimize_alpha))
 })
 
-test_that("optimize_alpha sinkhorn_iter parameter works", {
+test_that("optimize_alpha sk_iter parameter works", {
   skip_if_not_installed("torch")
 
   set.seed(42)
@@ -144,24 +145,60 @@ test_that("optimize_alpha sinkhorn_iter parameter works", {
   result_k1 <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    sinkhorn_iter = 1L,
-    gpu_iterations = 3L,
+    sk_iter = 1L,
+    max_steps = 30L,
     verbose = FALSE
   )
 
-  result_k5 <- optimize_alpha(
+  result_k15 <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    sinkhorn_iter = 5L,
-    gpu_iterations = 3L,
+    sk_iter = 15L,
+    max_steps = 30L,
     verbose = FALSE
   )
 
-  expect_equal(result_k1$sinkhorn_iter, 1L)
-  expect_equal(result_k5$sinkhorn_iter, 5L)
+  expect_equal(result_k1$sk_iter, 1L)
+  expect_equal(result_k15$sk_iter, 15L)
   # Both should produce valid results
   expect_length(result_k1$alpha, n)
-  expect_length(result_k5$alpha, n)
+  expect_length(result_k15$alpha, n)
   expect_true(is.finite(result_k1$value))
-  expect_true(is.finite(result_k5$value))
+  expect_true(is.finite(result_k15$value))
+})
+
+test_that("optimize_alpha batch_size works with small n", {
+  skip_if_not_installed("torch")
+
+  set.seed(99)
+  n <- 4
+  m <- 3
+  k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  # batch_size > n should silently use n
+  result <- optimize_alpha(
+    t_mat, p_mat, s_mat,
+    use_gpu = FALSE,
+    batch_size = 999L,
+    max_steps = 30L,
+    verbose = FALSE
+  )
+
+  expect_length(result$alpha, n)
+  expect_true(is.finite(result$value))
+
+  # batch_size = 2 (mini-batch)
+  result2 <- optimize_alpha(
+    t_mat, p_mat, s_mat,
+    use_gpu = FALSE,
+    batch_size = 2L,
+    max_steps = 30L,
+    verbose = FALSE
+  )
+
+  expect_length(result2$alpha, n)
+  expect_true(is.finite(result2$value))
 })

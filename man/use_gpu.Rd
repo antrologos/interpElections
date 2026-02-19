@@ -19,12 +19,13 @@ Invisibly returns the previous settings as a list.
 }
 \description{
 Sets package-wide options controlling whether \code{\link[=optimize_alpha]{optimize_alpha()}} uses
-GPU-accelerated optimization (torch ADAM) or CPU-only methods.
+GPU-accelerated optimization (PB-SGD) or CPU-only methods.
 }
 \details{
-When GPU is enabled, \code{\link[=optimize_alpha]{optimize_alpha()}} uses the torch ADAM optimizer
-by default. This requires the \code{torch} package to be installed with a
-working GPU backend (CUDA for NVIDIA, MPS for Apple Silicon).
+When GPU is enabled, \code{\link[=optimize_alpha]{optimize_alpha()}} uses torch-based PB-SGD
+(per-bracket stochastic gradient descent). This requires the \code{torch}
+package to be installed with a working GPU backend (CUDA for NVIDIA,
+MPS for Apple Silicon).
 
 The per-call \code{use_gpu} parameter in \code{\link[=optimize_alpha]{optimize_alpha()}} always overrides
 the global setting.

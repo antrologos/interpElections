@@ -2,7 +2,7 @@
 % Please edit documentation in R/sinkhorn.R
 \name{sinkhorn_objective}
 \alias{sinkhorn_objective}
-\title{Compute the Sinkhorn-balanced interpolation objective}
+\title{Compute the per-bracket Sinkhorn-balanced interpolation objective}
 \usage{
 sinkhorn_objective(
   alpha,
@@ -10,7 +10,7 @@ sinkhorn_objective(
   pop_matrix,
   source_matrix,
   row_targets,
-  sinkhorn_iter = 50L
+  sk_iter = 50L
 )
 }
 \arguments{
@@ -24,23 +24,29 @@ sinkhorn_objective(
 \item{source_matrix}{Numeric matrix [m x k]. Known counts at source points.}
 
 \item{row_targets}{Numeric vector of length n. Desired row sums for
-Sinkhorn balancing.}
+the final aggregate Sinkhorn balancing.}
 
-\item{sinkhorn_iter}{Integer. Number of Sinkhorn iterations. Default: 50.}
+\item{sk_iter}{Integer. Maximum Sinkhorn iterations per bracket and for
+the final aggregate step. Default: 50.}
 }
 \value{
 Single numeric value:
 \code{sum((W_balanced \%*\% source_matrix - pop_matrix)^2)}.
 }
 \description{
-Calculates the sum of squared errors between Sinkhorn-balanced
+Calculates the sum of squared errors between per-bracket Sinkhorn-balanced
 IDW-interpolated values and known population. This is the R-level
 version of the loss function used by \code{\link[=optimize_alpha]{optimize_alpha()}}.
 }
 \details{
-Applies \code{sinkhorn_iter} iterations of alternating row/column scaling to
-enforce population-proportional row margins while preserving source
-conservation (column sums = 1), then computes the calibration SSE.
+Builds a per-bracket weight matrix: for each demographic column, runs
+convergence-based Sinkhorn with bracket-specific row/column targets,
+then sums contributions and applies a final aggregate Sinkhorn to
+enforce overall row and column constraints. Computes the calibration
+SSE against the known population.
+
+Note: \code{time_matrix} is expected with offset already applied (i.e.,
+\code{time_matrix + offset}). Do not apply offset again.
 }
 \seealso{
 \code{\link[=optimize_alpha]{optimize_alpha()}} for the optimization wrapper,

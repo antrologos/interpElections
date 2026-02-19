@@ -10,6 +10,8 @@ sinkhorn_weights(
   offset = 1,
   row_targets = NULL,
   col_targets = NULL,
+  pop_matrix = NULL,
+  source_matrix = NULL,
   max_iter = 1000L,
   tol = 1e-10
 )
@@ -31,6 +33,14 @@ is the population vector and \code{m = ncol(time_matrix)}. Default: \code{NULL}
 \item{col_targets}{Numeric vector of length m. Desired column sums.
 Default: \code{NULL} (\code{rep(1, m)} for source conservation).}
 
+\item{pop_matrix}{Numeric matrix [n x k] or NULL. Population per zone
+per demographic bracket. When provided together with \code{source_matrix},
+enables per-bracket Sinkhorn mode. Default: NULL.}
+
+\item{source_matrix}{Numeric matrix [m x k] or NULL. Source counts per
+demographic bracket. Must be provided together with \code{pop_matrix}.
+Default: NULL.}
+
 \item{max_iter}{Integer. Max Sinkhorn iterations. Default: 1000.}
 
 \item{tol}{Numeric. Convergence tolerance. Default: 1e-10.}
@@ -45,6 +55,13 @@ approximately equal to \code{col_targets}. Preserves dimnames from
 Builds inverse distance weights from a travel-time matrix and per-zone
 decay parameters, then applies Sinkhorn balancing to enforce both row
 and column marginal constraints.
+}
+\details{
+When \code{pop_matrix} and \code{source_matrix} are provided, per-bracket Sinkhorn
+balancing is used: each demographic column gets its own Sinkhorn transport
+(with row targets rescaled to match source totals), then all bracket
+contributions are summed and a final aggregate Sinkhorn enforces the
+overall \code{row_targets} / \code{col_targets} constraints.
 }
 \examples{
 tt <- matrix(c(2, 5, 3, 4, 6, 2), nrow = 2)

@@ -53,8 +53,8 @@ The console output shows the progress:
 
 ```
 [1/9] Resolving municipality identifiers...
-  Varginha (MG) - IBGE: 3170701, TSE: 70700
-  Census year: 2010 (election 2022)
+  VARGINHA (MG) - IBGE: 3170701, TSE: 54135
+  Census year: 2022 (election 2022)
 [2/9] Preparing census population data...
 [3/9] Preparing census tract geometries...
 [4/9] Preparing electoral data...
@@ -62,8 +62,10 @@ The console output shows the progress:
 [6/9] Downloading OSM road network...
 [7/9] Computing travel times...
 [8/9] Optimizing alpha...
+  PB-SGD (cpu, float32): ka=28, batch=279, sk_iter=15, 800 steps
+  Completed 800 steps (52.3s), objective=502,361
 [9/9] Interpolating...
-  Interpolated 15 variables into 131 census tracts
+  Interpolated 42 variables into 279 census tracts
 Done.
 ```
 
@@ -90,26 +92,26 @@ result_vga
 
 ```
 interpElections result -- Brazilian election
-  Municipality: Varginha (MG)
-  IBGE: 3170701 | TSE: 70700 | Election: 2022 | Census: 2010
-  Census tracts: 131 | Sources: 21
+  Municipality: VARGINHA (MG)
+  IBGE: 3170701 | TSE: 54135 | Election: 2022 | Census: 2022
+  Census tracts: 279 | Sources: 37
 
-  Variables: 15
-    Candidates:    13 (CAND_13, CAND_22, CAND_80, CAND_12, ...)
+  Variables: 42
+    Candidates:    13 (CAND_30, CAND_44, CAND_12, CAND_13, ...)
     Turnout:       1 (QT_COMPARECIMENTO)
-    Calibration:   7 (votantes_18_20, votantes_21_24, ...)
+    Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
 
-  Optimizer: torch_adam_sinkhorn_cpu (obj = ...)
-  Alpha:     [0.000, ...] (mean ...)
+  Optimizer: pb_sgd_sinkhorn_cpu (obj = 502361.44)
+  Alpha:     [0.010, 20.000] (mean 3.027)
 
   Contents:
     result$tracts_sf       sf with census tracts + interpolated columns
-    result$interpolated    numeric matrix [131 x 15]
+    result$interpolated    numeric matrix [279 x 42]
     ...
 ```
 
 Three lines downloaded all data, computed travel times, optimized
-parameters, and interpolated all vote counts into 131 census tracts.
+parameters, and interpolated all vote counts into 279 census tracts.
 
 ```{r vga-plot-lula, eval = FALSE}
 plot(result_vga, variable = "Lula")
@@ -147,10 +149,17 @@ result_igr
 
 ```
 interpElections result -- Brazilian election
-  Municipality: Igrejinha (RS)
-  ...
-  Census tracts: ~50 | Sources: ~10
-  ...
+  Municipality: IGREJINHA (RS)
+  IBGE: 4310108 | TSE: 87033 | Election: 2022 | Census: 2022
+  Census tracts: 85 | Sources: 17
+
+  Variables: 42
+    Candidates:    13 (CAND_13, CAND_12, CAND_30, CAND_22, ...)
+    Turnout:       1 (QT_COMPARECIMENTO)
+    Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
+
+  Optimizer: pb_sgd_sinkhorn_cpu (obj = 248107.37)
+  Alpha:     [0.010, 15.682] (mean 4.089)
 ```
 
 ```{r igr-plot, eval = FALSE}
@@ -241,14 +250,14 @@ The wrapper `interpolate_election_br()` calls these steps in sequence:
 
 ```{r pipeline, eval = FALSE}
 # 1. Census population by age bracket
-pop_data <- br_prepare_population("Varginha", year = 2010)
+pop_data <- br_prepare_population("Varginha", year = 2022)
 
 # 2. Census tract geometries with population columns
 tracts_sf <- br_prepare_tracts(3170701, pop_data)
 
 # 3. Electoral data at polling stations
 electoral <- br_prepare_electoral(
-  code_muni_ibge = "3170701", code_muni_tse = "70700",
+  code_muni_ibge = "3170701", code_muni_tse = "54135",
   uf = "MG", year = 2022, cargo = "presidente",
   what = c("candidates", "turnout")
 )
@@ -261,7 +270,8 @@ optim_result <- optimize_alpha(time_matrix, pop_matrix, source_matrix)
 
 # 6. Build Sinkhorn-balanced weight matrix and interpolate
 W <- sinkhorn_weights(time_matrix, optim_result$alpha,
-  row_targets = pop_total / sum(pop_total) * ncol(time_matrix))
+  row_targets = pop_total / sum(pop_total) * ncol(time_matrix),
+  pop_matrix = pop_matrix, source_matrix = source_matrix)
 interpolated <- W %*% electoral_data
 ```
 
@@ -301,7 +311,7 @@ source_matrix <- matrix(
   dimnames = list(NULL, c("count_young", "count_old"))
 )
 
-# Optimize alpha (uses torch ADAM)
+# Optimize alpha (uses per-bracket SGD)
 optim_result <- optimize_alpha(
   time_matrix = tt + 1,   # offset already applied
   pop_matrix = pop_matrix,
@@ -316,7 +326,9 @@ cat("Optimized alpha:", round(optim_result$alpha, 2), "\n")
 pop_total <- rowSums(pop_matrix)
 row_targets <- pop_total / sum(pop_total) * ncol(tt)
 W <- sinkhorn_weights(tt + 1, optim_result$alpha, offset = 0,
-                       row_targets = row_targets)
+                       row_targets = row_targets,
+                       pop_matrix = pop_matrix,
+                       source_matrix = source_matrix)
 
 # Interpolate a variable measured at sources
 revenue <- c(5000, 8000, 6500)
@@ -350,7 +362,8 @@ result
 pop_total <- rowSums(pop)
 row_targets <- pop_total / sum(pop_total) * ncol(tt)
 W <- sinkhorn_weights(tt, result$alpha, offset = 1,
-                       row_targets = row_targets)
+                       row_targets = row_targets,
+                       pop_matrix = pop, source_matrix = src)
 
 # Verify conservation
 cat("Column sums (should be ~1):", round(colSums(W), 4), "\n")

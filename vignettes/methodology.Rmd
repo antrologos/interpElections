@@ -16,6 +16,7 @@ knitr::opts_chunk$set(
   out.width = "100%"
 )
 library(interpElections)
+library(ggplot2)
 ```
 
 ```{r load-precomputed, include = FALSE}
@@ -182,8 +183,13 @@ The full interpolation pipeline has six steps:
    stations (`compute_travel_times()`)
 5. **Optimization**: find per-tract decay parameters $\alpha$ that
    minimize demographic mismatch (`optimize_alpha()`)
-6. **Interpolation**: apply the optimized weight matrix to any
-   station-level variable ($\hat{X} = W \times V$)
+6. **Interpolation**: build the per-bracket Sinkhorn weight matrix
+   (`sinkhorn_weights()`) and apply it to any station-level variable
+   ($\hat{X} = W \times V$)
+
+The convenience function `interpolate_election_br()` wraps all six steps
+into a single call for Brazilian municipalities, handling data downloads,
+geocoding, and default parameter selection automatically.
 
 ```{r fig-pipeline, echo = FALSE, out.width = "100%"}
 knitr::include_graphics("figures/pipeline-stacked-maps.png")
@@ -200,34 +206,49 @@ results at the tract level.
 ## 4. Census Population Data
 
 ```{r pop-call, eval = FALSE}
-pop_data <- br_prepare_population("Varginha", year = 2010)
-head(pop_data)
+pop_data <- br_prepare_population("3170701", year = 2022)
+head(pop_data[, 1:10])
 ```
 
 ```
-  code_tract    code_muni pop_18_20 pop_21_24 pop_25_29 pop_30_39 pop_40_49 pop_50_59 pop_60_69
-1 3170701xxxxx  3170701      82       103       125       258       220       178       142
-2 3170701xxxxx  3170701      45        62        71       130       115        93        80
+  code_tract    code_muni pop_00_04 pop_05_09 pop_10_14 pop_15_19 pop_20_24 pop_25_29 pop_30_39 pop_40_49
+1 3170701xxxxx  3170701      68        68        62        88        68        58       144       129
+2 3170701xxxxx  3170701      37        36        47        38        47        44        83        95
 ...
 ```
 
-The `pop_*` columns contain census population counts by age bracket.
-These brackets are chosen to match the TSE voter registration age groups
---- they are the **calibration variables** that bridge census tracts and
-polling stations.
+The data frame also includes 28 calibration columns
+(`pop_hom_alf_18_19`, `pop_hom_nalf_18_19`, ..., `pop_mul_nalf_60_69`)
+that cross gender × literacy × 7 age brackets. These **calibration
+variables** bridge census tracts and polling stations.
 
-| Census column | Age range | TSE equivalent |
-|---|---|---|
-| `pop_18_20` | 18--20 years | `votantes_18_20` |
-| `pop_21_24` | 21--24 years | `votantes_21_24` |
-| `pop_25_29` | 25--29 years | `votantes_25_29` |
-| `pop_30_39` | 30--39 years | `votantes_30_39` |
-| `pop_40_49` | 40--49 years | `votantes_40_49` |
-| `pop_50_59` | 50--59 years | `votantes_50_59` |
-| `pop_60_69` | 60--69 years | `votantes_60_69` |
+| Age bracket | Census (wide) | Full calibration columns | TSE equivalent |
+|---|---|---|---|
+| 18--19 | 2/5 of `pop_15_19` | `pop_{hom,mul}_{alf,nalf}_18_19` | `vot_{hom,mul}_{alf,nalf}_18_19` |
+| 20--24 | `pop_20_24` | `pop_{hom,mul}_{alf,nalf}_20_24` | `vot_{hom,mul}_{alf,nalf}_20_24` |
+| 25--29 | `pop_25_29` | `pop_{hom,mul}_{alf,nalf}_25_29` | `vot_{hom,mul}_{alf,nalf}_25_29` |
+| 30--39 | `pop_30_39` | `pop_{hom,mul}_{alf,nalf}_30_39` | `vot_{hom,mul}_{alf,nalf}_30_39` |
+| 40--49 | `pop_40_49` | `pop_{hom,mul}_{alf,nalf}_40_49` | `vot_{hom,mul}_{alf,nalf}_40_49` |
+| 50--59 | `pop_50_59` | `pop_{hom,mul}_{alf,nalf}_50_59` | `vot_{hom,mul}_{alf,nalf}_50_59` |
+| 60--69 | `pop_60_69` | `pop_{hom,mul}_{alf,nalf}_60_69` | `vot_{hom,mul}_{alf,nalf}_60_69` |
+
+**How the 7 brackets are built.** The TSE voter profile data records
+voters in 12 finer age bins (18, 19, 20, 21--24, 25--29, 30--34,
+35--39, 40--44, 45--49, 50--54, 55--59, 60--64, 65--69).
+`br_prepare_electoral()` aggregates these into the 7 groups above so
+they align with the census age brackets. For the 2022 Census --- which
+reports a 15--19 group instead of 18--20 --- the package applies a
+$2/5$ proxy to approximate the 18--19 voting-age share.
 
 These 7 matched brackets are the key insight: they are observed at
-**both** levels, enabling calibration.
+**both** levels (census tracts and polling stations), enabling
+calibration. The package also supports **full calibration** with
+`calib_type = "full"`, which crosses gender (male/female) × literacy
+(literate/illiterate) × 7 age groups to produce **28 calibration
+columns**. This provides a stronger spatial signal because the
+optimizer must simultaneously match the spatial distribution of each
+subgroup. Full calibration is the default in
+`interpolate_election_br()`.
 
 ```{r fig-pop-pyramid, echo = FALSE, out.width = "90%"}
 knitr::include_graphics("figures/pop-pyramid.png")
@@ -869,6 +890,201 @@ row is preserved, but the "scale" changes to match population.
 - Unreachable tracts (all-zero rows) remain zero and are flagged
 
 
+## 12.7 Per-Bracket Sinkhorn: Matching Each Age Group Separately
+
+### The problem: age groups have different geographies
+
+Think about the spatial distribution of voters by age. Young adults
+(18--24) cluster near universities, cheap rental apartments, and transit
+corridors. Elderly voters (60--69) concentrate in established
+neighborhoods, retirement communities, and areas with healthcare
+facilities. These spatial patterns differ substantially --- yet a single
+weight matrix must allocate *all* age groups simultaneously.
+
+With **aggregate** Sinkhorn (Sections 12.1--12.6), the weight matrix has
+one set of row targets: total population per tract, summed across all
+age brackets. The optimizer must find one set of weights that
+simultaneously matches 7 (or 28, with full calibration) different
+demographic distributions. This is an inherent compromise: weights that
+correctly distribute 18--20 year-olds may systematically misallocate
+60--69 year-olds, and vice versa.
+
+Consider a concrete scenario. Tract A is near a university with many
+young voters at station 1. Tract B is in a retirement neighborhood with
+elderly voters at station 3. Both tracts might have similar total
+populations, but their age profiles point to different stations. An
+aggregate weight matrix that averages over all age groups cannot capture
+this distinction.
+
+### The per-bracket extension
+
+**Per-bracket Sinkhorn** solves this by running a separate transport
+problem for each demographic bracket $k = 1, \ldots, K$. Instead of
+one weight matrix $W$, we build $K$ bracket-specific matrices
+$W^{(1)}, \ldots, W^{(K)}$, each with its own row and column
+constraints:
+
+**For each bracket $k$:**
+
+1. **Row targets**: $r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}$
+   --- the census population of bracket $k$ in tract $i$, rescaled so
+   that the total row mass matches the total column mass for bracket $k$.
+2. **Column targets**: $c_j^{(k)} = S_{jk}$ --- the number of voters
+   of bracket $k$ at station $j$.
+3. **Sinkhorn balance**: apply the standard algorithm from Section 12
+   with targets $(r^{(k)}, c^{(k)})$ on the same IDW kernel $K$ to
+   produce $W^{(k)}$.
+
+The rescaling in step 1 ensures that $\sum_i r_i^{(k)} = \sum_j c_j^{(k)}$,
+which is the condition for Sinkhorn convergence.
+
+**Aggregate and finalize:**
+
+$$W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}$$
+
+followed by a final aggregate Sinkhorn pass with column targets
+$c_j = 1$ and row targets $r_i = \text{pop}_i / \sum \text{pop} \times M$
+to enforce overall source conservation (each station distributes exactly
+100% of its data).
+
+### Why this works better
+
+Each bracket's transport problem is simpler: it only needs to match one
+demographic column. The young-voter transport will naturally assign more
+weight to nearby stations with many young voters. The elderly-voter
+transport does the same for elderly voters. These bracket-specific
+solutions will generally differ because the spatial distribution of
+each age group is different.
+
+The aggregation step combines these bracket-specific patterns. A tract
+near a university gets more weight from the young-bracket transport on
+nearby youth-heavy stations, while still receiving appropriate weight
+from the elderly-bracket transport on nearby elderly-heavy stations.
+The final Sinkhorn pass ensures overall column sums remain 1.
+
+### Worked example
+
+We extend the toy example from Section 11 with two brackets whose
+spatial distributions differ sharply:
+
+```{r per-bracket-demo, eval = TRUE}
+# Bracket 1 ("young"): concentrated near station 1
+# Bracket 2 ("old"): concentrated near station 3
+pop_young <- c(60, 100, 50, 30, 20)   # young pop per tract
+pop_old   <- c(40, 200, 100, 170, 230) # old pop per tract
+
+src_young <- c(150, 70, 40)  # young voters per station
+src_old   <- c(100, 330, 310) # old voters per station
+
+pop_mat_toy <- cbind(young = pop_young, old = pop_old)
+src_mat_toy <- cbind(young = src_young, old = src_old)
+
+# Per-bracket weights: each bracket gets its own Sinkhorn transport
+W_total <- matrix(0, 5, 3)
+for (k in 1:2) {
+  rb <- pop_mat_toy[, k]
+  cb <- src_mat_toy[, k]
+  rb_scaled <- rb / sum(rb) * sum(cb)   # rescale so sum(r) == sum(c)
+  W_k <- sinkhorn_balance(W_raw, rb_scaled, cb)
+  W_total <- W_total + W_k
+}
+
+# Final aggregate Sinkhorn to enforce column-sum = 1
+pop_total_toy <- rowSums(pop_mat_toy)
+m_toy <- ncol(W_total)
+rt <- pop_total_toy / sum(pop_total_toy) * m_toy
+W_pb <- sinkhorn_balance(W_total, rt, rep(1, m_toy))
+
+# Compare: aggregate-only vs per-bracket
+W_agg <- sinkhorn_balance(W_raw, rt, rep(1, m_toy))
+
+# Interpolate BOTH brackets
+young_hat_agg <- as.numeric(W_agg %*% src_young)
+young_hat_pb  <- as.numeric(W_pb %*% src_young)
+old_hat_agg   <- as.numeric(W_agg %*% src_old)
+old_hat_pb    <- as.numeric(W_pb %*% src_old)
+
+cat("=== Young bracket ===\n")
+cat("Census truth:             ", pop_young, "\n")
+cat("Aggregate Sinkhorn:       ", round(young_hat_agg), "\n")
+cat("Per-bracket Sinkhorn:     ", round(young_hat_pb), "\n")
+cat("Aggregate SSE:   ", round(sum((young_hat_agg - pop_young)^2)), "\n")
+cat("Per-bracket SSE: ", round(sum((young_hat_pb - pop_young)^2)), "\n")
+
+cat("\n=== Old bracket ===\n")
+cat("Census truth:             ", pop_old, "\n")
+cat("Aggregate Sinkhorn:       ", round(old_hat_agg), "\n")
+cat("Per-bracket Sinkhorn:     ", round(old_hat_pb), "\n")
+cat("Aggregate SSE:   ", round(sum((old_hat_agg - pop_old)^2)), "\n")
+cat("Per-bracket SSE: ", round(sum((old_hat_pb - pop_old)^2)), "\n")
+
+cat("\n=== Total SSE across both brackets ===\n")
+total_agg <- sum((young_hat_agg - pop_young)^2) +
+  sum((old_hat_agg - pop_old)^2)
+total_pb <- sum((young_hat_pb - pop_young)^2) +
+  sum((old_hat_pb - pop_old)^2)
+cat("Aggregate:", round(total_agg), "\n")
+cat("Per-bracket:", round(total_pb), "\n")
+```
+
+The per-bracket approach recovers both demographic distributions more
+accurately because each bracket's transport is tailored to its own
+spatial pattern, rather than being forced into a one-size-fits-all
+compromise.
+
+```{r per-bracket-comparison-plot, eval = TRUE, fig.height = 5}
+# Visual comparison: aggregate vs per-bracket recovery
+comparison_df <- data.frame(
+  tract = rep(1:5, 4),
+  value = c(pop_young, pop_old, young_hat_pb, old_hat_pb),
+  bracket = rep(c("Young", "Old", "Young", "Old"), each = 5),
+  source = rep(c("Census truth", "Census truth",
+                  "Per-bracket estimate", "Per-bracket estimate"),
+               each = 5)
+)
+
+ggplot(comparison_df,
+       aes(x = factor(tract), y = value, fill = source)) +
+  geom_col(position = "dodge", width = 0.7) +
+  facet_wrap(~bracket, scales = "free_y") +
+  scale_fill_manual(values = c("Census truth" = "#4575b4",
+                                "Per-bracket estimate" = "#fdae61")) +
+  labs(title = "Per-Bracket Sinkhorn: Recovery of Age-Group Profiles",
+       x = "Tract", y = "Population", fill = "") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "bottom")
+```
+
+### Connection to the optimizer
+
+During PB-SGD optimization (Section 14), the per-bracket Sinkhorn is
+performed in **log-domain on 3D tensors** of shape
+`[ka × batch × m]`, where `ka` is the number of active demographic
+brackets and `batch` is the number of sampled tracts per SGD step.
+This vectorizes all $K$ separate transport problems into a single
+batched matrix computation on GPU or CPU, making it nearly as fast as a
+single aggregate Sinkhorn pass. Section 14.3 derives the log-domain
+Sinkhorn updates, and Section 14.4 presents the complete 3D-tensor
+pseudocode.
+
+After optimization, `sinkhorn_weights()` builds the final weight
+matrix using the same per-bracket logic with full convergence (up to
+1000 Sinkhorn iterations, or until marginal error falls below
+$10^{-10}$):
+
+```{r per-bracket-final, eval = FALSE}
+W <- sinkhorn_weights(time_matrix, alpha, offset = 1,
+  row_targets = row_targets,
+  pop_matrix = pop_matrix,
+  source_matrix = source_matrix)
+```
+
+When `pop_matrix` and `source_matrix` are provided, the function
+automatically uses per-bracket mode. Without them, it falls back to
+single-Sinkhorn mode for backward compatibility.
+
+
 # Part V: Calibration and Optimization
 
 ## 13. The Calibration Objective
@@ -924,10 +1140,15 @@ $$f(\alpha) = \sum_i \sum_k \left( \hat{V}_{ik} - P_{ik} \right)^2$$
 
 where:
 
-- $\hat{V} = W_{\text{sinkhorn}}(\alpha) \times S$ --- interpolated
-  voter demographics per tract
+- $\hat{V} = W(\alpha) \times S$ --- interpolated voter demographics
+  per tract, with $W$ built via per-bracket Sinkhorn (Section 12.7)
 - $P$ --- census demographics per tract
-- $k$ = age bracket index (7 brackets)
+- $k$ = demographic bracket index ($K = 7$ for age-only calibration,
+  $K = 28$ for full gender × literacy × age calibration)
+
+The weight matrix $W(\alpha)$ is the sum of per-bracket transport
+matrices $W^{(k)}$, each balanced to match bracket $k$'s row/column
+targets, followed by a final aggregate Sinkhorn pass.
 
 ```{r objective-landscape, eval = TRUE, fig.height = 4.5}
 # Simplified case: all tracts share the same alpha
@@ -943,7 +1164,7 @@ sse_values <- sapply(alpha_range, function(a) {
     pop_matrix = pop_matrix_toy,
     source_matrix = src_matrix_toy,
     row_targets = pop_toy / sum(pop_toy) * 3,
-    sinkhorn_iter = 50
+    sk_iter = 50
   )
 })
 
@@ -964,16 +1185,38 @@ ggplot(data.frame(alpha = alpha_range, sse = sse_values),
 The landscape has a clear minimum. In practice, each tract has its own
 alpha, creating a high-dimensional optimization problem.
 
-### 13.4 Why K = 5 Sinkhorn iterations during optimization?
+### 13.4 Sinkhorn iterations during optimization (`sk_iter`)
 
-Full Sinkhorn convergence (K = 1000) is expensive. During optimization,
-we only need the gradient to point in roughly the right direction. K = 5
-iterations give an approximate balance that produces a useful gradient.
-The final weight computation (after optimization converges) uses full
-Sinkhorn convergence.
+The objective function $f(\alpha)$ depends on Sinkhorn-balanced weights.
+In principle, exact Sinkhorn convergence would require hundreds of
+iterations per evaluation. But during SGD optimization, we only need
+gradients that point in approximately the right direction --- not exact
+ones. This opens a key tradeoff:
+
+- **Too few iterations** (e.g., `sk_iter = 3`): the per-bracket
+  transport is poorly approximated. Row and column targets are far from
+  satisfied. Gradients are noisy and may point in wrong directions,
+  causing the optimizer to diverge or get stuck.
+- **Too many iterations** (e.g., `sk_iter = 50`): the transport is
+  nearly exact, but memory grows as $O(k_a \times b \times m \times
+  \texttt{sk\_iter})$ because torch must store intermediate tensors for
+  backpropagation through all unrolled iterations. On GPU, this can
+  exceed available VRAM for large cities.
+- **The sweet spot** (`sk_iter = 15`): experiments across municipalities
+  of varying sizes (Varginha, Niteroi, Belo Horizonte, São Paulo) showed
+  that 15 iterations achieve near-optimal spatial variation in the
+  resulting alpha vectors while keeping memory usage well within GPU
+  limits. Beyond 15, the marginal improvement in gradient quality is
+  negligible.
+
+The default `sk_iter = 15` balances gradient accuracy against memory
+cost. The **final** weight computation after optimization (via
+`sinkhorn_weights()`) uses full convergence-based Sinkhorn with up to
+1000 iterations, so the final interpolation is always exact regardless
+of `sk_iter` during training.
 
 
-## 14. Optimization: Torch ADAM with Log-Domain Sinkhorn
+## 14. Optimization: Per-Bracket SGD with Log-Domain Sinkhorn
 
 ### 14.1 Why automatic differentiation?
 
@@ -1044,58 +1287,119 @@ And the log-kernel is simply:
 
 $$\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$$
 
-### 14.4 The complete log-domain Sinkhorn algorithm
+### 14.4 The complete per-bracket log-domain Sinkhorn algorithm
+
+The optimizer performs Sinkhorn transport **per bracket** on 3D tensors.
+Before reading the pseudocode, it helps to understand the tensor shapes
+involved:
+
+| Symbol | Shape | Meaning |
+|---|---|---|
+| `log_t` | $[n \times m]$ | Log travel times (precomputed once) |
+| `alpha` | $[n]$ | Decay parameters (what we're optimizing) |
+| `P` | $[n \times k_a]$ | Census population per tract and bracket |
+| `V` | $[m \times k_a]$ | Voter counts per station and bracket |
+| `r_mat` | $[k_a \times n]$ | Row targets: bracket × tract |
+| `c_mat` | $[k_a \times m]$ | Column targets: bracket × station |
+| `log_K_3d` | $[k_a \times b \times m]$ | 3D log-kernel (broadcast) |
+| `log_u` | $[k_a \times b \times 1]$ | Log row-scaling factors |
+| `log_v` | $[k_a \times 1 \times m]$ | Log column-scaling factors |
+| `W_all` | $[k_a \times b \times m]$ | Per-bracket weight tensors |
+
+The first dimension ($k_a$) indexes demographic brackets. The second
+dimension ($b$) indexes the sampled tracts in the mini-batch. The third
+dimension ($m$) indexes stations. All $k_a$ brackets share the same
+log-kernel --- only the row/column targets differ --- so the Sinkhorn
+updates can be computed in a single vectorized operation across brackets.
 
 ```
-Input: log_t[n,m], alpha[n], log_r[n], K_sink iterations
+Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka], sk_iter, batch_size
 
-# Log-kernel
-log_K[i,j] = -alpha[i] * log_t[i,j]
+# Preprocess: per-bracket row/column targets (done once)
+for each bracket b in 1..ka:
+    r_mat[b,:] = P[:,b] / sum(P[:,b]) * sum(V[:,b])  # rescale rows
+    c_mat[b,:] = V[:,b]
 
-# Initialize scaling factors
-log_u = zeros(n, 1)
-log_v = zeros(1, m)
+# --- PB-SGD step (repeated for max_steps iterations) ---
+# Sample mini-batch of b tracts
+idx = sample(1..n, batch_size)
+r_batch = r_mat[:, idx]                    # [ka x b]
 
-for k = 1 to K_sink:
-    # Row update
-    log_u[i] = log_r[i] - logsumexp_j(log_K[i,j] + log_v[j])
-    # Column update
-    log_v[j] = 0 - logsumexp_i(log_K[i,j] + log_u[i])
+# Column scaling: adjust column targets to match the mini-batch
+# (see explanation below)
+c_batch = c_mat * (rowSums(r_batch) / rowSums(r_mat))  # [ka x m]
 
-# Recover balanced weights
-W[i,j] = exp(log_u[i] + log_K[i,j] + log_v[j])
+# Build 3D log-targets (unsqueeze for broadcasting)
+log_r_3d = log(r_batch)                     # [ka x b x 1]
+log_c_3d = log(c_batch)                     # [ka x 1 x m]
 
-# Forward pass: interpolated demographics
-V_hat = W @ source_matrix
+# Log-kernel for batch (same kernel for all brackets)
+log_K[i,j] = -alpha[idx[i]] * log_t[idx[i], j]   # [b x m]
+log_K_3d = log_K expanded to [ka x b x m]   # broadcast across brackets
 
-# Loss
-loss = sum((V_hat - pop_matrix)^2)
+# Log-domain Sinkhorn iterations (per bracket, batched)
+log_u = zeros(ka, b, 1)
+log_v = zeros(ka, 1, m)
+
+for k = 1 to sk_iter:
+    log_u = log_r_3d - logsumexp_j(log_K_3d + log_v)   # row update
+    log_v = log_c_3d - logsumexp_i(log_K_3d + log_u)   # column update
+
+# Recover weights, aggregate brackets, and column-normalize
+W_all = exp(log_u + log_K_3d + log_v)       # [ka x b x m]
+W_total = sum(W_all, dim=bracket)            # [b x m]
+W_norm = W_total / colSums(W_total)          # column-normalize
+
+# Compute loss (scaled for batch → full-data estimate)
+V_scaled = V * (b / n)
+V_hat = W_norm @ V_scaled                    # [b x ka]
+loss = sum((V_hat - P[idx,:])^2) * (n / b)
 ```
 
-Every operation — log, exp, logsumexp, matrix multiply, subtraction,
-squaring — has a defined backward pass in torch. The gradient
-$\nabla_\alpha f$ flows backward through all $K$ Sinkhorn iterations
-automatically.
+Every operation --- log, exp, logsumexp, matrix multiply, subtraction,
+squaring --- has a defined backward pass in torch. The gradient
+$\nabla_\alpha f$ flows backward through all `sk_iter` Sinkhorn
+iterations automatically.
 
-This matches the implementation in `optimize-torch.R` (lines 161--181
-of the package source).
+**Why scale the column targets?** When we sample a mini-batch of $b$
+tracts from the full set of $n$, the row targets for the batch
+(`r_batch`) sum to less than the full row targets (`r_mat`). But the
+column targets (voter counts at stations) remain the same --- we haven't
+sampled stations, only tracts. If we used the full column targets, the
+Sinkhorn problem would be inconsistent: row sums would be much smaller
+than column sums, and the algorithm would fail to converge. The fix is
+to scale each bracket's column targets by the ratio
+$\text{sum}(r_{\text{batch}}^{(k)}) / \text{sum}(r_{\text{full}}^{(k)})$,
+so that the mini-batch Sinkhorn problem has matching row and column
+totals. This ensures that each mini-batch step solves a well-posed
+transport problem that is consistent with the full-data objective.
 
-### 14.5 ADAM optimizer with learning rate scheduling
+**Key design choices:**
 
-We use the **ADAM** optimizer (Adaptive Moment Estimation), which
-maintains per-parameter learning rates that adapt based on first and
-second moment estimates of the gradient. This is particularly well-suited
-to our problem because different tracts may have very different gradient
-magnitudes.
+1. **3D tensors**: all $k_a$ brackets are batched into a single
+   `[ka × b × m]` tensor, enabling efficient GPU parallelism
+2. **Per-bracket targets**: each bracket has its own row/column targets,
+   giving each age group its own spatial transport solution
+3. **Batch scaling**: `V_scaled` is scaled by `b/n` and the loss by
+   `n/b` so that the gradient is an unbiased estimate of the full-data
+   gradient, regardless of batch size
 
-The learning rate schedule uses **multi-phase annealing**:
+### 14.5 PB-SGD: Per-Bracket Stochastic Gradient Descent
 
-- **Phase 1**: linear warmup (10 steps from LR = 0 to `gpu_lr_init`)
-- **Subsequent phases**: each runs inner iterations with decreasing LR
-- **LR decays** by `gpu_lr_decay` (default 0.6) between phases
-- **Gradient clipping** at norm 1.0 prevents divergence
-- **Alpha clamped** to `[lower_bound, upper_bound]` (default [0, 20])
-  after each step
+We use **ADAM** (Adaptive Moment Estimation) as the underlying optimizer,
+with **mini-batch sampling** and **per-bracket Sinkhorn transport**. At
+each of the 800 PB-SGD steps:
+
+1. **Sample** a mini-batch of `batch_size` tracts (default 500)
+2. **Per-bracket Sinkhorn**: each demographic column gets its own
+   log-domain Sinkhorn transport on `[ka x batch x m]` tensors
+3. **Aggregate** bracket contributions and column-normalize
+4. **Compute loss**: scaled SSE between interpolated and observed values
+5. **Gradient masking**: only update optimizer moments for sampled tracts
+6. **Gradient clipping** at norm 5.0 prevents divergence
+7. **Alpha clamped** to `[lower_bound, upper_bound]` (default [0.01, 20])
+
+The learning rate halves at steps 200, 400, and 600.
 
 ```{r optimize-call, eval = FALSE}
 optim_result <- optimize_alpha(
@@ -1103,11 +1407,11 @@ optim_result <- optimize_alpha(
   pop_matrix    = pop_matrix,
   source_matrix = source_matrix,
   row_targets   = row_targets,
-  sinkhorn_iter = 5,       # K=5 inside ADAM (fast, approximate)
-  use_gpu       = FALSE,   # CPU for small problems
-  gpu_iterations = 20,     # 20 outer LR phases
-  gpu_lr_init   = 0.1,     # initial learning rate
-  gpu_lr_decay  = 0.6      # LR multiplier between phases
+  batch_size    = 500,     # mini-batch size (full-batch if n <= 500)
+  sk_iter       = 15,      # Sinkhorn iterations per step
+  max_steps     = 800,     # total SGD steps
+  lr_init       = 0.05,    # initial learning rate
+  use_gpu       = FALSE    # CPU for small problems
 )
 ```
 
@@ -1115,19 +1419,29 @@ optim_result <- optimize_alpha(
 knitr::include_graphics("figures/optim-convergence.png")
 ```
 
-Rapid descent in the first few phases, then fine-tuning as the learning
-rate decays.
+The typical loss curve shows three phases: (1) **rapid descent** in the
+first ~200 steps as the optimizer finds the right ballpark for each
+alpha, (2) a **slower refinement** phase (steps 200--600) where the
+learning rate halves twice and the optimizer fine-tunes per-tract
+parameters, and (3) a **plateau** in the final 200 steps where
+improvements become marginal.
+
+Because the loss is computed on a random mini-batch at each step, the
+curve will **fluctuate** --- this is normal and expected for stochastic
+optimization. The package tracks the best loss seen across all steps and
+returns the corresponding alpha values, so transient spikes do not
+affect the final result.
 
 **Key tuning parameters**:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `sinkhorn_iter` | 5 | Sinkhorn iterations per ADAM step. Higher = more accurate gradient. |
-| `gpu_iterations` | 20 | Number of outer LR phases. |
-| `gpu_lr_init` | 0.1 | Initial learning rate. Reduce for numerical stability. |
-| `gpu_lr_decay` | 0.6 | LR multiplier between phases. |
+| `batch_size` | 500 | Tracts per SGD step. Smaller = less memory. |
+| `sk_iter` | 15 | Sinkhorn iterations per step. Higher = more accurate transport. |
+| `max_steps` | 800 | Total SGD steps. |
+| `lr_init` | 0.05 | Initial learning rate. Halves at 200/400/600. |
 | `dtype` | `"float32"` | `"float64"` for more precision (2x memory). |
-| `lower_bound` / `upper_bound` | 0, 20 | Alpha clamp range. |
+| `lower_bound` / `upper_bound` | 0.01, 20 | Alpha clamp range. |
 
 
 # Part VI: Results and Validation
@@ -1203,7 +1517,8 @@ $V_{\text{matrix}}$ is [M × P].
 
 ```{r interpolation-code, eval = FALSE}
 W <- sinkhorn_weights(time_matrix, optim_result$alpha,
-  offset = 1, row_targets = row_targets)
+  offset = 1, row_targets = row_targets,
+  pop_matrix = pop_matrix, source_matrix = source_matrix)
 
 electoral_data <- as.matrix(
   sources[, c("CAND_13", "CAND_22", "QT_COMPARECIMENTO")]
@@ -1347,10 +1662,11 @@ knitr::include_graphics("figures/voronoi-sse-ratio-cities.png")
 ```
 
 In every city, the Sinkhorn method achieves dramatically lower squared
-error than Voronoi assignment --- typically by a factor of 100--1000x.
-The advantage is consistent across cities of different sizes and urban
-layouts, confirming that smooth, calibrated weighting is fundamentally
-superior to hard nearest-station assignment.
+error than Voronoi assignment --- by a factor of 275x (Cuiabá) to
+1,624x (Manaus), with Palmas at 601x and Natal at 639x. The advantage
+is consistent across cities of different sizes and urban layouts,
+confirming that smooth, calibrated weighting is fundamentally superior
+to hard nearest-station assignment.
 
 
 ### 17.4 Ecological correlation: Lula vote share and household income
@@ -1388,27 +1704,60 @@ influence of extreme values and improve linearity.
 
 ## 18. Performance and Tuning
 
-| Problem size (tracts) | Recommendation | Typical time |
+All timings below assume default PB-SGD parameters:
+`batch_size = 500`, `sk_iter = 15`, `max_steps = 800`, `dtype = "float32"`.
+
+| Problem size (tracts) | Recommendation | Typical optimization time |
 |---|---|---|
-| < 200 | CPU | < 5 seconds |
-| 200--1,000 | CPU or GPU | 5--30 seconds |
-| 1,000--5,000 | GPU recommended | 30s -- 2 min |
+| < 200 | CPU | 10--30 seconds |
+| 200--1,000 | CPU or GPU | 30s -- 2 min |
+| 1,000--5,000 | GPU recommended | 15s -- 2 min |
 | > 5,000 | GPU strongly recommended | 2--10 min |
 
-**Practical runtimes**:
+**Practical runtimes** (optimization step only, from actual runs):
 
-- Varginha (~280 tracts, ~37 stations): 2--4s CPU
-- Igrejinha (~85 tracts, ~17 stations): 1--2s CPU
-- Niteroi (~1,200 tracts, ~135 stations): 5--15s GPU
-- Belo Horizonte (~5,100 tracts, ~407 stations): 30--60s GPU
-- São Paulo capital (~18,000 tracts, ~3,000 stations): 5--10 min GPU
+- Igrejinha (85 tracts, 17 stations): ~24s CPU
+- Varginha (279 tracts, 37 stations): ~52s CPU
+- Palmas (660 tracts, 71 stations): ~135s CPU
+- Niterói (1,169 tracts, 135 stations): ~17s GPU
+- Belo Horizonte (5,113 tracts, 407 stations): ~105s GPU
+- Rio de Janeiro (13,370 tracts, 1,392 stations): ~10 min GPU
 
-**Memory**: approximately `3 * sinkhorn_iter + 10` copies of the N × M
-matrix in GPU memory.
+Note that total wall-clock time for `interpolate_election_br()` also
+includes data downloads, travel time computation (via r5r), and weight
+matrix construction, which can dominate for larger cities.
+
+**Memory estimation.** GPU memory during optimization has two main
+components:
+
+1. **Full kernel matrix** (always in memory): $n \times m \times
+   \text{bytes}$ --- e.g., 5,100 × 407 × 4 ≈ 8 MB for Belo
+   Horizonte in float32.
+2. **3D Sinkhorn tensors** (the main cost): $k_a \times
+   \min(\texttt{batch\_size}, n) \times m \times \text{bytes} \times
+   (2 + 2 \times \texttt{sk\_iter})$ --- torch must store intermediate
+   tensors for backpropagation through all unrolled Sinkhorn iterations.
+
+where $k_a$ is the number of active demographic brackets (7 for
+`calib_type = "age_only"`, up to 28 for `calib_type = "full"`) and
+`bytes` is 4 (float32) or 8 (float64).
+
+| Municipality | Tracts | Stations | $k_a$ | Estimated GPU memory |
+|---|---|---|---|---|
+| Varginha | 279 | 37 | 28 | ~28 MB |
+| Niterói | 1,169 | 135 | 28 | ~242 MB |
+| Belo Horizonte | 5,113 | 407 | 28 | ~729 MB |
+| Rio de Janeiro | 13,370 | 1,392 | 28 | ~2.5 GB |
+
+These are actual values reported by the optimizer during precomputation.
+With `calib_type = "age_only"` ($k_a = 7$), memory is approximately 4×
+smaller. For very large cities on GPU, consider reducing `batch_size` or
+`sk_iter`, or switching to `dtype = "float32"` (the default) if using
+`"float64"`.
 
 **RStudio**: torch inside RStudio IDE requires subprocess execution via
-callr (automatic and transparent to the user). Standalone R scripts run
-directly.
+`callr` (automatic and transparent to the user). Standalone R scripts
+run directly.
 
 
 ## 19. Setup: Torch, Java, and r5r
@@ -1448,7 +1797,7 @@ interpElections_cache_clean()      # clear cache
 ### Notation
 
 - $N$ = number of census tracts, $M$ = number of polling stations
-- $K$ = number of calibration age brackets (7)
+- $K$ = number of calibration brackets (7 for age-only, 28 for full)
 - $t \in \mathbb{R}^{N \times M}$: travel time matrix (minutes)
 - $\alpha \in \mathbb{R}^N$: per-tract decay parameters
 - $P \in \mathbb{R}^{N \times K}$: census population by age bracket
@@ -1466,7 +1815,7 @@ $$K_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
 
 $$\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$$
 
-### Sinkhorn iterations (log-domain)
+### Sinkhorn iterations (log-domain, single bracket)
 
 Initialize: $\log u = \mathbf{0}_{N \times 1}$,
 $\log v = \mathbf{0}_{1 \times M}$
@@ -1475,18 +1824,88 @@ For $k = 1$ to $K_{\text{sink}}$:
 $$\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)$$
 $$\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)$$
 
-### Balanced weight matrix
+### Balanced weight matrix (single bracket)
 
 $$W_{ij} = \exp(\log u_i + \log K_{ij} + \log v_j)$$
 
-### Objective function
+### Per-bracket Sinkhorn
 
-$$f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i,k} \left( \sum_j W_{ij} S_{jk} - P_{ik} \right)^2$$
+For each demographic bracket $k = 1, \ldots, K$:
+
+1. Rescale row targets: $r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}$
+2. Set column targets: $c_j^{(k)} = S_{jk}$
+3. Run Sinkhorn with $(r^{(k)}, c^{(k)})$ on kernel $K$ to get $W^{(k)}$
+
+Aggregate:
+$$W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}$$
+
+Final balance: run Sinkhorn on $W_{\text{total}}$ with aggregate
+row targets $r_i = \text{pop}_i / \sum \text{pop} \times M$ and column
+targets $c_j = 1$.
+
+### Per-bracket Sinkhorn on 3D tensors (PB-SGD)
+
+During optimization, the per-bracket Sinkhorn is vectorized across
+brackets on 3D tensors. Let $k_a$ = number of active brackets,
+$b$ = mini-batch size, $M$ = number of stations.
+
+**Preprocessing** (done once before the SGD loop):
+
+Per-bracket row targets $r^{(k)} \in \mathbb{R}^N$ and column targets
+$c^{(k)} \in \mathbb{R}^M$ are stored in matrices:
+$R \in \mathbb{R}^{k_a \times N}$, $C \in \mathbb{R}^{k_a \times M}$.
+
+**Per-step computation** (for a sampled batch of indices $\mathcal{B}$,
+$|\mathcal{B}| = b$):
+
+Mini-batch targets:
+$$R_{\text{batch}} = R[:, \mathcal{B}] \in \mathbb{R}^{k_a \times b}, \qquad
+C_{\text{batch},k} = C_k \cdot \frac{\sum_i R_{\text{batch},ki}}{\sum_i R_{ki}} \in \mathbb{R}^{k_a \times M}$$
+
+Initialize:
+$$\log u \in \mathbb{R}^{k_a \times b \times 1} = \mathbf{0}, \qquad
+\log v \in \mathbb{R}^{k_a \times 1 \times M} = \mathbf{0}$$
+
+Log-kernel (shared across brackets):
+$$\log K_{ij} = -\alpha_{\mathcal{B}(i)} \cdot \log(t_{\mathcal{B}(i),j} + 1) \in \mathbb{R}^{b \times M}$$
+
+Broadcast to 3D: $\log K^{3D} \in \mathbb{R}^{k_a \times b \times M}$
+(identical across the bracket dimension).
+
+For $\ell = 1$ to `sk_iter`:
+$$\log u_{k,i,\cdot} \leftarrow \log r^{(k)}_{\text{batch},i} - \text{logsumexp}_j\!\left(\log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times 1]$$
+$$\log v_{k,\cdot,j} \leftarrow \log c^{(k)}_{\text{batch},j} - \text{logsumexp}_i\!\left(\log K^{3D}_{k,i,j} + \log u_{k,i,\cdot}\right) \quad [k_a \times 1 \times M]$$
+
+Recover per-bracket weights and aggregate across brackets:
+$$W^{\text{all}}_{k,i,j} = \exp\!\left(\log u_{k,i,\cdot} + \log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times M]$$
+$$W^{\text{batch}}_{ij} = \sum_{k=1}^{k_a} W^{\text{all}}_{k,i,j} \quad [b \times M]$$
+
+Column-normalize:
+$$W^{\text{norm}}_{ij} = W^{\text{batch}}_{ij} \bigg/ \sum_{i'} W^{\text{batch}}_{i'j} \quad [b \times M]$$
+
+### Mini-batch loss
+
+$$\hat{V} = W^{\text{norm}} \cdot (S \cdot b/N) \quad [b \times K]$$
+$$f_{\text{batch}} = \frac{N}{b} \sum_{i \in \mathcal{B}} \sum_k (\hat{V}_{ik} - P_{ik})^2$$
+
+The scaling factors $b/N$ and $N/b$ ensure that the gradient is an
+unbiased estimator of the full-data gradient.
+
+### Objective function (full data)
+
+$$f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i=1}^N \sum_{k=1}^K \left( \sum_{j=1}^M W_{ij} S_{jk} - P_{ik} \right)^2$$
+
+where $W(\alpha) \in \mathbb{R}^{N \times M}$ is the per-bracket
+Sinkhorn weight matrix.
 
 ### Gradient
 
-Computed by torch autograd through $K$ unrolled Sinkhorn iterations.
-Each operation in the forward pass (log, exp, logsumexp, matrix
+Computed by torch autograd through the unrolled per-bracket Sinkhorn
+iterations on 3D tensors. Each operation (log, exp, logsumexp, matrix
 multiply, subtraction, squaring) has a defined backward pass in torch:
 
-$$\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{sinkhorn}_K(\text{kernel}(\alpha)) \cdot S - P \|_F^2$$
+$$\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{pb\_sinkhorn}(\text{kernel}(\alpha), P, S) \cdot S - P \|_F^2$$
+
+The gradient flows backward through all `sk_iter` Sinkhorn iterations.
+Only the components corresponding to the sampled batch indices
+$\mathcal{B}$ are used to update ADAM moments (gradient masking).

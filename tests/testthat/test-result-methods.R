@@ -39,12 +39,18 @@
   for (col in src_cols) sources[[col]] <- rpois(m, 160)
   for (col in interp_names) sources[[col]] <- rpois(m, 50)
 
-  # Mock time matrix + weights (Sinkhorn-balanced)
+  # Mock time matrix + weights (per-bracket Sinkhorn-balanced)
   tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
   alpha <- runif(n, 0.5, 3)
-  pop_total <- rowSums(as.matrix(tracts_df[, pop_cols, drop = FALSE]))
+  pop_mat_calib <- as.matrix(tracts_df[, pop_cols, drop = FALSE])
+  storage.mode(pop_mat_calib) <- "double"
+  src_mat_calib <- as.matrix(sources[, src_cols, drop = FALSE])
+  storage.mode(src_mat_calib) <- "double"
+  pop_total <- rowSums(pop_mat_calib)
   row_targets <- pop_total / sum(pop_total) * m
-  W <- sinkhorn_weights(tt, alpha, offset = 1, row_targets = row_targets)
+  W <- sinkhorn_weights(tt, alpha, offset = 1, row_targets = row_targets,
+                         pop_matrix = pop_mat_calib,
+                         source_matrix = src_mat_calib)
 
   result <- list(
     interpolated = interp_mat,
@@ -52,7 +58,7 @@
     tracts_sf = tracts_sf,
     sources = sources,
     optimization = list(
-      method = "torch_adam_sinkhorn_cpu",
+      method = "pb_sgd_sinkhorn_cpu",
       value = 123.45,
       convergence = 0L
     ),
@@ -124,7 +130,7 @@
   result <- list(
     interpolated = interp_mat, alpha = alpha, tracts_sf = tracts_sf,
     sources = sources,
-    optimization = list(method = "torch_adam_sinkhorn_cpu", value = 50, convergence = 0L),
+    optimization = list(method = "pb_sgd_sinkhorn_cpu", value = 50, convergence = 0L),
     offset = 1, call = quote(interpolate_election_br()),
     tract_id = "id", point_id = "id",
     interp_cols = interp_names,
@@ -182,7 +188,7 @@ test_that("summary shows optimization info", {
   out <- capture.output(summary(obj))
   full <- paste(out, collapse = "\n")
 
-  expect_match(full, "torch_adam_sinkhorn_cpu")
+  expect_match(full, "pb_sgd_sinkhorn_cpu")
   expect_match(full, "123.4500")
   expect_match(full, "Convergence: 0")
 })

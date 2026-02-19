@@ -31,7 +31,7 @@ test_that("optimize + sinkhorn_weights round-trip produces valid results", {
     source_matrix = source_matrix,
     offset = 0,
     use_gpu = FALSE,
-    gpu_iterations = 5L,
+    max_steps = 50L,
     verbose = FALSE
   )
 
@@ -39,10 +39,12 @@ test_that("optimize + sinkhorn_weights round-trip produces valid results", {
   expect_true(all(result$alpha >= 0))
   expect_true(is.finite(result$value))
 
-  # Build final weights
+  # Build final weights (per-bracket mode)
   W_final <- suppressWarnings(sinkhorn_weights(
     time_matrix, result$alpha, offset = 0,
-    row_targets = result$row_targets
+    row_targets = result$row_targets,
+    pop_matrix = pop_matrix,
+    source_matrix = source_matrix
   ))
 
   interpolated <- W_final %*% source_matrix

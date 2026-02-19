@@ -34,9 +34,9 @@ test_that(".apply_offset rejects invalid offset", {
 })
 
 test_that(".extract_args filters to target function formals", {
-  dots <- list(alpha_init = 1, bad_arg = 2, gpu_iterations = 10L)
+  dots <- list(alpha_init = 1, bad_arg = 2, max_steps = 10L)
   result <- interpElections:::.extract_args(dots, interpElections::optimize_alpha)
   expect_true("alpha_init" %in% names(result))
-  expect_true("gpu_iterations" %in% names(result))
+  expect_true("max_steps" %in% names(result))
   expect_false("bad_arg" %in% names(result))
 })

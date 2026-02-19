@@ -21,8 +21,8 @@ library(interpElections)
 This vignette is a reference guide for working with `interpElections_result`
 objects after interpolation. It covers S3 methods, plotting options,
 residual analysis, validation, data export, and areal aggregation. Examples
-use pre-computed results from **Niteroi (RJ)** (~500 tracts, GPU) and
-**Belo Horizonte (MG)** (~4,000 tracts, GPU).
+use pre-computed results from **Niterói (RJ)** (1,169 tracts, GPU) and
+**Belo Horizonte (MG)** (5,113 tracts, GPU).
 
 ## Loading Results
 
@@ -73,16 +73,19 @@ result_nit
 
 ```
 interpElections result -- Brazilian election
-  Municipality: Niteroi (RJ)
-  IBGE: 3303302 | TSE: 58718 | Election: 2022 | Census: 2010
-  Census tracts: ~500 | Sources: ~100
+  Municipality: NITERÓI (RJ)
+  IBGE: 3303302 | TSE: 58653 | Election: 2022 | Census: 2022
+  Census tracts: 1169 | Sources: 135
 
-  Variables: ~50
-    Candidates:    13 (CAND_13, CAND_22, ...)
-    Parties:       ~10 (PARTY_PT, PARTY_PL, ...)
-    Turnout:       3 (QT_COMPARECIMENTO, QT_APTOS, QT_ABSTENCOES)
-    Demographics:  ~15 (GENERO_FEMININO, EDUC_SUP_COMP, ...)
-    Calibration:   7 (votantes_18_20, ...)
+  Variables: 63
+    Candidates:    13 (CAND_27, CAND_14, CAND_30, CAND_13, ...)
+    Parties:       11 (PARTY_27, PARTY_14, PARTY_30, PARTY_13, ...)
+    Turnout:       1 (QT_COMPARECIMENTO)
+    Demographics:  10 (GENERO_FEMININO, GENERO_MASCULINO, ...)
+    Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
+
+  Optimizer: pb_sgd_sinkhorn_cuda (obj = 1265038.68)
+  Alpha:     [0.010, 17.623] (mean 2.507)
 ```
 
 The `summary()` method adds per-variable statistics grouped by type:
@@ -245,7 +248,7 @@ observed) for each tract and age bracket. Requires `keep = "weights"` or
 ```{r residuals, eval = FALSE}
 resid <- residuals(result_nit)
 str(resid)
-#> num [1:~500, 1:7] ...
+#> num [1:1169, 1:28] ...
 
 # Per-bracket summary
 colMeans(resid)                        # mean residual per bracket

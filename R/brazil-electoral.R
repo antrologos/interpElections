@@ -385,6 +385,16 @@ br_prepare_electoral <- function(
       tidyr::pivot_wider(names_from = "crosstab_col", values_from = "n",
                          values_fill = 0)
 
+    # Ensure all expected cross-tab columns exist (small municipalities
+    # may lack certain gender x literacy x age combinations entirely)
+    expected_xt <- as.vector(outer(
+      c("vot_hom_alf_", "vot_hom_nalf_", "vot_mul_alf_", "vot_mul_nalf_"),
+      c("18_19", "20_24", "25_29", "30_39", "40_49", "50_59", "60_69"),
+      paste0
+    ))
+    missing_xt <- setdiff(expected_xt, names(crosstab_wide))
+    for (col in missing_xt) crosstab_wide[[col]] <- 0L
+
     perfil_wide <- dplyr::left_join(perfil_wide, crosstab_wide,
       by = c("NM_MUNICIPIO", "COD_MUN_TSE", "NR_ZONA", "NR_SECAO",
              "NR_LOCAL_VOTACAO"))

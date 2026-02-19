@@ -213,14 +213,6 @@ residuals.interpElections_result <- function(object, ...) {
     return(invisible(NULL))
   }
 
-  # Get the weight matrix
-  if (!is.null(object$weights)) {
-    W <- object$weights
-  } else {
-    W <- sinkhorn_weights(object$time_matrix, object$alpha, object$offset,
-                           row_targets = object$row_targets)
-  }
-
   # Source calibration values
   src_mat <- as.matrix(
     object$sources[, object$calib_cols$sources, drop = FALSE]
@@ -237,6 +229,16 @@ residuals.interpElections_result <- function(object, ...) {
   tracts_df <- sf::st_drop_geometry(object$tracts_sf)
   pop_mat <- as.matrix(tracts_df[, object$calib_cols$tracts, drop = FALSE])
   storage.mode(pop_mat) <- "double"
+
+  # Get the weight matrix
+  if (!is.null(object$weights)) {
+    W <- object$weights
+  } else {
+    W <- sinkhorn_weights(object$time_matrix, object$alpha, object$offset,
+                           row_targets = object$row_targets,
+                           pop_matrix = pop_mat,
+                           source_matrix = src_mat)
+  }
 
   # Fitted = W %*% source_matrix
   fitted_vals <- W %*% src_mat
