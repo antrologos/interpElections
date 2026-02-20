@@ -62,7 +62,7 @@ The console output shows the progress:
 [6/9] Downloading OSM road network...
 [7/9] Computing travel times...
 [8/9] Optimizing alpha...
-  PB-SGD (cpu, float32): ka=28, batch=279, sk_iter=15, 800 steps
+  PB-SGD (cpu, float32): batch=279, sk_iter=15, 800 steps
   Completed 800 steps (52.3s), objective=502,361
 [9/9] Interpolating...
   Interpolated 42 variables into 279 census tracts
@@ -99,7 +99,7 @@ interpElections result -- Brazilian election
   Variables: 42
     Candidates:    13 (CAND_30, CAND_44, CAND_12, CAND_13, ...)
     Turnout:       1 (QT_COMPARECIMENTO)
-    Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
+    Calibration:   gender x 7 age brackets
 
   Optimizer: pb_sgd_sinkhorn_cpu (obj = 502361.44)
   Alpha:     [0.010, 20.000] (mean 3.027)
@@ -156,7 +156,7 @@ interpElections result -- Brazilian election
   Variables: 42
     Candidates:    13 (CAND_13, CAND_12, CAND_30, CAND_22, ...)
     Turnout:       1 (QT_COMPARECIMENTO)
-    Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
+    Calibration:   gender x 7 age brackets
 
   Optimizer: pb_sgd_sinkhorn_cpu (obj = 248107.37)
   Alpha:     [0.010, 15.682] (mean 4.089)

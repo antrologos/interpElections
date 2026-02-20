@@ -202,10 +202,9 @@ alpha.}
 
 \item{calib_type}{Character. Calibration column type:
 \itemize{
-\item \code{"full"} \strong{(default)}: 28 columns crossing gender (male/female) ×
-literacy (literate/illiterate) × 7 age brackets. Provides stronger
-spatial signal for the optimizer.
-\item \code{"age_only"}: 7 age-bracket-only columns (original behavior).
+\item \code{"full"} \strong{(default)}: gender (male/female) × 7 age brackets.
+Provides stronger spatial signal for the optimizer.
+\item \code{"age_only"}: 7 age-bracket-only columns (ignores gender).
 }}
 
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}

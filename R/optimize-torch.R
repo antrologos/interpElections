@@ -118,10 +118,10 @@
 
     if (!is.na(vram_mb) && estimated_mb > vram_mb * 0.8) {
       stop(sprintf(paste0(
-        "Estimated GPU memory (ka=%d, batch=%d, sk_iter=%d): %.0f MB ",
+        "Estimated GPU memory (batch=%d, sk_iter=%d): %.0f MB ",
         "(%.0f MB VRAM available).\n",
         "Reduce batch_size, sk_iter, or use use_gpu = FALSE."
-      ), ka, b, sk_iter, estimated_mb, vram_mb), call. = FALSE)
+      ), b, sk_iter, estimated_mb, vram_mb), call. = FALSE)
     }
 
     if (verbose && !is.na(vram_mb)) {
@@ -132,8 +132,8 @@
 
   if (verbose) {
     message(sprintf(
-      "  PB-SGD (%s, %s): ka=%d, batch=%d, sk_iter=%d, %d steps",
-      device, dtype, ka, b, sk_iter, max_steps))
+      "  PB-SGD (%s, %s): batch=%d, sk_iter=%d, %d steps",
+      device, dtype, b, sk_iter, max_steps))
   }
 
   # Track tensors for cleanup

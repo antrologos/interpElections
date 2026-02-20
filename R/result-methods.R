@@ -38,11 +38,13 @@ summary.interpElections_result <- function(object, ...) {
 
   # Calibration info
   if (!is.null(x$calib_cols)) {
-    cat("Calibration brackets:\n")
-    cat(sprintf("  Census tracts: %s\n",
-                paste(x$calib_cols$tracts, collapse = ", ")))
-    cat(sprintf("  Sources: %s\n\n",
-                paste(x$calib_cols$sources, collapse = ", ")))
+    n_calib <- length(x$calib_cols$tracts)
+    if (n_calib > 7) {
+      cat(sprintf("Calibration: gender x 7 age brackets (%d pairs)\n\n",
+                  n_calib))
+    } else {
+      cat(sprintf("Calibration: %d age brackets\n\n", n_calib))
+    }
   }
 
   # Optimization

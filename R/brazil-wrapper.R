@@ -140,10 +140,9 @@
 #'   alpha.
 #' @param offset Numeric. Travel time offset. Default: 1.
 #' @param calib_type Character. Calibration column type:
-#'   - `"full"` **(default)**: 28 columns crossing gender (male/female) ×
-#'     literacy (literate/illiterate) × 7 age brackets. Provides stronger
-#'     spatial signal for the optimizer.
-#'   - `"age_only"`: 7 age-bracket-only columns (original behavior).
+#'   - `"full"` **(default)**: gender (male/female) × 7 age brackets.
+#'     Provides stronger spatial signal for the optimizer.
+#'   - `"age_only"`: 7 age-bracket-only columns (ignores gender).
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
 #' @param cache Logical. If TRUE (default), downloaded files (TSE data,
 #'   OSM networks, census tracts) are stored persistently across R sessions.
@@ -843,7 +842,7 @@ interpolate_election_br <- function(
 # --- Internal: match calibration brackets ---
 # Aggregates TSE voter brackets to match census population brackets.
 # calib_type = "age_only": 7 age-only pairs (original behavior)
-# calib_type = "full": 28 gender x literacy x age pairs
+# calib_type = "full": gender x 7 age pairs
 
 .br_match_calibration <- function(census_year, tracts_sf, electoral_sf,
                                    calib_type = "full") {
@@ -903,7 +902,10 @@ interpolate_election_br <- function(
     calib_sources <- paste0("votantes_", age_groups)
 
   } else {
-    # Full calibration: 28 gender x literacy x age pairs
+    # Full calibration: gender x age pairs
+    # IBGE splits by literacy (alf/nalf), but we always sum them.
+    # The 4 categories below are an intermediate step: alf + nalf
+    # gets aggregated to produce gender x 7 age brackets.
     categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
 
     for (cat in categories) {

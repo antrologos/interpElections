@@ -24,11 +24,12 @@
 #' All years also produce: `pop_00_04`, `pop_05_09`, `pop_10_14`,
 #' `pop_15_17` (or `pop_15_19` for 2022), `pop_70mais`.
 #'
-#' Additionally, all years produce gender x literacy columns for the
-#' same voting-age brackets: `pop_hom_alf_*`, `pop_hom_nalf_*`,
-#' `pop_mul_alf_*`, `pop_mul_nalf_*` (literate/illiterate men/women).
+#' Additionally, all years produce gender × age columns for the
+#' same voting-age brackets, split by gender: `pop_hom_alf_*`,
+#' `pop_hom_nalf_*`, `pop_mul_alf_*`, `pop_mul_nalf_*`.
 #' These are used by the "full" calibration mode in
-#' [interpolate_election_br()].
+#' [interpolate_election_br()], which sums literate + illiterate
+#' within each gender × age group.
 #'
 #' @examples
 #' \dontrun{

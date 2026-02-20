@@ -41,6 +41,45 @@ save_fig <- function(p, filename, width = 8, height = 6, dpi = 200) {
   message("  Saved: ", path)
 }
 
+# Helper: aggregate calibration matrix from 28 cols (gender x literacy x age)
+# down to 7 age brackets by summing across gender and literacy categories.
+# Returns a matrix with clean age labels as column names.
+aggregate_to_age <- function(mat, col_names = colnames(mat)) {
+  n_cols <- length(col_names)
+  # Extract age suffix: e.g., "pop_hom_alf_18_19" -> "18_19"
+  age_suffix <- sapply(strsplit(col_names, "_"), function(parts) {
+    paste(parts[4:length(parts)], collapse = "_")
+  })
+  unique_ages <- unique(age_suffix)
+  n_ages <- length(unique_ages)
+
+  agg <- matrix(0, nrow = nrow(mat), ncol = n_ages)
+  for (j in seq_len(n_ages)) {
+    idx <- which(age_suffix == unique_ages[j])
+    agg[, j] <- rowSums(mat[, idx, drop = FALSE])
+  }
+  # Clean labels: "18_19" -> "18-19", "60_mais" -> "60+"
+  labels <- gsub("_", "-", unique_ages)
+  labels <- gsub("-mais$", "+", labels)
+  colnames(agg) <- labels
+  agg
+}
+
+# Helper: aggregate column-level sums to age brackets
+aggregate_sums_to_age <- function(col_sums, col_names = names(col_sums)) {
+  age_suffix <- sapply(strsplit(col_names, "_"), function(parts) {
+    paste(parts[4:length(parts)], collapse = "_")
+  })
+  unique_ages <- unique(age_suffix)
+  agg <- vapply(unique_ages, function(a) {
+    sum(col_sums[age_suffix == a])
+  }, numeric(1))
+  labels <- gsub("_", "-", unique_ages)
+  labels <- gsub("-mais$", "+", labels)
+  names(agg) <- labels
+  agg
+}
+
 # Utility: normalize 15-digit IBGE tract codes (avoid scientific notation)
 normalize_code <- function(x) {
   x <- as.character(x)
@@ -220,7 +259,7 @@ message("\n[Varginha] Generating figures...")
 # --- Methodology vignette figures ---
 
 # 3.2: Population pyramid (percentages, younger at bottom)
-# pop_matrix_vga may have 28 columns (full calibration: 4 categories x 7 ages)
+# pop_matrix_vga has gender x 7 age columns; aggregate to 7 age brackets
 # or 7 columns (age-only). Aggregate to 7 age brackets for the pyramid.
 n_ages <- 7L
 n_calib_cols <- ncol(pop_matrix_vga)
@@ -285,7 +324,7 @@ p <- ggplot() +
 save_fig(p, "electoral-stations-map.png")
 
 # 3.5: Age pyramids comparison (census vs electoral, percentages)
-# Aggregate source_matrix across gender x literacy categories (same as pop)
+# Aggregate source_matrix across gender categories to get 7 age brackets
 elec_totals <- if (ncol(source_matrix_vga) == n_ages) {
   colSums(source_matrix_vga)
 } else {
@@ -306,7 +345,7 @@ p <- ggplot(pyramid_df, aes(x = pct, y = bracket, fill = source)) +
   geom_col(position = "dodge", alpha = 0.85) +
   scale_fill_manual(values = c("#4575b4", "#d73027")) +
   labs(title = "Census Population vs. Registered Voters by Age",
-       subtitle = "Varginha (MG) \u2014 2010 Census vs. 2022 Election",
+       subtitle = "Varginha (MG) \u2014 2022 Census vs. 2022 Election",
        x = "% of group total", y = "Age bracket", fill = "") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
@@ -429,27 +468,30 @@ if (length(cand_13_col) > 0 && length(cand_22_col) > 0) {
 }
 
 # 3.14: Scatter plot — interpolated vs census demographics
+# Aggregate 28 columns to 7 age brackets
 fitted_demo <- W_vga %*% source_matrix_vga
-bracket1 <- calib_cols_vga$tracts[1]
+fitted_agg <- aggregate_to_age(fitted_demo, calib_cols_vga$tracts)
+pop_agg <- aggregate_to_age(pop_matrix_vga, calib_cols_vga$tracts)
+bracket1_label <- colnames(fitted_agg)[1]
 scatter_df <- data.frame(
-  census = pop_matrix_vga[, 1],
-  interpolated = fitted_demo[, 1]
+  census = pop_agg[, 1],
+  interpolated = fitted_agg[, 1]
 )
 r2 <- cor(scatter_df$census, scatter_df$interpolated)^2
 p <- ggplot(scatter_df, aes(x = census, y = interpolated)) +
   geom_point(alpha = 0.6, color = "#4575b4") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
   labs(title = "Interpolated vs. Census Demographics",
-       subtitle = sprintf("Varginha — %s (R² = %.4f)", bracket1, r2),
+       subtitle = sprintf("Varginha — Age %s (R\u00b2 = %.4f)", bracket1_label, r2),
        x = "Census population", y = "Interpolated value") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 save_fig(p, "interp-scatter-calib.png", width = 6, height = 6)
 
-# 3.15: Residuals boxplot
-resid_vga <- fitted_demo - pop_matrix_vga
+# 3.15: Residuals boxplot (aggregated to 7 age brackets)
+resid_agg <- fitted_agg - pop_agg
 resid_long <- tidyr::pivot_longer(
-  as.data.frame(resid_vga),
+  as.data.frame(resid_agg),
   everything(), names_to = "bracket", values_to = "residual"
 )
 p <- ggplot(resid_long, aes(x = bracket, y = residual)) +
@@ -581,11 +623,12 @@ p <- ggplot(data.frame(alpha = coef(result_nit)), aes(x = alpha)) +
   theme(plot.title = element_text(face = "bold"))
 save_fig(p, "wr-nit-alpha-hist.png", width = 7, height = 5)
 
-# Residuals boxplot
+# Residuals boxplot (aggregated to 7 age brackets)
 resid_nit <- residuals(result_nit)
 if (!is.null(resid_nit)) {
+  resid_nit_agg <- aggregate_to_age(resid_nit, colnames(resid_nit))
   resid_long_nit <- tidyr::pivot_longer(
-    as.data.frame(resid_nit),
+    as.data.frame(resid_nit_agg),
     everything(), names_to = "bracket", values_to = "residual"
   )
   p <- ggplot(resid_long_nit, aes(x = bracket, y = residual)) +
@@ -973,20 +1016,24 @@ tryCatch({
     )
   save_fig(p, "voronoi-palmas-map.png")
 
-  # Scatter: predicted vs observed, both methods
-  brackets <- calib_pal$tracts
+  # Scatter: predicted vs observed, both methods (aggregated to 7 age brackets)
+  fitted_pal_agg <- aggregate_to_age(fitted_pal, calib_pal$tracts)
+  pop_pal_agg <- aggregate_to_age(pop_mat_pal, calib_pal$tracts)
+  voronoi_pal_agg <- aggregate_to_age(voronoi_fitted, calib_pal$tracts)
+  age_labels_pal <- colnames(fitted_pal_agg)
+
   scatter_list <- list()
-  for (k in seq_along(brackets)) {
+  for (k in seq_along(age_labels_pal)) {
     scatter_list[[length(scatter_list) + 1]] <- data.frame(
-      observed = pop_mat_pal[, k],
-      predicted = fitted_pal[, k],
-      bracket = brackets[k],
+      observed = pop_pal_agg[, k],
+      predicted = fitted_pal_agg[, k],
+      bracket = age_labels_pal[k],
       method = "Sinkhorn IDW"
     )
     scatter_list[[length(scatter_list) + 1]] <- data.frame(
-      observed = pop_mat_pal[, k],
-      predicted = voronoi_fitted[, k],
-      bracket = brackets[k],
+      observed = pop_pal_agg[, k],
+      predicted = voronoi_pal_agg[, k],
+      bracket = age_labels_pal[k],
       method = "Voronoi (nearest)"
     )
   }
@@ -1020,17 +1067,17 @@ tryCatch({
   save_fig(p, "voronoi-vs-sinkhorn-scatter.png",
            width = 10, height = 5)
 
-  # Residual boxplot by bracket
+  # Residual boxplot by bracket (aggregated to 7 age brackets)
   resid_list <- list()
-  for (k in seq_along(brackets)) {
+  for (k in seq_along(age_labels_pal)) {
     resid_list[[length(resid_list) + 1]] <- data.frame(
-      residual = fitted_pal[, k] - pop_mat_pal[, k],
-      bracket = brackets[k],
+      residual = fitted_pal_agg[, k] - pop_pal_agg[, k],
+      bracket = age_labels_pal[k],
       method = "Sinkhorn IDW"
     )
     resid_list[[length(resid_list) + 1]] <- data.frame(
-      residual = voronoi_fitted[, k] - pop_mat_pal[, k],
-      bracket = brackets[k],
+      residual = voronoi_pal_agg[, k] - pop_pal_agg[, k],
+      bracket = age_labels_pal[k],
       method = "Voronoi (nearest)"
     )
   }
@@ -1246,17 +1293,25 @@ tryCatch({
       tracts_rj_result[cop_mask2, ])
 
     calib_tract_cols <- calib_rj$tracts
-    roc_census <- colSums(
+    # Aggregate 28-column sums to 7 age brackets
+    roc_census_raw <- colSums(
       roc_result_df[, calib_tract_cols, drop = FALSE])
-    cop_census <- colSums(
+    cop_census_raw <- colSums(
       cop_result_df[, calib_tract_cols, drop = FALSE])
-    roc_interp <- colSums(
+    roc_interp_raw <- colSums(
       fitted_rj[roc_mask2, , drop = FALSE])
-    cop_interp <- colSums(
+    cop_interp_raw <- colSums(
       fitted_rj[cop_mask2, , drop = FALSE])
 
-    bracket_labels_rj <- gsub("pop_", "", calib_tract_cols)
-    bracket_labels_rj <- gsub("_", "-", bracket_labels_rj)
+    roc_census <- aggregate_sums_to_age(roc_census_raw,
+                                         calib_tract_cols)
+    cop_census <- aggregate_sums_to_age(cop_census_raw,
+                                         calib_tract_cols)
+    roc_interp <- aggregate_sums_to_age(roc_interp_raw,
+                                         calib_tract_cols)
+    cop_interp <- aggregate_sums_to_age(cop_interp_raw,
+                                         calib_tract_cols)
+    bracket_labels_rj <- names(roc_census)
 
     # Convert to PERCENTAGES within each neighborhood x source group
     roc_census_pct <- roc_census / sum(roc_census) * 100
@@ -1270,17 +1325,17 @@ tryCatch({
               cop_census_pct, cop_interp_pct),
       source = rep(c("Census", "Interpolated",
                       "Census", "Interpolated"),
-                    each = length(calib_tract_cols)),
+                    each = length(bracket_labels_rj)),
       neighborhood = rep(
         c("Rocinha", "Rocinha",
           "Copacabana", "Copacabana"),
-        each = length(calib_tract_cols)
+        each = length(bracket_labels_rj)
       )
     )
     # Younger at bottom: no rev()
     recovery_df$bracket <- factor(
       recovery_df$bracket,
-      levels = unique(recovery_df$bracket)
+      levels = bracket_labels_rj
     )
 
     # Same x-axis limits for both neighborhoods
@@ -2211,19 +2266,24 @@ tryCatch({
   save_fig(p, "voronoi-sse-ratio-cities.png",
            width = 10, height = 6)
 
-  # Combined scatter plot
+  # Combined scatter plot (aggregated to 7 age brackets)
   all_scatter <- list()
-  brackets_pal <- palmas_data$calib_cols$tracts
-  for (k in seq_along(brackets_pal)) {
+  pal_cols <- palmas_data$calib_cols$tracts
+  pop_pal_a <- aggregate_to_age(palmas_data$pop_matrix, pal_cols)
+  sk_pal_a <- aggregate_to_age(palmas_data$fitted_sinkhorn, pal_cols)
+  vor_pal_a <- aggregate_to_age(palmas_data$fitted_voronoi, pal_cols)
+  age_labs <- colnames(pop_pal_a)
+
+  for (k in seq_along(age_labs)) {
     all_scatter[[length(all_scatter) + 1]] <- data.frame(
-      observed = palmas_data$pop_matrix[, k],
-      predicted = palmas_data$fitted_sinkhorn[, k],
-      bracket = brackets_pal[k],
+      observed = pop_pal_a[, k],
+      predicted = sk_pal_a[, k],
+      bracket = age_labs[k],
       method = "Sinkhorn", city = "Palmas (TO)")
     all_scatter[[length(all_scatter) + 1]] <- data.frame(
-      observed = palmas_data$pop_matrix[, k],
-      predicted = palmas_data$fitted_voronoi[, k],
-      bracket = brackets_pal[k],
+      observed = pop_pal_a[, k],
+      predicted = vor_pal_a[, k],
+      bracket = age_labs[k],
       method = "Voronoi", city = "Palmas (TO)")
   }
   for (nm in names(voronoi_results)) {
@@ -2231,17 +2291,21 @@ tryCatch({
     uf <- voronoi_cities[[which(
       sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
     city_label <- sprintf("%s (%s)", nm, uf)
-    brackets <- r$calib_cols$tracts
-    for (k in seq_along(brackets)) {
+    r_cols <- r$calib_cols$tracts
+    r_pop_a <- aggregate_to_age(r$pop_matrix, r_cols)
+    r_sk_a <- aggregate_to_age(r$fitted_sinkhorn, r_cols)
+    r_vor_a <- aggregate_to_age(r$fitted_voronoi, r_cols)
+    r_labs <- colnames(r_pop_a)
+    for (k in seq_along(r_labs)) {
       all_scatter[[length(all_scatter) + 1]] <- data.frame(
-        observed = r$pop_matrix[, k],
-        predicted = r$fitted_sinkhorn[, k],
-        bracket = brackets[k],
+        observed = r_pop_a[, k],
+        predicted = r_sk_a[, k],
+        bracket = r_labs[k],
         method = "Sinkhorn", city = city_label)
       all_scatter[[length(all_scatter) + 1]] <- data.frame(
-        observed = r$pop_matrix[, k],
-        predicted = r$fitted_voronoi[, k],
-        bracket = brackets[k],
+        observed = r_pop_a[, k],
+        predicted = r_vor_a[, k],
+        bracket = r_labs[k],
         method = "Voronoi", city = city_label)
     }
   }
@@ -2273,18 +2337,16 @@ tryCatch({
   save_fig(p, "voronoi-vs-sinkhorn-scatter.png",
            width = 10, height = 12)
 
-  # Combined residual boxplot
+  # Combined residual boxplot (aggregated to 7 age brackets)
   all_resid <- list()
-  for (k in seq_along(brackets_pal)) {
+  for (k in seq_along(age_labs)) {
     all_resid[[length(all_resid) + 1]] <- data.frame(
-      residual = palmas_data$fitted_sinkhorn[, k] -
-        palmas_data$pop_matrix[, k],
-      bracket = brackets_pal[k],
+      residual = sk_pal_a[, k] - pop_pal_a[, k],
+      bracket = age_labs[k],
       method = "Sinkhorn", city = "Palmas (TO)")
     all_resid[[length(all_resid) + 1]] <- data.frame(
-      residual = palmas_data$fitted_voronoi[, k] -
-        palmas_data$pop_matrix[, k],
-      bracket = brackets_pal[k],
+      residual = vor_pal_a[, k] - pop_pal_a[, k],
+      bracket = age_labs[k],
       method = "Voronoi", city = "Palmas (TO)")
   }
   for (nm in names(voronoi_results)) {
@@ -2292,15 +2354,19 @@ tryCatch({
     uf <- voronoi_cities[[which(
       sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
     city_label <- sprintf("%s (%s)", nm, uf)
-    brackets <- r$calib_cols$tracts
-    for (k in seq_along(brackets)) {
+    r_cols <- r$calib_cols$tracts
+    r_pop_a <- aggregate_to_age(r$pop_matrix, r_cols)
+    r_sk_a <- aggregate_to_age(r$fitted_sinkhorn, r_cols)
+    r_vor_a <- aggregate_to_age(r$fitted_voronoi, r_cols)
+    r_labs <- colnames(r_pop_a)
+    for (k in seq_along(r_labs)) {
       all_resid[[length(all_resid) + 1]] <- data.frame(
-        residual = r$fitted_sinkhorn[, k] - r$pop_matrix[, k],
-        bracket = brackets[k],
+        residual = r_sk_a[, k] - r_pop_a[, k],
+        bracket = r_labs[k],
         method = "Sinkhorn", city = city_label)
       all_resid[[length(all_resid) + 1]] <- data.frame(
-        residual = r$fitted_voronoi[, k] - r$pop_matrix[, k],
-        bracket = brackets[k],
+        residual = r_vor_a[, k] - r_pop_a[, k],
+        bracket = r_labs[k],
         method = "Voronoi", city = city_label)
     }
   }

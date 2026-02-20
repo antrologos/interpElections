@@ -141,9 +141,9 @@ polling section). Contains the following column groups:
 \item \code{votantes_18_20}, ..., \code{votantes_65_69}: Registered voters per
 age bracket at this location (used as calibration data).
 \item \verb{vot_hom_alf_*}, \verb{vot_hom_nalf_*}, \verb{vot_mul_alf_*},
-\verb{vot_mul_nalf_*}: Cross-tabulated voters by gender, literacy,
-and age bracket (used for "full" calibration mode). 48 columns
-total (12 age groups x 4 gender-literacy categories).
+\verb{vot_mul_nalf_*}: Cross-tabulated voters by gender and age
+bracket (used for "full" calibration mode). Literate and
+illiterate counts are summed within each gender × age group.
 }
 
 \strong{Conditional on \code{what}:}

@@ -372,9 +372,10 @@ sinkhorn_objective <- function(alpha, time_matrix, pop_matrix, source_matrix,
 
   # Final aggregate Sinkhorn
   col_targets <- rep(1, m)
-  W <- sinkhorn_balance(W_total, row_targets = row_targets,
+  W <- suppressWarnings(sinkhorn_balance(W_total,
+                         row_targets = row_targets,
                          col_targets = col_targets,
-                         max_iter = sk_iter, tol = 1e-10)
+                         max_iter = sk_iter, tol = 1e-10))
 
   v_hat <- W %*% source_matrix
   sum((v_hat - pop_matrix)^2)
