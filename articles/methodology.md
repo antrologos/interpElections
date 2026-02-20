@@ -37,6 +37,8 @@ demographics. In Brazilian cities, the age composition of a neighborhood
 is strongly correlated with its socioeconomic profile. Consider two
 neighborhoods in Rio de Janeiro:
 
+![](figures/rocinha-copacabana-map.png)
+
 ![](figures/age-pyramids-rocinha-copacabana.png)
 
 **Rocinha**, one of Brazil’s largest favelas, has a young population:
@@ -46,6 +48,15 @@ opposite pattern: a narrower base of young adults and a large proportion
 of residents over 50. This difference reflects fertility rates, life
 expectancy, and migration patterns that are tightly linked to income,
 education, and living conditions.
+
+> **Census tract codes.** Neighborhoods are defined by aggregating IBGE
+> 2022 census tracts whose centroids fall within the 2010 neighborhood
+> boundaries (via
+> [`geobr::read_neighborhood()`](https://ipeagit.github.io/geobr/reference/read_neighborhood.html)).
+> Rocinha comprises 115 tracts (codes starting with `330455705330`,
+> subdistrict 0533); Copacabana comprises 420 tracts (codes starting
+> with `330455705100`, subdistrict 0510). Tracts shown in green on the
+> map have zero population and are excluded from the interpolation.
 
 Because these age signatures differ systematically across neighborhoods,
 they carry information about socioeconomic composition — and, by
@@ -1778,7 +1789,7 @@ GPU support: Windows (CUDA), macOS (MPS for Apple Silicon), Linux
 **Java + r5r** (required for travel time computation):
 
 ``` r
-setup_java()     # downloads and installs Java 21+
+setup_java()     # downloads and installs Java 21
 check_r5r()      # checks Java version and r5r readiness
 setup_osmium()   # installs osmium-tool for OSM clipping
 ```

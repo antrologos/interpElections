@@ -266,7 +266,10 @@ Default: 1.</p></dd>
 <dd><p>Character vector or NULL. Names of heavy intermediate
 objects to include in the result. Default NULL (lightweight).
 Options: <code>"weights"</code>, <code>"time_matrix"</code>, <code>"sources_sf"</code>,
-<code>"pop_raster"</code>, <code>"rep_points"</code>. See <code><a href="interpolate_election.html">interpolate_election()</a></code> for details.</p></dd>
+<code>"pop_raster"</code>, <code>"rep_points"</code>, <code>"neighborhoods"</code>.
+The first five are passed to <code><a href="interpolate_election.html">interpolate_election()</a></code>; see its docs.
+<code>"neighborhoods"</code> downloads IBGE 2010 neighborhood boundaries via
+<code><a href="https://ipeagit.github.io/geobr/reference/read_neighborhood.html" class="external-link">geobr::read_neighborhood()</a></code> and stores them in <code>$neighborhoods</code>.</p></dd>
 
 
 <dt id="arg-alpha">alpha<a class="anchor" aria-label="anchor" href="#arg-alpha"></a></dt>
@@ -363,6 +366,11 @@ pre-supplied).</p></dd>
 <dt>sources_sf</dt>
 <dd><p><code>sf</code> point object or NULL. Present only when
 <code>keep</code> includes <code>"sources_sf"</code>.</p></dd>
+
+<dt>neighborhoods</dt>
+<dd><p><code>sf</code> polygon object or NULL. IBGE 2010 neighborhood
+boundaries for the municipality. Present only when <code>keep</code> includes
+<code>"neighborhoods"</code>.</p></dd>
 
 <dt>code_muni</dt>
 <dd><p>IBGE municipality code.</p></dd>

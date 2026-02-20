@@ -247,9 +247,12 @@ interpolate_election_br(
   Character vector or NULL. Names of heavy intermediate objects to
   include in the result. Default NULL (lightweight). Options:
   `"weights"`, `"time_matrix"`, `"sources_sf"`, `"pop_raster"`,
-  `"rep_points"`. See
-  [`interpolate_election()`](https://antrologos.github.io/interpElections/reference/interpolate_election.md)
-  for details.
+  `"rep_points"`, `"neighborhoods"`. The first five are passed to
+  [`interpolate_election()`](https://antrologos.github.io/interpElections/reference/interpolate_election.md);
+  see its docs. `"neighborhoods"` downloads IBGE 2010 neighborhood
+  boundaries via
+  [`geobr::read_neighborhood()`](https://ipeagit.github.io/geobr/reference/read_neighborhood.html)
+  and stores them in `$neighborhoods`.
 
 - alpha:
 
@@ -364,6 +367,11 @@ A list of class `"interpElections_result"` with components:
 
   `sf` point object or NULL. Present only when `keep` includes
   `"sources_sf"`.
+
+- neighborhoods:
+
+  `sf` polygon object or NULL. IBGE 2010 neighborhood boundaries for the
+  municipality. Present only when `keep` includes `"neighborhoods"`.
 
 - code_muni:
 

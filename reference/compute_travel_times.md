@@ -104,7 +104,8 @@ are filled with `fill_missing`.
 
 ## Details
 
-Requires the `r5r` and `sf` packages. r5r requires Java/JDK 21+. Use
+Requires the `r5r` and `sf` packages. r5r requires exactly Java/JDK 21.
+Use
 [`download_r5r_data()`](https://antrologos.github.io/interpElections/reference/download_r5r_data.md)
 to obtain the OSM data needed for `network_path`.
 

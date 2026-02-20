@@ -13,7 +13,7 @@ totals and population proportions are conserved.
 
 ``` r
 setup_torch()     # GPU optimization (CUDA, MPS, or CPU fallback)
-setup_java()      # Java 21+ for r5r travel-time routing
+setup_java()      # Java 21 for r5r travel-time routing
 setup_osmium()    # OSM data clipping (recommended)
 ```
 

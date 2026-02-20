@@ -108,6 +108,7 @@ station.</p>
 just demographics. In Brazilian cities, the age composition of a
 neighborhood is strongly correlated with its socioeconomic profile.
 Consider two neighborhoods in Rio de Janeiro:</p>
+<p><img src="figures/rocinha-copacabana-map.png" class="r-plt" alt="" width="100%"></p>
 <p><img src="figures/age-pyramids-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
 <p><strong>Rocinha</strong>, one of Brazil’s largest favelas, has a
 young population: large cohorts in the 18–29 age range, tapering off
@@ -116,6 +117,16 @@ neighborhoods, shows the opposite pattern: a narrower base of young
 adults and a large proportion of residents over 50. This difference
 reflects fertility rates, life expectancy, and migration patterns that
 are tightly linked to income, education, and living conditions.</p>
+<blockquote>
+<p><strong>Census tract codes.</strong> Neighborhoods are defined by
+aggregating IBGE 2022 census tracts whose centroids fall within the 2010
+neighborhood boundaries (via <code><a href="https://ipeagit.github.io/geobr/reference/read_neighborhood.html" class="external-link">geobr::read_neighborhood()</a></code>).
+Rocinha comprises 115 tracts (codes starting with
+<code>330455705330</code>, subdistrict 0533); Copacabana comprises 420
+tracts (codes starting with <code>330455705100</code>, subdistrict
+0510). Tracts shown in green on the map have zero population and are
+excluded from the interpolation.</p>
+</blockquote>
 <p>Because these age signatures differ systematically across
 neighborhoods, they carry information about socioeconomic composition —
 and, by extension, about voting behavior. The method we describe
@@ -2232,7 +2243,7 @@ to the user). Standalone R scripts run directly.</p>
 <p><strong>Java + r5r</strong> (required for travel time
 computation):</p>
 <div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/setup_java.html">setup_java</a></span><span class="op">(</span><span class="op">)</span>     <span class="co"># downloads and installs Java 21+</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/setup_java.html">setup_java</a></span><span class="op">(</span><span class="op">)</span>     <span class="co"># downloads and installs Java 21</span></span>
 <span><span class="fu"><a href="../reference/check_r5r.html">check_r5r</a></span><span class="op">(</span><span class="op">)</span>      <span class="co"># checks Java version and r5r readiness</span></span>
 <span><span class="fu"><a href="../reference/setup_osmium.html">setup_osmium</a></span><span class="op">(</span><span class="op">)</span>   <span class="co"># installs osmium-tool for OSM clipping</span></span></code></pre></div>
 <p>Memory: <code>options(java.parameters = "-Xmx8g")</code> before
