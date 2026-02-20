@@ -20,40 +20,40 @@ URL: https://antrologos.github.io/interpElections/,
     https://github.com/antrologos/interpElections
 BugReports: https://github.com/antrologos/interpElections/issues
 Encoding: UTF-8
-SystemRequirements: Java (>= 21) for r5r travel-time computation
+SystemRequirements: Java (== 21) for r5r travel-time computation
 Depends: R (>= 4.1.0)
 Imports:
     stats,
     utils,
-    curl
+    curl (>= 4.3)
 Suggests:
-    torch,
-    callr,
-    pkgload,
-    sf,
-    r5r,
-    osmextract,
-    elevatr,
-    terra,
-    geobr,
-    censobr,
-    dplyr,
-    tidyr,
-    stringr,
-    arrow,
-    data.table,
-    withr,
-    ggplot2,
-    mapview,
-    leafsync,
-    leafpop,
-    classInt,
-    viridisLite,
-    ggspatial,
+    torch (>= 0.12.0),
+    callr (>= 3.5.0),
+    pkgload (>= 1.3.0),
+    sf (>= 1.0.0),
+    r5r (>= 2.0),
+    osmextract (>= 0.5.0),
+    elevatr (>= 0.4.5),
+    terra (>= 1.7.0),
+    geobr (>= 1.7.0),
+    censobr (>= 0.5.0),
+    dplyr (>= 1.1.0),
+    tidyr (>= 1.1.0),
+    stringr (>= 1.4.0),
+    arrow (>= 10.0.0),
+    data.table (>= 1.14.0),
+    withr (>= 2.5.0),
+    ggplot2 (>= 3.4.0),
+    mapview (>= 2.11.0),
+    leafsync (>= 0.1.0),
+    leafpop (>= 0.1.0),
+    classInt (>= 0.4.0),
+    viridisLite (>= 0.4.0),
+    ggspatial (>= 1.1.0),
     testthat (>= 3.0.0),
-    knitr,
-    rmarkdown,
-    numDeriv
+    knitr (>= 1.40),
+    rmarkdown (>= 2.20),
+    numDeriv (>= 2016.8.1.1)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 LazyData: true

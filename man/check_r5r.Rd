@@ -12,7 +12,7 @@ Invisibly, a list with components:
 \item{r5r_installed}{Logical.}
 \item{java_found}{Logical.}
 \item{java_version}{Integer major version, or \code{NA}.}
-\item{java_sufficient}{Logical. TRUE if version >= 21.}
+\item{java_sufficient}{Logical. TRUE if version is exactly 21.}
 \item{java_memory}{Character or NULL. Configured JVM max heap (e.g. \code{"4g"}).}
 \item{system_ram}{Character or NULL. Total system RAM (e.g. \code{"16 GB"}).}
 \item{ready}{Logical. TRUE if all checks pass.}
@@ -20,7 +20,7 @@ Invisibly, a list with components:
 }
 \description{
 Runs a diagnostic check for the r5r dependency chain: whether the \code{r5r}
-package is installed and whether a suitable Java/JDK (version 21+) is
+package is installed and whether a suitable Java/JDK (version 21) is
 available on the system.
 }
 \examples{

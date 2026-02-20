@@ -1,0 +1,806 @@
+# ---- Internal helpers for setup_java() --------------------------------------
+
+#' Discover all Java installations on the system
+#'
+#' Scans the system for Java installations using platform-specific methods.
+#' Results are deduplicated by normalized path.
+#'
+#' @param verbose Logical. Print discovery progress.
+#' @return A data.frame with columns: `path`, `version` (integer),
+#'   `vendor` (character), `source` (character, how the installation was found).
+#' @noRd
+.discover_java_installations <- function(verbose = TRUE) {
+  candidates <- list()
+  platform <- .detect_platform()
+  java_exe <- if (platform$os == "windows") "java.exe" else "java"
+
+  # Helper: add candidate with source tag
+  add_candidate <- function(path, source) {
+    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+    if (dir.exists(path) && file.exists(file.path(path, "bin", java_exe))) {
+      candidates[[length(candidates) + 1L]] <<- list(path = path, source = source)
+    }
+  }
+
+  # ---- JAVA_HOME env var (all platforms) ----
+  tryCatch({
+    java_home <- Sys.getenv("JAVA_HOME", "")
+    if (nzchar(java_home)) add_candidate(java_home, "JAVA_HOME env var")
+  }, error = function(e) NULL)
+
+  # ---- Sys.which("java") (all platforms) ----
+  tryCatch({
+    java_path <- Sys.which("java")
+    if (nzchar(java_path)) {
+      resolved <- normalizePath(java_path, winslash = "/", mustWork = FALSE)
+      jdk_home <- dirname(dirname(resolved))
+      add_candidate(jdk_home, "PATH (Sys.which)")
+    }
+  }, error = function(e) NULL)
+
+  if (platform$os == "windows") {
+    # ---- Windows: Registry via PowerShell ----
+    reg_paths <- c(
+      "HKLM:\\\\SOFTWARE\\\\JavaSoft\\\\JDK",
+      "HKLM:\\\\SOFTWARE\\\\Eclipse Adoptium\\\\JDK",
+      "HKLM:\\\\SOFTWARE\\\\Microsoft\\\\JDK",
+      "HKLM:\\\\SOFTWARE\\\\Azul Systems\\\\Zulu",
+      "HKLM:\\\\SOFTWARE\\\\AdoptOpenJDK\\\\JDK"
+    )
+    for (rp in reg_paths) {
+      tryCatch({
+        ps_cmd <- paste0(
+          'Get-ChildItem "', rp,
+          '" -ErrorAction SilentlyContinue | ',
+          'ForEach-Object { (Get-ItemProperty $_.PSPath).Path }'
+        )
+        out <- system2("powershell", c("-NoProfile", "-Command", ps_cmd),
+                       stdout = TRUE, stderr = TRUE)
+        out <- trimws(out)
+        out <- out[nzchar(out)]
+        for (p in out) add_candidate(p, paste0("Registry: ", rp))
+      }, error = function(e) NULL)
+    }
+
+    # ---- Windows: Filesystem scan ----
+    fs_dirs <- c(
+      "C:/Program Files/Java",
+      "C:/Program Files/Eclipse Adoptium",
+      "C:/Program Files/Microsoft",
+      "C:/Program Files/Zulu"
+    )
+    for (d in fs_dirs) {
+      tryCatch({
+        if (dir.exists(d)) {
+          subdirs <- list.dirs(d, recursive = FALSE, full.names = TRUE)
+          jdk_dirs <- grep("jdk", subdirs, value = TRUE, ignore.case = TRUE)
+          for (p in jdk_dirs) add_candidate(p, paste0("Filesystem: ", d))
+        }
+      }, error = function(e) NULL)
+    }
+  } else if (platform$os == "mac") {
+    # ---- macOS: /usr/libexec/java_home -V ----
+    tryCatch({
+      out <- system2("/usr/libexec/java_home", "-V",
+                     stdout = TRUE, stderr = TRUE)
+      for (line in out) {
+        m <- regmatches(line, regexpr("/Library/Java/[^ \t]+", line))
+        if (length(m) > 0) add_candidate(m, "/usr/libexec/java_home")
+      }
+    }, error = function(e) NULL)
+
+    # ---- macOS: /Library/Java/JavaVirtualMachines ----
+    tryCatch({
+      jvm_dir <- "/Library/Java/JavaVirtualMachines"
+      if (dir.exists(jvm_dir)) {
+        subdirs <- list.dirs(jvm_dir, recursive = FALSE, full.names = TRUE)
+        for (d in subdirs) {
+          add_candidate(file.path(d, "Contents", "Home"),
+                        "JavaVirtualMachines")
+        }
+      }
+    }, error = function(e) NULL)
+
+    # ---- macOS: Homebrew ----
+    tryCatch({
+      brew_prefix <- system2("brew", "--prefix",
+                             stdout = TRUE, stderr = TRUE)
+      if (length(brew_prefix) > 0) {
+        opt_dir <- file.path(trimws(brew_prefix[1]), "opt")
+        if (dir.exists(opt_dir)) {
+          subdirs <- list.dirs(opt_dir, recursive = FALSE, full.names = TRUE)
+          jdk_dirs <- grep("openjdk", subdirs, value = TRUE, ignore.case = TRUE)
+          for (p in jdk_dirs) {
+            libexec <- file.path(p, "libexec", "openjdk.jdk",
+                                 "Contents", "Home")
+            if (dir.exists(libexec)) {
+              add_candidate(libexec, "Homebrew")
+            } else {
+              add_candidate(p, "Homebrew")
+            }
+          }
+        }
+      }
+    }, error = function(e) NULL)
+  } else {
+    # ---- Linux: update-alternatives ----
+    tryCatch({
+      out <- system2("update-alternatives", c("--list", "java"),
+                     stdout = TRUE, stderr = TRUE)
+      for (p in out) {
+        p <- trimws(p)
+        if (nzchar(p)) add_candidate(dirname(dirname(p)),
+                                      "update-alternatives")
+      }
+    }, error = function(e) NULL)
+
+    # ---- Linux: /usr/lib/jvm ----
+    tryCatch({
+      jvm_dir <- "/usr/lib/jvm"
+      if (dir.exists(jvm_dir)) {
+        subdirs <- list.dirs(jvm_dir, recursive = FALSE, full.names = TRUE)
+        jdk_dirs <- grep("j(dk|re|ava)", subdirs,
+                         value = TRUE, ignore.case = TRUE)
+        for (p in jdk_dirs) add_candidate(p, "/usr/lib/jvm")
+      }
+    }, error = function(e) NULL)
+  }
+
+  # ---- interpElections managed installation ----
+  tryCatch({
+    managed_dir <- file.path(tools::R_user_dir("interpElections", "data"),
+                             "java", "jdk-21")
+    add_candidate(managed_dir, "interpElections managed")
+  }, error = function(e) NULL)
+
+  # ---- Deduplicate by normalized path ----
+  if (length(candidates) == 0L) {
+    return(data.frame(
+      path    = character(0),
+      version = integer(0),
+      vendor  = character(0),
+      source  = character(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  paths   <- vapply(candidates, `[[`, character(1), "path")
+  sources <- vapply(candidates, `[[`, character(1), "source")
+  norm_paths <- normalizePath(paths, winslash = "/", mustWork = FALSE)
+
+  keep <- !duplicated(tolower(norm_paths))
+  paths      <- paths[keep]
+  sources    <- sources[keep]
+  norm_paths <- norm_paths[keep]
+
+  # ---- Verify each by running java -version ----
+  n <- length(paths)
+  versions <- integer(n)
+  vendors  <- character(n)
+  valid    <- logical(n)
+
+  for (i in seq_len(n)) {
+    java_bin <- file.path(paths[i], "bin", java_exe)
+    tryCatch({
+      out <- system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+      ver <- .parse_java_version(out)
+      versions[i] <- if (is.na(ver)) 0L else ver
+
+      txt <- paste(out, collapse = " ")
+      vendors[i] <- if (grepl("Temurin|Adoptium|AdoptOpenJDK", txt,
+                              ignore.case = TRUE)) {
+        "Adoptium/Temurin"
+      } else if (grepl("Oracle|Java\\(TM\\)", txt, ignore.case = TRUE)) {
+        "Oracle"
+      } else if (grepl("Microsoft", txt, ignore.case = TRUE)) {
+        "Microsoft"
+      } else if (grepl("Zulu|Azul", txt, ignore.case = TRUE)) {
+        "Azul Zulu"
+      } else if (grepl("OpenJDK|openjdk", txt, ignore.case = TRUE)) {
+        "OpenJDK"
+      } else {
+        "Unknown"
+      }
+      valid[i] <- versions[i] > 0L
+    }, error = function(e) {
+      versions[i] <<- 0L
+      vendors[i]  <<- "Unknown"
+      valid[i]    <<- FALSE
+    })
+  }
+
+  df <- data.frame(
+    path    = norm_paths[valid],
+    version = versions[valid],
+    vendor  = vendors[valid],
+    source  = sources[valid],
+    stringsAsFactors = FALSE
+  )
+
+  if (verbose && nrow(df) > 0L) {
+    message("Found ", nrow(df), " Java installation(s):")
+    for (i in seq_len(nrow(df))) {
+      message("  Java ", df$version[i], " (", df$vendor[i], ") at ",
+              df$path[i], " [", df$source[i], "]")
+    }
+  } else if (verbose) {
+    message("No Java installations found on system.")
+  }
+
+  df
+}
+
+
+#' Check for Java version conflicts
+#'
+#' Pure filtering: splits installations into Java 21 vs others.
+#'
+#' @param installations data.frame from [.discover_java_installations()].
+#' @return List with `java21` (data.frame), `others` (data.frame),
+#'   `has_conflict` (logical).
+#' @noRd
+.check_java_conflicts <- function(installations) {
+  java21 <- installations[installations$version == 21L, , drop = FALSE]
+  others <- installations[installations$version != 21L, , drop = FALSE]
+  list(java21 = java21, others = others, has_conflict = nrow(others) > 0L)
+}
+
+
+#' Advise user about conflicting Java installations
+#'
+#' Warns about non-21 versions and, in interactive mode, offers removal
+#' instructions. Never auto-removes anything.
+#'
+#' @param conflicts List from [.check_java_conflicts()].
+#' @param verbose Logical.
+#' @return invisible(NULL)
+#' @noRd
+.advise_java_conflicts <- function(conflicts, verbose = TRUE) {
+  if (!conflicts$has_conflict) return(invisible(NULL))
+
+  platform <- .detect_platform()
+  others   <- conflicts$others
+
+  warning(
+    "Found ", nrow(others),
+    " non-Java-21 installation(s) that may cause conflicts:",
+    call. = FALSE, immediate. = TRUE
+  )
+
+  for (i in seq_len(nrow(others))) {
+    message("  Java ", others$version[i], " (", others$vendor[i], ") at ",
+            others$path[i])
+  }
+
+ if (interactive()) {
+    choice <- utils::menu(
+      c("Show removal instructions", "Skip (continue anyway)"),
+      title = "\nWould you like instructions to remove conflicting versions?"
+    )
+    if (choice != 1L) return(invisible(NULL))
+  } else {
+    message("  Run setup_java() interactively for removal instructions.")
+    return(invisible(NULL))
+  }
+
+  message("\nRemoval instructions:")
+  for (i in seq_len(nrow(others))) {
+    message("\n  Java ", others$version[i], " at ", others$path[i], ":")
+    if (platform$os == "windows") {
+      message("    Uninstall via Settings > Apps & Features, or use:")
+      message('    powershell "Get-Package *java* | Uninstall-Package"')
+    } else if (platform$os == "mac") {
+      if (grepl("Homebrew", others$source[i])) {
+        message("    brew uninstall java")
+      } else {
+        jvm_folder <- basename(dirname(dirname(others$path[i])))
+        message("    sudo rm -rf /Library/Java/JavaVirtualMachines/",
+                jvm_folder, "/")
+      }
+    } else {
+      message("    sudo apt remove <package-name>  # Debian/Ubuntu")
+      message("    sudo dnf remove <package-name>  # Fedora/RHEL")
+    }
+  }
+  message("")
+
+  invisible(NULL)
+}
+
+
+#' Write or update a variable in a shell config file (idempotent)
+#'
+#' Reads the file, looks for an existing `export VAR_NAME=` line, and either
+#' updates it or appends a new line. Same read-modify-write pattern as
+#' [.persist_renviron_var()].
+#'
+#' @param file_path Path to the shell config file.
+#' @param var_name Variable name.
+#' @param value Value to set.
+#' @return invisible(NULL)
+#' @noRd
+.persist_shell_var <- function(file_path, var_name, value) {
+  new_line <- paste0('export ', var_name, '="', value, '"')
+  pattern  <- paste0("^\\s*export\\s+", var_name, "\\s*=")
+
+  if (file.exists(file_path)) {
+    lines <- readLines(file_path, warn = FALSE)
+    idx   <- grep(pattern, lines)
+
+    if (length(idx) > 0L) {
+      if (lines[idx[1]] == new_line) return(invisible(NULL))
+      lines[idx[1]] <- new_line
+      if (length(idx) > 1L) lines <- lines[-idx[-1]]
+    } else {
+      if (length(lines) > 0L && nchar(lines[length(lines)]) > 0L) {
+        lines <- c(lines, "")
+      }
+      lines <- c(lines, new_line)
+    }
+    writeLines(lines, file_path)
+  } else {
+    writeLines(new_line, file_path)
+  }
+  invisible(NULL)
+}
+
+
+#' Set an environment variable at the OS level
+#'
+#' On Windows, uses PowerShell to set the variable at User scope.
+#' On macOS/Linux, writes to the user's shell config file.
+#'
+#' @param var_name Character. Variable name.
+#' @param value Character. Value to set.
+#' @param verbose Logical.
+#' @return invisible(logical) TRUE on success.
+#' @noRd
+.persist_env_var_os <- function(var_name, value, verbose = TRUE) {
+  platform <- .detect_platform()
+
+  success <- tryCatch({
+    if (platform$os == "windows") {
+      ps_cmd <- paste0(
+        '[Environment]::SetEnvironmentVariable("', var_name,
+        '", "', value, '", "User")'
+      )
+      system2("powershell", c("-NoProfile", "-Command", ps_cmd),
+              stdout = TRUE, stderr = TRUE)
+      TRUE
+    } else {
+      shell_path <- Sys.getenv("SHELL", "/bin/bash")
+      config_file <- if (grepl("zsh", shell_path)) {
+        path.expand("~/.zshrc")
+      } else {
+        path.expand("~/.bashrc")
+      }
+
+      .persist_shell_var(config_file, var_name, value)
+
+      if (platform$os == "linux") {
+        .persist_shell_var(path.expand("~/.profile"), var_name, value)
+      }
+      TRUE
+    }
+  }, error = function(e) {
+    if (verbose) warning("Could not set ", var_name, " at OS level: ",
+                         conditionMessage(e), call. = FALSE)
+    FALSE
+  })
+
+  if (verbose && success) {
+    if (platform$os == "windows") {
+      message(var_name, " set at Windows User level.")
+    } else {
+      message(var_name, " written to shell config.")
+    }
+  }
+
+  invisible(success)
+}
+
+
+#' Prepend JDK bin/ to PATH at OS level
+#'
+#' On Windows, modifies the User PATH via PowerShell.
+#' On macOS/Linux, appends an `export PATH=` line to the shell config.
+#' Idempotent: checks whether the directory is already present before adding.
+#'
+#' @param bin_dir Character. Path to JDK's bin/ directory.
+#' @param verbose Logical.
+#' @return invisible(logical) TRUE on success.
+#' @noRd
+.persist_path_prepend_os <- function(bin_dir, verbose = TRUE) {
+  platform <- .detect_platform()
+  bin_dir  <- normalizePath(bin_dir, winslash = "/", mustWork = FALSE)
+
+  success <- tryCatch({
+    if (platform$os == "windows") {
+      ps_read <- '[Environment]::GetEnvironmentVariable("Path", "User")'
+      current <- system2("powershell", c("-NoProfile", "-Command", ps_read),
+                         stdout = TRUE, stderr = TRUE)
+      current <- paste(trimws(current), collapse = "")
+
+      bin_win <- gsub("/", "\\\\", bin_dir)
+      if (!grepl(bin_win, current, fixed = TRUE, ignore.case = TRUE)) {
+        new_path <- paste0(bin_win, ";", current)
+        ps_write <- paste0(
+          '[Environment]::SetEnvironmentVariable("Path", "',
+          new_path, '", "User")'
+        )
+        system2("powershell", c("-NoProfile", "-Command", ps_write),
+                stdout = TRUE, stderr = TRUE)
+      }
+      TRUE
+    } else {
+      shell_path <- Sys.getenv("SHELL", "/bin/bash")
+      config_file <- if (grepl("zsh", shell_path)) {
+        path.expand("~/.zshrc")
+      } else {
+        path.expand("~/.bashrc")
+      }
+
+      path_line <- paste0('export PATH="', bin_dir, ':$PATH"')
+
+      .add_line_if_absent <- function(fp, line, marker) {
+        if (file.exists(fp)) {
+          lines <- readLines(fp, warn = FALSE)
+          if (any(grepl(marker, lines, fixed = TRUE))) return()
+          if (length(lines) > 0L && nchar(lines[length(lines)]) > 0L) {
+            lines <- c(lines, "")
+          }
+          lines <- c(lines, line)
+          writeLines(lines, fp)
+        } else {
+          writeLines(line, fp)
+        }
+      }
+
+      .add_line_if_absent(config_file, path_line, bin_dir)
+      if (platform$os == "linux") {
+        .add_line_if_absent(path.expand("~/.profile"), path_line, bin_dir)
+      }
+      TRUE
+    }
+  }, error = function(e) {
+    if (verbose) warning("Could not add ", bin_dir, " to PATH: ",
+                         conditionMessage(e), call. = FALSE)
+    FALSE
+  })
+
+  if (verbose && success) {
+    message("JDK bin/ added to system PATH.")
+  }
+  invisible(success)
+}
+
+
+#' Warn about RStudio restart if needed
+#'
+#' If running inside RStudio, prints a message asking the user to restart
+#' so that the new JAVA_HOME takes effect.
+#'
+#' @param jdk_home Path to JDK.
+#' @param verbose Logical.
+#' @return invisible(NULL)
+#' @noRd
+.configure_rstudio <- function(jdk_home, verbose = TRUE) {
+  if (nzchar(Sys.getenv("RSTUDIO", ""))) {
+    if (verbose) {
+      message(
+        "RStudio detected. Please restart RStudio for JAVA_HOME changes ",
+        "to take full effect."
+      )
+    }
+  }
+  invisible(NULL)
+}
+
+
+#' Install and configure rJava
+#'
+#' Checks whether rJava is installed, offers to install it in interactive mode,
+#' runs `R CMD javareconf` on macOS/Linux, and verifies with `.jinit()`.
+#'
+#' @param jdk_home Path to JDK.
+#' @param verbose Logical.
+#' @return List with `installed`, `loads_ok`, `javareconf_ok`.
+#' @noRd
+.setup_rjava <- function(jdk_home, verbose = TRUE) {
+  result <- list(installed = FALSE, loads_ok = FALSE, javareconf_ok = NA)
+
+  has_rjava <- requireNamespace("rJava", quietly = TRUE)
+
+  if (!has_rjava) {
+    if (interactive()) {
+      choice <- utils::menu(
+        c("Yes, install rJava", "No, skip"),
+        title = "rJava is not installed. Install it now?"
+      )
+      if (choice != 1L) {
+        if (verbose) message("Skipping rJava installation.")
+        return(invisible(result))
+      }
+    } else {
+      if (verbose) message("rJava not installed. Skipping (non-interactive).")
+      return(invisible(result))
+    }
+
+    install_ok <- tryCatch({
+      utils::install.packages("rJava", type = "binary", quiet = !verbose)
+      TRUE
+    }, error = function(e) FALSE, warning = function(w) TRUE)
+
+    if (!install_ok) {
+      install_ok <- tryCatch({
+        utils::install.packages("rJava", type = "source", quiet = !verbose)
+        TRUE
+      }, error = function(e) {
+        if (verbose) warning("rJava installation failed: ",
+                             conditionMessage(e), call. = FALSE)
+        FALSE
+      })
+    }
+
+    if (!install_ok) return(invisible(result))
+    has_rjava <- requireNamespace("rJava", quietly = TRUE)
+  }
+
+  result$installed <- has_rjava
+
+  # R CMD javareconf on macOS/Linux
+  platform <- .detect_platform()
+  if (platform$os != "windows") {
+    result$javareconf_ok <- tryCatch({
+      r_bin <- file.path(R.home("bin"), "R")
+      system2(r_bin, c("CMD", "javareconf", "-e"),
+              stdout = TRUE, stderr = TRUE)
+      TRUE
+    }, error = function(e) {
+      if (verbose) warning("R CMD javareconf failed: ",
+                           conditionMessage(e), call. = FALSE)
+      FALSE
+    })
+  }
+
+  # Verify rJava loads
+  if (has_rjava) {
+    result$loads_ok <- tryCatch({
+      rJava::.jinit()
+      TRUE
+    }, error = function(e) {
+      if (verbose) warning("rJava::.jinit() failed: ",
+                           conditionMessage(e), call. = FALSE)
+      FALSE
+    })
+  }
+
+  if (verbose) {
+    if (result$loads_ok) {
+      message("[ok] rJava installed and loads successfully.")
+    } else if (result$installed) {
+      message("[!!] rJava installed but failed to initialize.")
+    }
+  }
+
+  invisible(result)
+}
+
+
+#' Verify Java setup end-to-end
+#'
+#' Runs `java -version`, checks rJava, and calls [check_r5r()].
+#'
+#' @param jdk_home Path to JDK.
+#' @param verbose Logical.
+#' @return List with `java_ok`, `java_version`, `rjava_ok`, `r5r_ok`.
+#' @noRd
+.verify_java_setup <- function(jdk_home, verbose = TRUE) {
+  result <- list(java_ok = FALSE, java_version = NA_integer_,
+                 rjava_ok = FALSE, r5r_ok = FALSE)
+
+  platform <- .detect_platform()
+  java_bin <- file.path(jdk_home, "bin",
+    if (platform$os == "windows") "java.exe" else "java")
+
+  tryCatch({
+    out <- system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+    ver <- .parse_java_version(out)
+    result$java_version <- ver
+    result$java_ok <- !is.na(ver) && ver == 21L
+  }, error = function(e) NULL)
+
+  result$rjava_ok <- tryCatch({
+    requireNamespace("rJava", quietly = TRUE) && {
+      rJava::.jinit()
+      TRUE
+    }
+  }, error = function(e) FALSE)
+
+  result$r5r_ok <- tryCatch({
+    res <- check_r5r()
+    res$ready
+  }, error = function(e) FALSE)
+
+  if (verbose) {
+    message("\n--- Verification ---")
+    if (result$java_ok) {
+      message("[ok] Java ", result$java_version, " working at ", jdk_home)
+    } else {
+      message("[!!] Java check failed (version: ", result$java_version, ")")
+    }
+    if (result$rjava_ok) {
+      message("[ok] rJava loads successfully")
+    } else {
+      message("[--] rJava not available or failed to load")
+    }
+    if (result$r5r_ok) {
+      message("[ok] r5r is ready")
+    } else {
+      message("[--] r5r not fully ready")
+    }
+  }
+
+  invisible(result)
+}
+
+
+# ---- Exported function -------------------------------------------------------
+
+#' Download and configure Java 21 for r5r
+#'
+#' One-call setup that detects existing Java installations, downloads JDK 21
+#' if needed, configures environment variables at both the R session and OS
+#' level, optionally installs and configures rJava, and verifies the setup.
+#'
+#' @param install_dir Character. Where to install Java if downloading.
+#'   Default uses [tools::R_user_dir()].
+#' @param persist Logical. Write `JAVA_HOME` to `~/.Renviron` and set OS-level
+#'   environment variables. Default: TRUE in interactive sessions.
+#' @param setup_rjava Logical. Whether to install/configure rJava.
+#'   Default: TRUE.
+#' @param verbose Logical. Default: TRUE.
+#'
+#' @details
+#' The function performs the following steps:
+#' 1. Scans for existing Java installations on the system
+#' 2. Warns about non-Java-21 versions that may conflict
+#' 3. Uses an existing Java 21 if found, or downloads Adoptium JDK 21
+#' 4. Configures `JAVA_HOME` and `PATH` for the current R session
+#' 5. Persists `JAVA_HOME` to `~/.Renviron`
+#' 6. Sets `JAVA_HOME` at the OS level (Windows User env / shell config)
+#' 7. Adds JDK `bin/` to the system PATH
+#' 8. Optionally installs and configures rJava
+#' 9. Runs a final verification
+#'
+#' Even if Java 21 is already installed, calling `setup_java()` ensures
+#' all configuration (env vars, PATH, rJava) is correctly wired up.
+#' The function is idempotent: you can always call it to fix a broken
+#' configuration without re-downloading.
+#'
+#' @return Invisibly, the path to the JDK home directory.
+#'
+#' @seealso [check_r5r()] to diagnose without changing anything,
+#'   [set_java_memory()] to configure JVM heap size.
+#'
+#' @examples
+#' \dontrun{
+#' setup_java()
+#' setup_java(setup_rjava = FALSE)
+#' }
+#'
+#' @export
+setup_java <- function(
+    install_dir = file.path(tools::R_user_dir("interpElections", "data"),
+                            "java"),
+    persist     = interactive(),
+    setup_rjava = TRUE,
+    verbose     = TRUE
+) {
+  # 1. Discover existing installations
+  if (verbose) message("=== Scanning for Java installations ===")
+  installations <- .discover_java_installations(verbose = verbose)
+
+  # 2-3. Check and advise about conflicts
+  conflicts <- .check_java_conflicts(installations)
+  .advise_java_conflicts(conflicts, verbose = verbose)
+
+  # 4. Use existing Java 21 or download
+  if (nrow(conflicts$java21) > 0L) {
+    jdk_home <- conflicts$java21$path[1]
+    if (verbose) message("\nUsing existing Java 21 at: ", jdk_home)
+  } else {
+    if (verbose) message("\nNo Java 21 found. Downloading...")
+
+    platform <- .detect_platform()
+    ext <- if (platform$os == "windows") "zip" else "tar.gz"
+
+    url <- sprintf(
+      paste0("https://api.adoptium.net/v3/binary/latest/21/ga/",
+             "%s/%s/jdk/hotspot/normal/eclipse?project=jdk"),
+      platform$os, platform$arch
+    )
+
+    if (verbose) {
+      message("Downloading Adoptium Temurin JDK 21 for ",
+              platform$os, "/", platform$arch, "...")
+    }
+
+    if (!dir.exists(install_dir)) dir.create(install_dir, recursive = TRUE)
+
+    archive_path <- file.path(install_dir, paste0("jdk-21.", ext))
+
+    download_result <- tryCatch(
+      utils::download.file(url, archive_path, mode = "wb", quiet = !verbose),
+      error = function(e) e
+    )
+    if (inherits(download_result, "error")) {
+      stop("Download failed: ", conditionMessage(download_result), "\n",
+           "You can manually download from: https://adoptium.net/",
+           call. = FALSE)
+    }
+
+    if (verbose) message("Extracting...")
+    jdk_parent <- file.path(install_dir, "jdk-21")
+    if (dir.exists(jdk_parent)) unlink(jdk_parent, recursive = TRUE)
+
+    if (ext == "zip") {
+      utils::unzip(archive_path, exdir = install_dir)
+    } else {
+      utils::untar(archive_path, exdir = install_dir)
+    }
+
+    extracted <- list.dirs(install_dir, recursive = FALSE, full.names = TRUE)
+    jdk_dir <- grep("jdk-21", extracted, value = TRUE)
+    jdk_dir <- jdk_dir[jdk_dir != jdk_parent]
+
+    if (length(jdk_dir) == 0L) {
+      stop("Could not find extracted JDK directory in: ", install_dir,
+           call. = FALSE)
+    }
+    jdk_dir <- jdk_dir[1]
+
+    file.rename(jdk_dir, jdk_parent)
+    jdk_home <- normalizePath(jdk_parent, winslash = "/")
+
+    unlink(archive_path)
+    if (verbose) message("Java 21 installed to: ", jdk_home)
+  }
+
+  # 6. Activate for current session
+  if (verbose) message("\n=== Configuring environment ===")
+  .activate_java(jdk_home)
+  if (verbose) message("JAVA_HOME and PATH set for current R session.")
+
+  # 7. Persist to ~/.Renviron
+  if (persist) {
+    .persist_java_home(jdk_home, verbose = verbose)
+  }
+
+  # 8. Set OS-level JAVA_HOME
+  if (persist) {
+    .persist_env_var_os("JAVA_HOME", jdk_home, verbose = verbose)
+  }
+
+  # 9. Add bin/ to OS PATH
+  if (persist) {
+    bin_dir <- file.path(jdk_home, "bin")
+    .persist_path_prepend_os(bin_dir, verbose = verbose)
+  }
+
+  # 10. RStudio restart warning
+  .configure_rstudio(jdk_home, verbose = verbose)
+
+  # 11. rJava setup
+  if (setup_rjava) {
+    if (verbose) message("\n=== rJava setup ===")
+    .setup_rjava(jdk_home, verbose = verbose)
+  }
+
+  # 12. Final verification
+  if (verbose) {
+    .verify_java_setup(jdk_home, verbose = verbose)
+  }
+
+  invisible(jdk_home)
+}

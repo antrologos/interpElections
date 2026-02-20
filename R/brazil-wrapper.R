@@ -133,7 +133,10 @@
 #' @param keep Character vector or NULL. Names of heavy intermediate
 #'   objects to include in the result. Default NULL (lightweight).
 #'   Options: `"weights"`, `"time_matrix"`, `"sources_sf"`,
-#'   `"pop_raster"`, `"rep_points"`. See [interpolate_election()] for details.
+#'   `"pop_raster"`, `"rep_points"`, `"neighborhoods"`.
+#'   The first five are passed to [interpolate_election()]; see its docs.
+#'   `"neighborhoods"` downloads IBGE 2010 neighborhood boundaries via
+#'   [geobr::read_neighborhood()] and stores them in `$neighborhoods`.
 #' @param alpha Numeric vector or NULL. Pre-computed decay parameters
 #'   (one per tract). If provided, the optimization step is skipped
 #'   entirely. Useful for re-interpolating with a previously optimized
@@ -178,6 +181,9 @@
 #'     `keep` includes `"time_matrix"`.}
 #'   \item{sources_sf}{`sf` point object or NULL. Present only when
 #'     `keep` includes `"sources_sf"`.}
+#'   \item{neighborhoods}{`sf` polygon object or NULL. IBGE 2010 neighborhood
+#'     boundaries for the municipality. Present only when `keep` includes
+#'     `"neighborhoods"`.}
 #'   \item{code_muni}{IBGE municipality code.}
 #'   \item{year}{Election year.}
 #'   \item{census_year}{Census year.}
@@ -639,6 +645,12 @@ interpolate_election_br <- function(
   ie_result$dictionary <- .br_build_dictionary(
     electoral_data, ie_result$interp_cols, calib, what)
 
+  # --- Download neighborhood boundaries (opt-in) ---
+  if ("neighborhoods" %in% keep) {
+    if (verbose) message("Downloading neighborhood boundaries...")
+    ie_result$neighborhoods <- .br_download_neighborhoods(code_muni)
+  }
+
   ie_result
 }
 
@@ -949,6 +961,27 @@ interpolate_election_br <- function(
     tracts_sf = tracts_sf,
     electoral_sf = electoral_sf
   )
+}
+
+# Download IBGE 2010 neighborhood boundaries for a municipality
+# Returns an sf object filtered to the given code_muni, or NULL on failure.
+.br_download_neighborhoods <- function(code_muni) {
+  if (!requireNamespace("geobr", quietly = TRUE)) {
+    message("geobr not installed; cannot download neighborhoods.")
+    return(NULL)
+  }
+  tryCatch({
+    nbhoods <- suppressMessages(geobr::read_neighborhood(year = 2010))
+    nbhoods <- nbhoods[substr(nbhoods$code_neighborhood, 1, 7) == code_muni, ]
+    if (nrow(nbhoods) == 0) {
+      message("No neighborhoods found for municipality ", code_muni)
+      return(NULL)
+    }
+    nbhoods
+  }, error = function(e) {
+    message("Could not download neighborhoods: ", conditionMessage(e))
+    NULL
+  })
 }
 
 # Sum columns safely (returns 0 for missing columns, warns about missing)

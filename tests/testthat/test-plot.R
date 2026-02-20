@@ -612,7 +612,6 @@ test_that("plot_interactive sync with breaks uses shared scale", {
 
 test_that(".build_detail_popup returns HTML vector with all tracts", {
   skip_if_not_installed("sf")
-  skip_if_not_installed("leafpop")
   obj <- .mock_plot_result()
   plot_sf <- obj$tracts_sf
   plot_sf[["Test"]] <- .cut_values(
@@ -625,19 +624,155 @@ test_that(".build_detail_popup returns HTML vector with all tracts", {
   expect_true(grepl("Votes", popup[1]))
   expect_true(grepl("% of tract", popup[1]))
   expect_true(grepl("% of municipality", popup[1]))
-  expect_true(grepl("Tract rank", popup[1]))
+  expect_true(grepl("Rank", popup[1]))
   expect_true(grepl("Category", popup[1]))
+  # Should contain tract ID
+  expect_true(grepl("Tract", popup[1]))
 })
 
 test_that(".build_detail_popup formats numbers without scientific notation", {
   skip_if_not_installed("sf")
-  skip_if_not_installed("leafpop")
   obj <- .mock_plot_result()
   plot_sf <- obj$tracts_sf
   plot_sf[["Test"]] <- .compute_quantity(obj, "CAND_13", "pct_tract")
   popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
   # No scientific notation in any popup
   expect_false(any(grepl("[0-9]e[+-]", popup)))
+})
+
+test_that(".build_detail_popup includes neighborhood when available", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Create a fake neighborhood polygon covering all tracts
+  nb_poly <- sf::st_polygon(list(matrix(c(
+    -1, -1, 4, -1, 4, 3, -1, 3, -1, -1
+  ), ncol = 2, byrow = TRUE)))
+  nb_sf <- sf::st_sf(
+    name_neighborhood = "TestNeighborhood",
+    code_neighborhood = "3550308001",
+    geometry = sf::st_sfc(nb_poly, crs = 4326)
+  )
+  obj$neighborhoods <- nb_sf
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Test"]] <- .compute_quantity(obj, "CAND_13", "pct_tract")
+  popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
+  expect_true(grepl("TestNeighborhood", popup[1]))
+})
+
+test_that(".build_pyramid_svg returns valid SVG", {
+  male <- c(10, 20, 30, 25, 15, 8, 3)
+  female <- c(12, 22, 28, 27, 18, 10, 5)
+  labels <- c("18-19", "20-24", "25-29", "30-39", "40-49", "50-59", "60-69")
+  svg <- .build_pyramid_svg(male, female, labels)
+  expect_true(is.character(svg))
+  expect_true(grepl("<svg", svg))
+  expect_true(grepl("</svg>", svg))
+  expect_true(grepl("Male", svg))
+  expect_true(grepl("Female", svg))
+  # Should have 7 age labels
+  for (lab in labels) {
+    expect_true(grepl(lab, svg))
+  }
+})
+
+test_that(".build_pyramid_svg with fitted overlay shows legend", {
+  male <- c(10, 20, 30, 25, 15, 8, 3)
+  female <- c(12, 22, 28, 27, 18, 10, 5)
+  fitted_m <- c(11, 19, 31, 24, 16, 7, 4)
+  fitted_f <- c(13, 21, 29, 26, 17, 11, 4)
+  labels <- c("18-19", "20-24", "25-29", "30-39", "40-49", "50-59", "60-69")
+  svg <- .build_pyramid_svg(male, female, labels,
+                              fitted_male = fitted_m, fitted_female = fitted_f)
+  expect_true(grepl("<svg", svg))
+  # Should have outlined rects (stroke, fill="none")
+  expect_true(grepl('fill="none"', svg))
+  expect_true(grepl('stroke="#1a3a5c"', svg))
+  expect_true(grepl('stroke="#b8651e"', svg))
+  # Should have Census/Interpolated legend
+  expect_true(grepl("Census", svg))
+  expect_true(grepl("Interpolated", svg))
+})
+
+test_that(".build_pyramid_svg without fitted has no legend", {
+  male <- c(10, 20, 30)
+  female <- c(12, 22, 28)
+  labels <- c("18-19", "20-24", "25-29")
+  svg <- .build_pyramid_svg(male, female, labels)
+  expect_false(grepl("Census", svg))
+  expect_false(grepl("Interpolated", svg))
+})
+
+test_that(".build_age_bars_svg returns valid SVG", {
+  vals <- c(10, 20, 30, 25, 15, 8, 3)
+  labels <- c("18-19", "20-24", "25-29", "30-39", "40-49", "50-59", "60-69")
+  svg <- .build_age_bars_svg(vals, labels)
+  expect_true(is.character(svg))
+  expect_true(grepl("<svg", svg))
+  for (lab in labels) {
+    expect_true(grepl(lab, svg))
+  }
+})
+
+test_that(".build_age_bars_svg with fitted overlay shows legend", {
+  vals <- c(10, 20, 30, 25, 15, 8, 3)
+  fitted <- c(11, 19, 31, 24, 16, 7, 4)
+  labels <- c("18-19", "20-24", "25-29", "30-39", "40-49", "50-59", "60-69")
+  svg <- .build_age_bars_svg(vals, labels, fitted_vals = fitted)
+  expect_true(grepl("<svg", svg))
+  expect_true(grepl('fill="none"', svg))
+  expect_true(grepl('stroke="#1a3a5c"', svg))
+  expect_true(grepl("Census", svg))
+  expect_true(grepl("Interpolated", svg))
+})
+
+test_that(".extract_gender_age detects age-only mode", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Mock has calib_cols$tracts = "votantes_18_20" (not pop_hom_alf_*)
+  result <- .extract_gender_age(obj$tracts_sf, obj$calib_cols)
+  # Should return NULL (column doesn't match pop_ pattern) or age-only
+  # (votantes_18_20 is not a pop_ column so it won't be found)
+  # The function returns NULL if no pop_ columns are found
+})
+
+test_that(".extract_gender_age works with plain matrix (for fitted values)", {
+  n <- 4
+  ages <- c("18_19", "20_24", "25_29")
+  tract_cols <- paste0("pop_hom_alf_", ages)
+  mat <- matrix(runif(n * length(tract_cols)), n, length(tract_cols))
+  colnames(mat) <- tract_cols
+  calib <- list(tracts = tract_cols, sources = paste0("vot_", ages))
+  result <- .extract_gender_age(mat, calib)
+  # hom_alf detected -> has_gender = TRUE
+  expect_true(result$has_gender)
+  expect_equal(nrow(result$male), n)
+  expect_equal(ncol(result$male), length(ages))
+})
+
+test_that(".extract_gender_age detects full gender mode", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  # Add gender x age columns to tracts_sf
+  n <- nrow(obj$tracts_sf)
+  ages <- c("18_19", "20_24", "25_29", "30_39", "40_49", "50_59", "60_69")
+  for (ag in ages) {
+    obj$tracts_sf[[paste0("pop_hom_alf_", ag)]] <- runif(n, 10, 50)
+    obj$tracts_sf[[paste0("pop_hom_nalf_", ag)]] <- runif(n, 1, 5)
+    obj$tracts_sf[[paste0("pop_mul_alf_", ag)]] <- runif(n, 10, 50)
+    obj$tracts_sf[[paste0("pop_mul_nalf_", ag)]] <- runif(n, 1, 5)
+  }
+  calib <- list(
+    tracts = paste0("pop_", rep(c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf"),
+                                 each = 7), "_", ages),
+    sources = paste0("vot_", rep(c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf"),
+                                  each = 7), "_", ages)
+  )
+  result <- .extract_gender_age(obj$tracts_sf, calib)
+  expect_true(result$has_gender)
+  expect_equal(ncol(result$male), 7)
+  expect_equal(ncol(result$female), 7)
+  expect_equal(nrow(result$male), n)
+  expect_equal(length(result$age_labels), 7)
 })
 
 

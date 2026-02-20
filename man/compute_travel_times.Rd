@@ -75,7 +75,7 @@ travel times from representative points of target census tracts
 to geolocated source points (e.g., polling locations).
 }
 \details{
-Requires the \code{r5r} and \code{sf} packages. r5r requires Java/JDK 21+.
+Requires the \code{r5r} and \code{sf} packages. r5r requires exactly Java/JDK 21.
 Use \code{\link[=download_r5r_data]{download_r5r_data()}} to obtain the OSM data needed for \code{network_path}.
 }
 \examples{

@@ -191,7 +191,10 @@ Default: 1.}
 \item{keep}{Character vector or NULL. Names of heavy intermediate
 objects to include in the result. Default NULL (lightweight).
 Options: \code{"weights"}, \code{"time_matrix"}, \code{"sources_sf"},
-\code{"pop_raster"}, \code{"rep_points"}. See \code{\link[=interpolate_election]{interpolate_election()}} for details.}
+\code{"pop_raster"}, \code{"rep_points"}, \code{"neighborhoods"}.
+The first five are passed to \code{\link[=interpolate_election]{interpolate_election()}}; see its docs.
+\code{"neighborhoods"} downloads IBGE 2010 neighborhood boundaries via
+\code{\link[geobr:read_neighborhood]{geobr::read_neighborhood()}} and stores them in \verb{$neighborhoods}.}
 
 \item{alpha}{Numeric vector or NULL. Pre-computed decay parameters
 (one per tract). If provided, the optimization step is skipped
@@ -247,6 +250,9 @@ pre-supplied).}
 \code{keep} includes \code{"time_matrix"}.}
 \item{sources_sf}{\code{sf} point object or NULL. Present only when
 \code{keep} includes \code{"sources_sf"}.}
+\item{neighborhoods}{\code{sf} polygon object or NULL. IBGE 2010 neighborhood
+boundaries for the municipality. Present only when \code{keep} includes
+\code{"neighborhoods"}.}
 \item{code_muni}{IBGE municipality code.}
 \item{year}{Election year.}
 \item{census_year}{Census year.}

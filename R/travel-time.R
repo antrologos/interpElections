@@ -38,7 +38,7 @@
 #'   pairs are filled with `fill_missing`.
 #'
 #' @details
-#' Requires the `r5r` and `sf` packages. r5r requires Java/JDK 21+.
+#' Requires the `r5r` and `sf` packages. r5r requires exactly Java/JDK 21.
 #' Use [download_r5r_data()] to obtain the OSM data needed for `network_path`.
 #'
 #' @examples
@@ -80,7 +80,7 @@ compute_travel_times <- function(
          call. = FALSE)
   }
 
-  # Java pre-flight check: verify Java is present and version >= 21
+  # Java pre-flight check: verify Java is present and version == 21
   java_check <- tryCatch(
     system2("java", "-version", stdout = TRUE, stderr = TRUE),
     error = function(e) NULL,
@@ -88,16 +88,16 @@ compute_travel_times <- function(
   )
   if (is.null(java_check)) {
     stop(
-      "Java not found. r5r requires Java/JDK 21+.\n",
+      "Java not found. r5r requires exactly Java/JDK 21.\n",
       "Run interpElections::check_r5r() for diagnostics, or\n",
       "Run interpElections::setup_java() to download and install Java 21.",
       call. = FALSE
     )
   }
   java_ver <- .parse_java_version(java_check)
-  if (!is.na(java_ver) && java_ver < 21L) {
+  if (!is.na(java_ver) && java_ver != 21L) {
     stop(
-      sprintf("Java %d found, but r5r requires Java 21+.\n", java_ver),
+      sprintf("Java %d found, but r5r requires exactly Java 21.\n", java_ver),
       "Run interpElections::setup_java() to download and install Java 21.",
       call. = FALSE
     )

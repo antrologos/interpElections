@@ -80,10 +80,14 @@ summary.interpElections_result <- function(object, ...) {
   has_w <- !is.null(x$weights)
   has_t <- !is.null(x$time_matrix)
   has_s <- !is.null(x$sources_sf)
-  if (!has_w && !has_t && !has_s) {
+  has_n <- !is.null(x$neighborhoods)
+  if (!has_w && !has_t && !has_s && !has_n) {
     cat(" (lightweight)")
   }
   cat("\n")
+  if (has_n) {
+    cat(sprintf("Neighborhoods: %d\n", nrow(x$neighborhoods)))
+  }
 
   invisible(x)
 }

@@ -142,3 +142,150 @@ test_that(".persist_renviron_var writes and updates a variable", {
   expect_true(any(grepl("TEST_VAR=world", lines)))
   expect_equal(sum(grepl("^TEST_VAR", lines)), 1L) # no duplicates
 })
+
+
+# --- .check_java_conflicts() ------------------------------------------------
+
+test_that(".check_java_conflicts splits Java 21 from others", {
+  installations <- data.frame(
+    path    = c("/opt/java/21", "/opt/java/17", "/opt/java/11"),
+    version = c(21L, 17L, 11L),
+    vendor  = c("Adoptium", "Oracle", "OpenJDK"),
+    source  = c("JAVA_HOME", "registry", "filesystem"),
+    stringsAsFactors = FALSE
+  )
+  result <- interpElections:::.check_java_conflicts(installations)
+
+  expect_type(result, "list")
+  expect_true("java21" %in% names(result))
+  expect_true("others" %in% names(result))
+  expect_true("has_conflict" %in% names(result))
+
+  expect_equal(nrow(result$java21), 1L)
+  expect_equal(result$java21$version, 21L)
+  expect_equal(nrow(result$others), 2L)
+  expect_true(all(result$others$version != 21L))
+  expect_true(result$has_conflict)
+})
+
+test_that(".check_java_conflicts: no conflict when only Java 21", {
+  installations <- data.frame(
+    path    = c("/opt/java/21a", "/opt/java/21b"),
+    version = c(21L, 21L),
+    vendor  = c("Adoptium", "Microsoft"),
+    source  = c("JAVA_HOME", "registry"),
+    stringsAsFactors = FALSE
+  )
+  result <- interpElections:::.check_java_conflicts(installations)
+  expect_false(result$has_conflict)
+  expect_equal(nrow(result$java21), 2L)
+  expect_equal(nrow(result$others), 0L)
+})
+
+test_that(".check_java_conflicts: empty input produces no conflict", {
+  installations <- data.frame(
+    path    = character(0),
+    version = integer(0),
+    vendor  = character(0),
+    source  = character(0),
+    stringsAsFactors = FALSE
+  )
+  result <- interpElections:::.check_java_conflicts(installations)
+  expect_false(result$has_conflict)
+  expect_equal(nrow(result$java21), 0L)
+  expect_equal(nrow(result$others), 0L)
+})
+
+
+# --- .persist_shell_var() ---------------------------------------------------
+
+test_that(".persist_shell_var creates file with export line", {
+  tmp <- tempfile(fileext = ".bashrc")
+  on.exit(unlink(tmp))
+
+  interpElections:::.persist_shell_var(tmp, "MY_VAR", "/opt/java")
+  lines <- readLines(tmp)
+  expect_true(any(grepl('export MY_VAR="/opt/java"', lines, fixed = TRUE)))
+})
+
+test_that(".persist_shell_var updates existing value", {
+  tmp <- tempfile(fileext = ".bashrc")
+  on.exit(unlink(tmp))
+
+  writeLines(c("# header", 'export MY_VAR="/old/path"', "# footer"), tmp)
+
+  interpElections:::.persist_shell_var(tmp, "MY_VAR", "/new/path")
+  lines <- readLines(tmp)
+  expect_true(any(grepl('export MY_VAR="/new/path"', lines, fixed = TRUE)))
+  expect_false(any(grepl("/old/path", lines, fixed = TRUE)))
+  # No duplicates
+  expect_equal(sum(grepl("^\\s*export MY_VAR", lines)), 1L)
+  # Other lines preserved
+  expect_true(any(grepl("# header", lines)))
+  expect_true(any(grepl("# footer", lines)))
+})
+
+test_that(".persist_shell_var is idempotent", {
+  tmp <- tempfile(fileext = ".bashrc")
+  on.exit(unlink(tmp))
+
+  interpElections:::.persist_shell_var(tmp, "MY_VAR", "/opt/java")
+  lines1 <- readLines(tmp)
+
+  interpElections:::.persist_shell_var(tmp, "MY_VAR", "/opt/java")
+  lines2 <- readLines(tmp)
+
+  expect_identical(lines1, lines2)
+})
+
+test_that(".persist_shell_var removes duplicate lines", {
+  tmp <- tempfile(fileext = ".bashrc")
+  on.exit(unlink(tmp))
+
+  writeLines(c(
+    'export JAVA_HOME="/path/a"',
+    "other stuff",
+    'export JAVA_HOME="/path/b"'
+  ), tmp)
+
+  interpElections:::.persist_shell_var(tmp, "JAVA_HOME", "/path/c")
+  lines <- readLines(tmp)
+  expect_equal(sum(grepl("^\\s*export JAVA_HOME", lines)), 1L)
+  expect_true(any(grepl('export JAVA_HOME="/path/c"', lines, fixed = TRUE)))
+})
+
+
+# --- .discover_java_installations() -----------------------------------------
+
+test_that(".discover_java_installations returns expected structure", {
+  df <- interpElections:::.discover_java_installations(verbose = FALSE)
+  expect_s3_class(df, "data.frame")
+  expect_true(all(c("path", "version", "vendor", "source") %in% names(df)))
+  expect_type(df$path, "character")
+  expect_type(df$version, "integer")
+  expect_type(df$vendor, "character")
+  expect_type(df$source, "character")
+})
+
+
+# --- .configure_rstudio() ---------------------------------------------------
+
+test_that(".configure_rstudio runs without error", {
+  expect_silent(
+    interpElections:::.configure_rstudio("/fake/jdk", verbose = FALSE)
+  )
+})
+
+
+# --- .verify_java_setup() ---------------------------------------------------
+
+test_that(".verify_java_setup returns expected structure", {
+  result <- interpElections:::.verify_java_setup("/nonexistent/jdk",
+                                                  verbose = FALSE)
+  expect_type(result, "list")
+  expect_true(all(c("java_ok", "java_version", "rjava_ok", "r5r_ok") %in%
+                    names(result)))
+  expect_type(result$java_ok, "logical")
+  expect_type(result$rjava_ok, "logical")
+  expect_type(result$r5r_ok, "logical")
+})

@@ -57,7 +57,7 @@
 #' Check r5r and Java 21 setup
 #'
 #' Runs a diagnostic check for the r5r dependency chain: whether the `r5r`
-#' package is installed and whether a suitable Java/JDK (version 21+) is
+#' package is installed and whether a suitable Java/JDK (version 21) is
 #' available on the system.
 #'
 #' @return Invisibly, a list with components:
@@ -65,7 +65,7 @@
 #'   \item{r5r_installed}{Logical.}
 #'   \item{java_found}{Logical.}
 #'   \item{java_version}{Integer major version, or `NA`.}
-#'   \item{java_sufficient}{Logical. TRUE if version >= 21.}
+#'   \item{java_sufficient}{Logical. TRUE if version is exactly 21.}
 #'   \item{java_memory}{Character or NULL. Configured JVM max heap (e.g. `"4g"`).}
 #'   \item{system_ram}{Character or NULL. Total system RAM (e.g. `"16 GB"`).}
 #'   \item{ready}{Logical. TRUE if all checks pass.}
@@ -104,11 +104,11 @@ check_r5r <- function() {
   if (java_found) {
     java_version <- .parse_java_version(java_lines)
     if (!is.na(java_version)) {
-      java_sufficient <- java_version >= 21L
+      java_sufficient <- java_version == 21L
       if (java_sufficient) {
         message("[ok] Java ", java_version, " found")
       } else {
-        message("[!!] Java ", java_version, " found, but r5r requires >= 21")
+        message("[!!] Java ", java_version, " found, but r5r requires exactly 21")
       }
     } else {
       message("[!!] Java found but could not parse version")
@@ -149,123 +149,6 @@ check_r5r <- function() {
     system_ram      = java_mem$system_ram,
     ready           = ready
   ))
-}
-
-
-#' Download and configure Java 21 for r5r
-#'
-#' Downloads the Adoptium Temurin JDK 21 for the current platform, extracts
-#' it to a local directory, and configures the R session so that r5r can
-#' find it. Optionally persists the configuration to `~/.Renviron`.
-#'
-#' @param install_dir Character. Where to install Java. Default uses
-#'   [tools::R_user_dir()] so Java lives alongside other R user data.
-#' @param persist Logical. Write `JAVA_HOME` to `~/.Renviron` so it persists
-#'   across R sessions. Default: TRUE in interactive sessions.
-#' @param verbose Logical. Default: TRUE.
-#'
-#' @details
-#' The JDK is downloaded from the Eclipse Adoptium project
-#' (`https://adoptium.net`). The archive is extracted to
-#' `install_dir/jdk-21` and `JAVA_HOME` is set for the current session.
-#'
-#' When `persist = TRUE`, the function appends (or updates) a `JAVA_HOME`
-#' line in `~/.Renviron` so future R sessions find Java automatically.
-#'
-#' @return Invisibly, the path to the installed JDK.
-#'
-#' @examples
-#' \dontrun{
-#' setup_java()
-#' check_r5r()
-#' }
-#'
-#' @export
-setup_java <- function(
-    install_dir = file.path(tools::R_user_dir("interpElections", "data"), "java"),
-    persist = interactive(),
-    verbose = TRUE
-) {
-  platform <- .detect_platform()
-
-  ext <- if (platform$os == "windows") "zip" else "tar.gz"
-
-  url <- sprintf(
-    "https://api.adoptium.net/v3/binary/latest/21/ga/%s/%s/jdk/hotspot/normal/eclipse?project=jdk",
-    platform$os, platform$arch
-  )
-
-  if (verbose) {
-    message("Downloading Adoptium Temurin JDK 21 for ",
-            platform$os, "/", platform$arch, "...")
-  }
-
-  # Prepare directories
-  if (!dir.exists(install_dir)) {
-    dir.create(install_dir, recursive = TRUE)
-  }
-
-  archive_path <- file.path(install_dir, paste0("jdk-21.", ext))
-
-  # Download
-  download_result <- tryCatch(
-    utils::download.file(url, archive_path, mode = "wb", quiet = !verbose),
-    error = function(e) e
-  )
-  if (inherits(download_result, "error")) {
-    stop("Download failed: ", conditionMessage(download_result), "\n",
-         "You can manually download from: https://adoptium.net/",
-         call. = FALSE)
-  }
-
-  # Extract
-  if (verbose) message("Extracting...")
-  jdk_parent <- file.path(install_dir, "jdk-21")
-  if (dir.exists(jdk_parent)) {
-    unlink(jdk_parent, recursive = TRUE)
-  }
-
-  if (ext == "zip") {
-    utils::unzip(archive_path, exdir = install_dir)
-  } else {
-    utils::untar(archive_path, exdir = install_dir)
-  }
-
-  # The archive extracts to a directory like "jdk-21.0.2+13" — find it
-  extracted <- list.dirs(install_dir, recursive = FALSE, full.names = TRUE)
-  jdk_dir <- grep("jdk-21", extracted, value = TRUE)
-  jdk_dir <- jdk_dir[jdk_dir != jdk_parent]  # exclude our target name
-
-  if (length(jdk_dir) == 0) {
-    stop("Could not find extracted JDK directory in: ", install_dir,
-         call. = FALSE)
-  }
-  jdk_dir <- jdk_dir[1]  # take first match
-
-  # Rename to stable path
-  file.rename(jdk_dir, jdk_parent)
-  jdk_home <- normalizePath(jdk_parent, winslash = "/")
-
-  # Clean up archive
-  unlink(archive_path)
-
-  # Configure current session
-  .activate_java(jdk_home)
-
-  if (verbose) message("Java 21 installed to: ", jdk_home)
-
-  # Persist to ~/.Renviron
-  if (persist) {
-    .persist_java_home(jdk_home, verbose = verbose)
-  }
-
-  # Verify
-  if (verbose) {
-    message("")
-    check_r5r()
-  }
-
-  invisible(jdk_home)
 }
 
 

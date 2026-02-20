@@ -4,7 +4,7 @@
 # the interpElections vignettes. Run this script locally BEFORE deploying
 # the pkgdown site. It is NOT executed during pkgdown::build_site().
 #
-# Requirements: torch, r5r, Java 21+, osmium-tool, sf, ggplot2, terra,
+# Requirements: torch, r5r, Java 21, osmium-tool, sf, ggplot2, terra,
 #   geobr, censobr, network access.
 #
 # Usage:
