@@ -78,6 +78,8 @@ iterations. Works on both CPU and GPU (CUDA/MPS).</p>
 <span>  dtype <span class="op">=</span> <span class="st">"float32"</span>,</span>
 <span>  lower_bound <span class="op">=</span> <span class="fl">0.01</span>,</span>
 <span>  upper_bound <span class="op">=</span> <span class="fl">20</span>,</span>
+<span>  convergence_tol <span class="op">=</span> <span class="fl">1e-04</span>,</span>
+<span>  patience <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  offset <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -151,11 +153,25 @@ increase memory usage. Default: 15.</p></dd>
 
 
 <dt id="arg-lower-bound">lower_bound<a class="anchor" aria-label="anchor" href="#arg-lower-bound"></a></dt>
-<dd><p>Numeric. Lower bound for alpha values. Default: 0.01.</p></dd>
+<dd><p>Numeric. Lower bound for alpha values. Default: 0.01.
+Alpha is parameterized as <code>exp(theta)</code> internally (GLM log-link), so
+this bound is always satisfied smoothly without clamping.</p></dd>
 
 
 <dt id="arg-upper-bound">upper_bound<a class="anchor" aria-label="anchor" href="#arg-upper-bound"></a></dt>
-<dd><p>Numeric. Upper bound for alpha values. Default: 20.</p></dd>
+<dd><p>Numeric. Upper bound for alpha values. Default: 20.
+Kept for backward compatibility but rarely binding; the loss function
+naturally prevents excessively large alpha.</p></dd>
+
+
+<dt id="arg-convergence-tol">convergence_tol<a class="anchor" aria-label="anchor" href="#arg-convergence-tol"></a></dt>
+<dd><p>Numeric. Relative change in EMA loss below which
+the optimizer considers the solution converged. Default: 1e-4.</p></dd>
+
+
+<dt id="arg-patience">patience<a class="anchor" aria-label="anchor" href="#arg-patience"></a></dt>
+<dd><p>Integer. Number of consecutive convergence checks (every
+50 steps) that must pass before early stopping. Default: 3.</p></dd>
 
 
 <dt id="arg-offset">offset<a class="anchor" aria-label="anchor" href="#arg-offset"></a></dt>

@@ -25,6 +25,8 @@ optimize_alpha(
   dtype = "float32",
   lower_bound = 0.01,
   upper_bound = 20,
+  convergence_tol = 1e-04,
+  patience = 3L,
   offset = 1,
   verbose = TRUE
 )
@@ -100,11 +102,25 @@ optimize_alpha(
 
 - lower_bound:
 
-  Numeric. Lower bound for alpha values. Default: 0.01.
+  Numeric. Lower bound for alpha values. Default: 0.01. Alpha is
+  parameterized as `exp(theta)` internally (GLM log-link), so this bound
+  is always satisfied smoothly without clamping.
 
 - upper_bound:
 
-  Numeric. Upper bound for alpha values. Default: 20.
+  Numeric. Upper bound for alpha values. Default: 20. Kept for backward
+  compatibility but rarely binding; the loss function naturally prevents
+  excessively large alpha.
+
+- convergence_tol:
+
+  Numeric. Relative change in EMA loss below which the optimizer
+  considers the solution converged. Default: 1e-4.
+
+- patience:
+
+  Integer. Number of consecutive convergence checks (every 50 steps)
+  that must pass before early stopping. Default: 3.
 
 - offset:
 
