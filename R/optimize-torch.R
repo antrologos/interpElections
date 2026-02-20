@@ -157,22 +157,13 @@
     v_torch <- torch::torch_tensor(
       source_matrix, device = device, dtype = torch_dtype)
 
-    # --- Scaled sigmoid reparameterization ---
-    # Optimize theta in R (unconstrained), compute:
-    #   alpha = upper_bound * sigmoid(theta)
-    # This maps theta in (-Inf, +Inf) -> alpha in (0, upper_bound)
-    # smoothly and differentiably. Avoids both:
-    #   - the non-differentiable clamp_() boundary (corner solutions)
-    #   - alpha explosion (exp() is unbounded)
-    # Gradient: d(alpha)/d(theta) = alpha * (1 - alpha/ub), naturally
-    # dampened near both boundaries.
-    ub <- upper_bound
+    # --- Direct parameterization (projected gradient descent) ---
+    # Optimize alpha directly. After each Adam step, project back onto
+    # the feasible set via clamp_(lower_bound, upper_bound).
     alpha_init_vec <- rep(alpha_init, length.out = n)
-    # Inverse sigmoid (logit): theta = log(alpha / (ub - alpha))
-    alpha_clamped <- pmin(pmax(alpha_init_vec, 1e-6), ub - 1e-6)
-    theta_init <- log(alpha_clamped / (ub - alpha_clamped))
-    theta_torch <- torch::torch_tensor(
-      theta_init,
+    alpha_init_vec <- pmin(pmax(alpha_init_vec, lower_bound), upper_bound)
+    a_torch <- torch::torch_tensor(
+      alpha_init_vec,
       device = device,
       requires_grad = TRUE,
       dtype = torch_dtype
@@ -181,9 +172,9 @@
     gpu_tensors$log_t <- log_t_torch
     gpu_tensors$p <- p_torch
     gpu_tensors$v <- v_torch
-    gpu_tensors$theta <- theta_torch
+    gpu_tensors$a <- a_torch
 
-    optimizer <- torch::optim_adam(list(theta_torch), lr = lr_init, amsgrad = TRUE)
+    optimizer <- torch::optim_adam(list(a_torch), lr = lr_init, amsgrad = TRUE)
 
     best_loss <- Inf
     best_alpha <- alpha_init_vec  # Guard: never return NULL
@@ -222,12 +213,9 @@
 
       optimizer$zero_grad()
 
-      # Compute alpha = ub * sigmoid(theta) -- in (0, ub), fully differentiable
-      alpha_torch <- ub * torch::torch_sigmoid(theta_torch)
-
       # Build log-kernel for batch: log(K) = -alpha * log(t)
       log_t_batch <- log_t_torch[idx, ]
-      log_K <- -alpha_torch[idx]$unsqueeze(2L) * log_t_batch
+      log_K <- -a_torch[idx]$unsqueeze(2L) * log_t_batch
       log_K_3d <- log_K$unsqueeze(1L)
 
       # Log-domain Sinkhorn iterations (per bracket)
@@ -259,28 +247,31 @@
 
       # Gradient masking: only update sampled tracts
       torch::with_no_grad({
-        grad <- theta_torch$grad
+        grad <- a_torch$grad
         mask <- torch::torch_zeros_like(grad)
         mask[idx] <- 1
-        theta_torch$grad <- grad * mask
+        a_torch$grad <- grad * mask
       })
 
       optimizer$step()
+
+      # Project onto feasible set: alpha in [lower_bound, upper_bound]
+      torch::with_no_grad({
+        a_torch$clamp_(lower_bound, upper_bound)
+      })
 
       lv <- loss$item()
       losses[step] <- lv
       steps_completed <- step
 
-      # Track best alpha (convert from theta via sigmoid)
+      # Track best alpha
       if (is.finite(lv) && lv < best_loss) {
         best_loss <- lv
-        best_alpha <- as.numeric(
-          (ub * torch::torch_sigmoid(theta_torch$detach()))$cpu()
-        )
+        best_alpha <- as.numeric(a_torch$detach()$cpu())
       }
 
       last_grad_norm <- tryCatch(
-        as.numeric(theta_torch$grad$norm()$cpu()),
+        as.numeric(a_torch$grad$norm()$cpu()),
         error = function(e) NA_real_
       )
 
@@ -313,9 +304,7 @@
       }
 
       if (verbose && step %% 100L == 0L) {
-        cur_alpha <- as.numeric(
-          (ub * torch::torch_sigmoid(theta_torch$detach()))$cpu()
-        )
+        cur_alpha <- as.numeric(a_torch$detach()$cpu())
         message(sprintf(
           "  Step %3d/%d: loss=%s, grad=%.2e, alpha=[%.2f, %.2f, %.2f]",
           step, max_steps,

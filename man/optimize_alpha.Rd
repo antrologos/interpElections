@@ -65,14 +65,11 @@ increase memory usage. Default: 15.}
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
-\item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.01.
-Alpha is parameterized via scaled sigmoid internally, so this bound
-is always satisfied smoothly without clamping.}
+\item{lower_bound}{Numeric. Lower bound for alpha (decay exponent). Default: 0.01.
+Alpha is projected onto \verb{[lower_bound, upper_bound]} after each Adam step
+(projected gradient descent on the box constraint).}
 
-\item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.
-Alpha is computed as \code{upper_bound * sigmoid(theta)}, so alpha is
-always in \verb{(0, upper_bound)}. This prevents both corner solutions at
-the lower boundary and alpha explosion at the upper end.}
+\item{upper_bound}{Numeric. Upper bound for alpha. Default: 20.}
 
 \item{convergence_tol}{Numeric. Relative change in EMA loss below which
 the optimizer considers the solution converged. Default: 1e-4.}

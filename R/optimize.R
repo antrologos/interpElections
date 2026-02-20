@@ -34,13 +34,10 @@
 #'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
 #'   `"float32"`. Float32 halves memory usage with negligible precision loss.
-#' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.01.
-#'   Alpha is parameterized via scaled sigmoid internally, so this bound
-#'   is always satisfied smoothly without clamping.
-#' @param upper_bound Numeric. Upper bound for alpha values. Default: 20.
-#'   Alpha is computed as `upper_bound * sigmoid(theta)`, so alpha is
-#'   always in `(0, upper_bound)`. This prevents both corner solutions at
-#'   the lower boundary and alpha explosion at the upper end.
+#' @param lower_bound Numeric. Lower bound for alpha (decay exponent). Default: 0.01.
+#'   Alpha is projected onto `[lower_bound, upper_bound]` after each Adam step
+#'   (projected gradient descent on the box constraint).
+#' @param upper_bound Numeric. Upper bound for alpha. Default: 20.
 #' @param convergence_tol Numeric. Relative change in EMA loss below which
 #'   the optimizer considers the solution converged. Default: 1e-4.
 #' @param patience Integer. Number of consecutive convergence checks (every
