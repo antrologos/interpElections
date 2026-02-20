@@ -102,16 +102,13 @@ optimize_alpha(
 
 - lower_bound:
 
-  Numeric. Lower bound for alpha values. Default: 0.01. Alpha is
-  parameterized via scaled sigmoid internally, so this bound is always
-  satisfied smoothly without clamping.
+  Numeric. Lower bound for alpha (decay exponent). Default: 0.01. Alpha
+  is projected onto `[lower_bound, upper_bound]` after each Adam step
+  (projected gradient descent on the box constraint).
 
 - upper_bound:
 
-  Numeric. Upper bound for alpha values. Default: 20. Alpha is computed
-  as `upper_bound * sigmoid(theta)`, so alpha is always in
-  `(0, upper_bound)`. This prevents both corner solutions at the lower
-  boundary and alpha explosion at the upper end.
+  Numeric. Upper bound for alpha. Default: 20.
 
 - convergence_tol:
 
