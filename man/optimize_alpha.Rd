@@ -66,12 +66,13 @@ increase memory usage. Default: 15.}
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
 \item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.01.
-Alpha is parameterized as \code{exp(theta)} internally (GLM log-link), so
-this bound is always satisfied smoothly without clamping.}
+Alpha is parameterized via scaled sigmoid internally, so this bound
+is always satisfied smoothly without clamping.}
 
 \item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.
-Kept for backward compatibility but rarely binding; the loss function
-naturally prevents excessively large alpha.}
+Alpha is computed as \code{upper_bound * sigmoid(theta)}, so alpha is
+always in \verb{(0, upper_bound)}. This prevents both corner solutions at
+the lower boundary and alpha explosion at the upper end.}
 
 \item{convergence_tol}{Numeric. Relative change in EMA loss below which
 the optimizer considers the solution converged. Default: 1e-4.}

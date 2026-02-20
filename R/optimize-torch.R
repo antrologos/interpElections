@@ -157,12 +157,20 @@
     v_torch <- torch::torch_tensor(
       source_matrix, device = device, dtype = torch_dtype)
 
-    # --- exp() reparameterization (GLM log-link analogy) ---
-    # Optimize theta in R (unconstrained), compute alpha = exp(theta) > 0
-    # This avoids the non-differentiable clamp_() boundary that caused
-    # corner solutions where alpha got stuck near the lower bound.
+    # --- Scaled sigmoid reparameterization ---
+    # Optimize theta in R (unconstrained), compute:
+    #   alpha = upper_bound * sigmoid(theta)
+    # This maps theta in (-Inf, +Inf) -> alpha in (0, upper_bound)
+    # smoothly and differentiably. Avoids both:
+    #   - the non-differentiable clamp_() boundary (corner solutions)
+    #   - alpha explosion (exp() is unbounded)
+    # Gradient: d(alpha)/d(theta) = alpha * (1 - alpha/ub), naturally
+    # dampened near both boundaries.
+    ub <- upper_bound
     alpha_init_vec <- rep(alpha_init, length.out = n)
-    theta_init <- log(pmax(alpha_init_vec, 1e-10))
+    # Inverse sigmoid (logit): theta = log(alpha / (ub - alpha))
+    alpha_clamped <- pmin(pmax(alpha_init_vec, 1e-6), ub - 1e-6)
+    theta_init <- log(alpha_clamped / (ub - alpha_clamped))
     theta_torch <- torch::torch_tensor(
       theta_init,
       device = device,
@@ -214,8 +222,8 @@
 
       optimizer$zero_grad()
 
-      # Compute alpha = exp(theta) -- always positive, fully differentiable
-      alpha_torch <- torch::torch_exp(theta_torch)
+      # Compute alpha = ub * sigmoid(theta) -- in (0, ub), fully differentiable
+      alpha_torch <- ub * torch::torch_sigmoid(theta_torch)
 
       # Build log-kernel for batch: log(K) = -alpha * log(t)
       log_t_batch <- log_t_torch[idx, ]
@@ -266,11 +274,11 @@
       losses[step] <- lv
       steps_completed <- step
 
-      # Track best alpha (convert from theta)
+      # Track best alpha (convert from theta via sigmoid)
       if (is.finite(lv) && lv < best_loss) {
         best_loss <- lv
         best_alpha <- as.numeric(
-          torch::torch_exp(theta_torch$detach())$cpu()
+          (ub * torch::torch_sigmoid(theta_torch$detach()))$cpu()
         )
       }
 
@@ -309,7 +317,7 @@
 
       if (verbose && step %% 100L == 0L) {
         cur_alpha <- as.numeric(
-          torch::torch_exp(theta_torch$detach())$cpu()
+          (ub * torch::torch_sigmoid(theta_torch$detach()))$cpu()
         )
         message(sprintf(
           "  Step %3d/%d: loss=%s, grad=%.2e, alpha=[%.2f, %.2f, %.2f]",
