@@ -103,14 +103,15 @@ optimize_alpha(
 - lower_bound:
 
   Numeric. Lower bound for alpha values. Default: 0.01. Alpha is
-  parameterized as `exp(theta)` internally (GLM log-link), so this bound
-  is always satisfied smoothly without clamping.
+  parameterized via scaled sigmoid internally, so this bound is always
+  satisfied smoothly without clamping.
 
 - upper_bound:
 
-  Numeric. Upper bound for alpha values. Default: 20. Kept for backward
-  compatibility but rarely binding; the loss function naturally prevents
-  excessively large alpha.
+  Numeric. Upper bound for alpha values. Default: 20. Alpha is computed
+  as `upper_bound * sigmoid(theta)`, so alpha is always in
+  `(0, upper_bound)`. This prevents both corner solutions at the lower
+  boundary and alpha explosion at the upper end.
 
 - convergence_tol:
 

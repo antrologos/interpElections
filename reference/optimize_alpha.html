@@ -154,14 +154,15 @@ increase memory usage. Default: 15.</p></dd>
 
 <dt id="arg-lower-bound">lower_bound<a class="anchor" aria-label="anchor" href="#arg-lower-bound"></a></dt>
 <dd><p>Numeric. Lower bound for alpha values. Default: 0.01.
-Alpha is parameterized as <code>exp(theta)</code> internally (GLM log-link), so
-this bound is always satisfied smoothly without clamping.</p></dd>
+Alpha is parameterized via scaled sigmoid internally, so this bound
+is always satisfied smoothly without clamping.</p></dd>
 
 
 <dt id="arg-upper-bound">upper_bound<a class="anchor" aria-label="anchor" href="#arg-upper-bound"></a></dt>
 <dd><p>Numeric. Upper bound for alpha values. Default: 20.
-Kept for backward compatibility but rarely binding; the loss function
-naturally prevents excessively large alpha.</p></dd>
+Alpha is computed as <code>upper_bound * sigmoid(theta)</code>, so alpha is
+always in <code>(0, upper_bound)</code>. This prevents both corner solutions at
+the lower boundary and alpha explosion at the upper end.</p></dd>
 
 
 <dt id="arg-convergence-tol">convergence_tol<a class="anchor" aria-label="anchor" href="#arg-convergence-tol"></a></dt>
