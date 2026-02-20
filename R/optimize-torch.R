@@ -11,7 +11,8 @@
 .optimize_torch <- function(time_matrix, pop_matrix, source_matrix,
                              alpha_init, batch_size, sk_iter,
                              max_steps, lr_init, device, dtype,
-                             lower_bound, upper_bound, verbose) {
+                             lower_bound, upper_bound,
+                             convergence_tol, patience, verbose) {
 
   # --- RStudio subprocess delegation ---
   if (.is_rstudio() && !identical(Sys.getenv("INTERPELECTIONS_SUBPROCESS"), "1")) {
@@ -29,6 +30,7 @@
       function(time_matrix, pop_matrix, source_matrix, alpha_init,
                batch_size, sk_iter, max_steps, lr_init,
                device, dtype, lower_bound, upper_bound,
+               convergence_tol, patience,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -45,6 +47,7 @@
           max_steps = max_steps, lr_init = lr_init,
           device = device, dtype = dtype,
           lower_bound = lower_bound, upper_bound = upper_bound,
+          convergence_tol = convergence_tol, patience = patience,
           verbose = verbose
         )
       },
@@ -57,6 +60,7 @@
         max_steps = max_steps, lr_init = lr_init,
         device = device, dtype = dtype,
         lower_bound = lower_bound, upper_bound = upper_bound,
+        convergence_tol = convergence_tol, patience = patience,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -70,8 +74,6 @@
   m <- ncol(time_matrix)
   k <- ncol(pop_matrix)
   b <- min(as.integer(batch_size), n)
-  lb <- lower_bound
-  ub <- upper_bound
 
   # --- Per-bracket preprocessing (R-side) ---
   P_cpu <- pop_matrix
@@ -155,8 +157,14 @@
     v_torch <- torch::torch_tensor(
       source_matrix, device = device, dtype = torch_dtype)
 
-    a_torch <- torch::torch_tensor(
-      rep(alpha_init, length.out = n),
+    # --- exp() reparameterization (GLM log-link analogy) ---
+    # Optimize theta in R (unconstrained), compute alpha = exp(theta) > 0
+    # This avoids the non-differentiable clamp_() boundary that caused
+    # corner solutions where alpha got stuck near the lower bound.
+    alpha_init_vec <- rep(alpha_init, length.out = n)
+    theta_init <- log(pmax(alpha_init_vec, 1e-10))
+    theta_torch <- torch::torch_tensor(
+      theta_init,
       device = device,
       requires_grad = TRUE,
       dtype = torch_dtype
@@ -165,14 +173,21 @@
     gpu_tensors$log_t <- log_t_torch
     gpu_tensors$p <- p_torch
     gpu_tensors$v <- v_torch
-    gpu_tensors$a <- a_torch
+    gpu_tensors$theta <- theta_torch
 
-    optimizer <- torch::optim_adam(list(a_torch), lr = lr_init, amsgrad = TRUE)
+    optimizer <- torch::optim_adam(list(theta_torch), lr = lr_init, amsgrad = TRUE)
 
     best_loss <- Inf
-    best_alpha <- alpha_init  # Guard: never return NULL
+    best_alpha <- alpha_init_vec  # Guard: never return NULL
     losses <- numeric(max_steps)
     last_grad_norm <- NA_real_
+
+    # --- Convergence tracking ---
+    ema_loss <- NA_real_
+    ema_decay <- 0.95
+    patience_counter <- 0L
+    converged <- FALSE
+    steps_completed <- 0L
 
     for (step in seq_len(max_steps)) {
       # LR schedule: halve at steps 200, 400, 600
@@ -199,9 +214,12 @@
 
       optimizer$zero_grad()
 
-      # Build log-kernel for batch
+      # Compute alpha = exp(theta) -- always positive, fully differentiable
+      alpha_torch <- torch::torch_exp(theta_torch)
+
+      # Build log-kernel for batch: log(K) = -alpha * log(t)
       log_t_batch <- log_t_torch[idx, ]
-      log_K <- -a_torch[idx]$unsqueeze(2L) * log_t_batch
+      log_K <- -alpha_torch[idx]$unsqueeze(2L) * log_t_batch
       log_K_3d <- log_K$unsqueeze(1L)
 
       # Log-domain Sinkhorn iterations (per bracket)
@@ -233,40 +251,73 @@
 
       # Gradient masking: only update sampled tracts
       torch::with_no_grad({
-        grad <- a_torch$grad
+        grad <- theta_torch$grad
         mask <- torch::torch_zeros_like(grad)
         mask[idx] <- 1
-        a_torch$grad <- grad * mask
+        theta_torch$grad <- grad * mask
       })
 
-      # Gradient clipping (norm 5.0)
-      torch::nn_utils_clip_grad_norm_(list(a_torch), 5.0)
+      # Gradient clipping
+      torch::nn_utils_clip_grad_norm_(list(theta_torch), 10.0)
 
       optimizer$step()
 
-      # Clamp alpha to [lower_bound, upper_bound]
-      torch::with_no_grad({
-        a_torch$clamp_(lb, ub)
-      })
-
       lv <- loss$item()
       losses[step] <- lv
+      steps_completed <- step
 
+      # Track best alpha (convert from theta)
       if (is.finite(lv) && lv < best_loss) {
         best_loss <- lv
-        best_alpha <- as.numeric(a_torch$detach()$cpu())
+        best_alpha <- as.numeric(
+          torch::torch_exp(theta_torch$detach())$cpu()
+        )
       }
 
       last_grad_norm <- tryCatch(
-        as.numeric(a_torch$grad$norm()$cpu()),
+        as.numeric(theta_torch$grad$norm()$cpu()),
         error = function(e) NA_real_
       )
 
+      # --- Convergence check (EMA-based) ---
+      if (is.finite(lv)) {
+        if (is.na(ema_loss)) {
+          ema_loss <- lv
+        } else {
+          prev_ema <- ema_loss
+          ema_loss <- ema_decay * ema_loss + (1 - ema_decay) * lv
+          # Check relative improvement every 50 steps after warmup
+          if (step >= 200L && step %% 50L == 0L) {
+            rel_change <- abs(ema_loss - prev_ema) / (abs(prev_ema) + 1e-30)
+            if (rel_change < convergence_tol) {
+              patience_counter <- patience_counter + 1L
+              if (patience_counter >= patience) {
+                converged <- TRUE
+                if (verbose) {
+                  message(sprintf(
+                    "  Converged at step %d (EMA loss=%.0f, rel_change=%.2e)",
+                    step, ema_loss, rel_change))
+                }
+                break
+              }
+            } else {
+              patience_counter <- 0L
+            }
+          }
+        }
+      }
+
       if (verbose && step %% 100L == 0L) {
-        message(sprintf("  Step %3d/%d: loss=%s, grad=%.2e",
-                        step, max_steps,
-                        format(round(lv), big.mark = ","),
-                        last_grad_norm))
+        cur_alpha <- as.numeric(
+          torch::torch_exp(theta_torch$detach())$cpu()
+        )
+        message(sprintf(
+          "  Step %3d/%d: loss=%s, grad=%.2e, alpha=[%.2f, %.2f, %.2f]",
+          step, max_steps,
+          format(round(lv), big.mark = ","),
+          last_grad_norm,
+          min(cur_alpha), stats::median(cur_alpha), max(cur_alpha)
+        ))
       }
     }
 
@@ -274,12 +325,14 @@
       alpha = best_alpha,
       value = best_loss,
       method = paste0("pb_sgd_sinkhorn_", device),
-      convergence = 0L,
-      iterations = max_steps,
+      convergence = if (converged) 0L else 1L,
+      iterations = steps_completed,
       message = sprintf(
-        "PB-SGD on %s (%s), %d steps, batch=%d, %d brackets, sk_iter=%d",
-        device, dtype, max_steps, b, ka, sk_iter),
-      history = losses,
+        "PB-SGD on %s (%s), %d/%d steps%s, batch=%d, %d brackets, sk_iter=%d",
+        device, dtype, steps_completed, max_steps,
+        if (converged) " (converged)" else "",
+        b, ka, sk_iter),
+      history = losses[seq_len(steps_completed)],
       grad_norm_final = last_grad_norm
     )
   }, error = function(e) {

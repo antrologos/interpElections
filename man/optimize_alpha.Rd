@@ -19,6 +19,8 @@ optimize_alpha(
   dtype = "float32",
   lower_bound = 0.01,
   upper_bound = 20,
+  convergence_tol = 1e-04,
+  patience = 3L,
   offset = 1,
   verbose = TRUE
 )
@@ -63,9 +65,19 @@ increase memory usage. Default: 15.}
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
-\item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.01.}
+\item{lower_bound}{Numeric. Lower bound for alpha values. Default: 0.01.
+Alpha is parameterized as \code{exp(theta)} internally (GLM log-link), so
+this bound is always satisfied smoothly without clamping.}
 
-\item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.}
+\item{upper_bound}{Numeric. Upper bound for alpha values. Default: 20.
+Kept for backward compatibility but rarely binding; the loss function
+naturally prevents excessively large alpha.}
+
+\item{convergence_tol}{Numeric. Relative change in EMA loss below which
+the optimizer considers the solution converged. Default: 1e-4.}
+
+\item{patience}{Integer. Number of consecutive convergence checks (every
+50 steps) that must pass before early stopping. Default: 3.}
 
 \item{offset}{Numeric. Value added to travel times before exponentiation.
 Default: 1.}

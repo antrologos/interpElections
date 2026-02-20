@@ -26,7 +26,7 @@ test_that("optimize_alpha finds lower objective than initial", {
   expect_true(result$value <= init_val)
 })
 
-test_that("optimize_alpha respects lower_bound", {
+test_that("optimize_alpha produces strictly positive alpha (exp reparameterization)", {
   skip_if_not_installed("torch")
 
   set.seed(42)
@@ -40,12 +40,13 @@ test_that("optimize_alpha respects lower_bound", {
   result <- optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    lower_bound = 0.01,
     max_steps = 50L,
     verbose = FALSE
   )
 
-  expect_true(all(result$alpha >= 0.01))
+  # exp() reparameterization guarantees alpha > 0 by construction
+  expect_true(all(result$alpha > 0))
+  expect_true(all(is.finite(result$alpha)))
 })
 
 test_that("optimize_alpha returns proper structure", {

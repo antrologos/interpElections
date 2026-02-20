@@ -35,7 +35,15 @@
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
 #'   `"float32"`. Float32 halves memory usage with negligible precision loss.
 #' @param lower_bound Numeric. Lower bound for alpha values. Default: 0.01.
+#'   Alpha is parameterized as `exp(theta)` internally (GLM log-link), so
+#'   this bound is always satisfied smoothly without clamping.
 #' @param upper_bound Numeric. Upper bound for alpha values. Default: 20.
+#'   Kept for backward compatibility but rarely binding; the loss function
+#'   naturally prevents excessively large alpha.
+#' @param convergence_tol Numeric. Relative change in EMA loss below which
+#'   the optimizer considers the solution converged. Default: 1e-4.
+#' @param patience Integer. Number of consecutive convergence checks (every
+#'   50 steps) that must pass before early stopping. Default: 3.
 #' @param offset Numeric. Value added to travel times before exponentiation.
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
@@ -103,6 +111,8 @@ optimize_alpha <- function(
     dtype = "float32",
     lower_bound = 0.01,
     upper_bound = 20,
+    convergence_tol = 1e-4,
+    patience = 3L,
     offset = 1,
     verbose = TRUE
 ) {
@@ -215,6 +225,8 @@ optimize_alpha <- function(
     dtype = resolved_dtype,
     lower_bound = lower_bound,
     upper_bound = upper_bound,
+    convergence_tol = convergence_tol,
+    patience = as.integer(patience),
     verbose = verbose
   )
 
@@ -255,11 +267,13 @@ optimize_alpha <- function(
   class(result) <- "interpElections_optim"
 
   if (verbose) {
+    conv_msg <- if (raw$convergence == 0L) " (converged)" else ""
     message(sprintf(
-      "  Completed %d steps (%.1fs), objective=%s",
+      "  Completed %d steps (%.1fs), objective=%s%s",
       result$iterations,
       as.numeric(elapsed, units = "secs"),
-      format(round(result$value), big.mark = ",")
+      format(round(result$value), big.mark = ","),
+      conv_msg
     ))
   }
 
