@@ -13,7 +13,7 @@ optimize_alpha(
   batch_size = 500L,
   sk_iter = 15L,
   max_steps = 800L,
-  lr_init = 0.05,
+  lr_init = 0.01,
   use_gpu = NULL,
   device = NULL,
   dtype = "float32",
@@ -53,7 +53,7 @@ increase memory usage. Default: 15.}
 \item{max_steps}{Integer. Total number of SGD steps. Default: 800.}
 
 \item{lr_init}{Numeric. Initial ADAM learning rate. Halved at steps 200,
-400, and 600. Default: 0.05.}
+400, and 600. Default: 0.01.}
 
 \item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
 \code{FALSE}, use CPU. If \code{NULL} (default), reads the package option

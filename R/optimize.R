@@ -26,7 +26,7 @@
 #'   increase memory usage. Default: 15.
 #' @param max_steps Integer. Total number of SGD steps. Default: 800.
 #' @param lr_init Numeric. Initial ADAM learning rate. Halved at steps 200,
-#'   400, and 600. Default: 0.05.
+#'   400, and 600. Default: 0.01.
 #' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
 #'   `FALSE`, use CPU. If `NULL` (default), reads the package option
 #'   `interpElections.use_gpu` (set via [use_gpu()]).
@@ -106,7 +106,7 @@ optimize_alpha <- function(
     batch_size = 500L,
     sk_iter = 15L,
     max_steps = 800L,
-    lr_init = 0.05,
+    lr_init = 0.01,
     use_gpu = NULL,
     device = NULL,
     dtype = "float32",

@@ -265,9 +265,6 @@
         theta_torch$grad <- grad * mask
       })
 
-      # Gradient clipping
-      torch::nn_utils_clip_grad_norm_(list(theta_torch), 10.0)
-
       optimizer$step()
 
       lv <- loss$item()
