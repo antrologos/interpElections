@@ -45,7 +45,7 @@ result_nit
         Parties:       11 (PARTY_27, PARTY_14, PARTY_30, PARTY_13, ...)
         Turnout:       1 (QT_COMPARECIMENTO)
         Demographics:  10 (GENERO_FEMININO, GENERO_MASCULINO, ...)
-        Calibration:   28 (vot_hom_alf_18_19, vot_hom_alf_20_24, ...)
+        Calibration:   gender x 7 age brackets
 
       Optimizer: pb_sgd_sinkhorn_cuda (obj = 1265038.68)
       Alpha:     [0.010, 17.623] (mean 2.507)

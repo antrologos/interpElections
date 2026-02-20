@@ -265,11 +265,10 @@ interpolate_election_br(
 
   Character. Calibration column type:
 
-  - `"full"` **(default)**: 28 columns crossing gender (male/female) ×
-    literacy (literate/illiterate) × 7 age brackets. Provides stronger
-    spatial signal for the optimizer.
+  - `"full"` **(default)**: gender (male/female) × 7 age brackets.
+    Provides stronger spatial signal for the optimizer.
 
-  - `"age_only"`: 7 age-bracket-only columns (original behavior).
+  - `"age_only"`: 7 age-bracket-only columns (ignores gender).
 
 - use_gpu:
 

@@ -85,11 +85,12 @@ the census year (see Details).</p>
 <code>pop_30_39</code>, <code>pop_40_49</code>, <code>pop_50_59</code>, <code>pop_60_69</code>.</p>
 <p>All years also produce: <code>pop_00_04</code>, <code>pop_05_09</code>, <code>pop_10_14</code>,
 <code>pop_15_17</code> (or <code>pop_15_19</code> for 2022), <code>pop_70mais</code>.</p>
-<p>Additionally, all years produce gender x literacy columns for the
-same voting-age brackets: <code>pop_hom_alf_*</code>, <code>pop_hom_nalf_*</code>,
-<code>pop_mul_alf_*</code>, <code>pop_mul_nalf_*</code> (literate/illiterate men/women).
+<p>Additionally, all years produce gender × age columns for the
+same voting-age brackets, split by gender: <code>pop_hom_alf_*</code>,
+<code>pop_hom_nalf_*</code>, <code>pop_mul_alf_*</code>, <code>pop_mul_nalf_*</code>.
 These are used by the "full" calibration mode in
-<code><a href="interpolate_election_br.html">interpolate_election_br()</a></code>.</p>
+<code><a href="interpolate_election_br.html">interpolate_election_br()</a></code>, which sums literate + illiterate
+within each gender × age group.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

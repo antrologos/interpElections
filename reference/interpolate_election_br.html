@@ -281,10 +281,9 @@ alpha.</p></dd>
 
 
 <dt id="arg-calib-type">calib_type<a class="anchor" aria-label="anchor" href="#arg-calib-type"></a></dt>
-<dd><p>Character. Calibration column type:</p><ul><li><p><code>"full"</code> <strong>(default)</strong>: 28 columns crossing gender (male/female) ×
-literacy (literate/illiterate) × 7 age brackets. Provides stronger
-spatial signal for the optimizer.</p></li>
-<li><p><code>"age_only"</code>: 7 age-bracket-only columns (original behavior).</p></li>
+<dd><p>Character. Calibration column type:</p><ul><li><p><code>"full"</code> <strong>(default)</strong>: gender (male/female) × 7 age brackets.
+Provides stronger spatial signal for the optimizer.</p></li>
+<li><p><code>"age_only"</code>: 7 age-bracket-only columns (ignores gender).</p></li>
 </ul></dd>
 
 

@@ -205,9 +205,9 @@ polling section). Contains the following column groups:</p>
 <li><p><code>votantes_18_20</code>, ..., <code>votantes_65_69</code>: Registered voters per
 age bracket at this location (used as calibration data).</p></li>
 <li><p><code>vot_hom_alf_*</code>, <code>vot_hom_nalf_*</code>, <code>vot_mul_alf_*</code>,
-<code>vot_mul_nalf_*</code>: Cross-tabulated voters by gender, literacy,
-and age bracket (used for "full" calibration mode). 48 columns
-total (12 age groups x 4 gender-literacy categories).</p></li>
+<code>vot_mul_nalf_*</code>: Cross-tabulated voters by gender and age
+bracket (used for "full" calibration mode). Literate and
+illiterate counts are summed within each gender × age group.</p></li>
 </ul><p><strong>Conditional on <code>what</code>:</strong></p><ul><li><p><code>"candidates"</code>: <code>CAND_&lt;number&gt;</code> columns + <code>QT_COMPARECIMENTO</code>.</p></li>
 <li><p><code>"parties"</code>: <code>PARTY_&lt;abbrev&gt;</code> columns + <code>QT_COMPARECIMENTO</code>.</p></li>
 <li><p><code>"turnout"</code>: <code>QT_COMPARECIMENTO</code>, <code>QT_APTOS</code>, <code>QT_ABSTENCOES</code>.</p></li>

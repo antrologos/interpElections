@@ -183,20 +183,19 @@ head(pop_data[, 1:10])
     2 3170701xxxxx  3170701      37        36        47        38        47        44        83        95
     ...
 
-The data frame also includes 28 calibration columns
-(`pop_hom_alf_18_19`, `pop_hom_nalf_18_19`, …, `pop_mul_nalf_60_69`)
-that cross gender × literacy × 7 age brackets. These **calibration
-variables** bridge census tracts and polling stations.
+The data frame also includes calibration columns that cross gender
+(male/female) × 7 age brackets. These **calibration variables** bridge
+census tracts and polling stations.
 
-| Age bracket | Census (wide)      | Full calibration columns         | TSE equivalent                   |
-|-------------|--------------------|----------------------------------|----------------------------------|
-| 18–19       | 2/5 of `pop_15_19` | `pop_{hom,mul}_{alf,nalf}_18_19` | `vot_{hom,mul}_{alf,nalf}_18_19` |
-| 20–24       | `pop_20_24`        | `pop_{hom,mul}_{alf,nalf}_20_24` | `vot_{hom,mul}_{alf,nalf}_20_24` |
-| 25–29       | `pop_25_29`        | `pop_{hom,mul}_{alf,nalf}_25_29` | `vot_{hom,mul}_{alf,nalf}_25_29` |
-| 30–39       | `pop_30_39`        | `pop_{hom,mul}_{alf,nalf}_30_39` | `vot_{hom,mul}_{alf,nalf}_30_39` |
-| 40–49       | `pop_40_49`        | `pop_{hom,mul}_{alf,nalf}_40_49` | `vot_{hom,mul}_{alf,nalf}_40_49` |
-| 50–59       | `pop_50_59`        | `pop_{hom,mul}_{alf,nalf}_50_59` | `vot_{hom,mul}_{alf,nalf}_50_59` |
-| 60–69       | `pop_60_69`        | `pop_{hom,mul}_{alf,nalf}_60_69` | `vot_{hom,mul}_{alf,nalf}_60_69` |
+| Age bracket | Census column                    | TSE equivalent                   |
+|-------------|----------------------------------|----------------------------------|
+| 18–19       | `pop_hom_18_19`, `pop_mul_18_19` | `vot_hom_18_19`, `vot_mul_18_19` |
+| 20–24       | `pop_hom_20_24`, `pop_mul_20_24` | `vot_hom_20_24`, `vot_mul_20_24` |
+| 25–29       | `pop_hom_25_29`, `pop_mul_25_29` | `vot_hom_25_29`, `vot_mul_25_29` |
+| 30–39       | `pop_hom_30_39`, `pop_mul_30_39` | `vot_hom_30_39`, `vot_mul_30_39` |
+| 40–49       | `pop_hom_40_49`, `pop_mul_40_49` | `vot_hom_40_49`, `vot_mul_40_49` |
+| 50–59       | `pop_hom_50_59`, `pop_mul_50_59` | `vot_hom_50_59`, `vot_mul_50_59` |
+| 60–69       | `pop_hom_60_69`, `pop_mul_60_69` | `vot_hom_60_69`, `vot_mul_60_69` |
 
 **How the 7 brackets are built.** The TSE voter profile data records
 voters in 12 finer age bins (18, 19, 20, 21–24, 25–29, 30–34, 35–39,
@@ -209,13 +208,10 @@ voting-age share.
 
 These 7 matched brackets are the key insight: they are observed at
 **both** levels (census tracts and polling stations), enabling
-calibration. The package also supports **full calibration** with
-`calib_type = "full"`, which crosses gender (male/female) × literacy
-(literate/illiterate) × 7 age groups to produce **28 calibration
-columns**. This provides a stronger spatial signal because the optimizer
-must simultaneously match the spatial distribution of each subgroup.
-Full calibration is the default in
-[`interpolate_election_br()`](https://antrologos.github.io/interpElections/reference/interpolate_election_br.md).
+calibration. The default **full calibration** mode
+(`calib_type = "full"`) crosses gender × 7 age groups, providing a
+stronger spatial signal because the optimizer must simultaneously match
+the spatial distribution of each gender–age subgroup.
 
 ![](figures/pop-pyramid.png)
 
@@ -910,10 +906,10 @@ weight matrix must allocate *all* age groups simultaneously.
 With **aggregate** Sinkhorn (Sections 12.1–12.6), the weight matrix has
 one set of row targets: total population per tract, summed across all
 age brackets. The optimizer must find one set of weights that
-simultaneously matches 7 (or 28, with full calibration) different
-demographic distributions. This is an inherent compromise: weights that
-correctly distribute 18–20 year-olds may systematically misallocate
-60–69 year-olds, and vice versa.
+simultaneously matches multiple different demographic distributions.
+This is an inherent compromise: weights that correctly distribute 18–20
+year-olds may systematically misallocate 60–69 year-olds, and vice
+versa.
 
 Consider a concrete scenario. Tract A is near a university with many
 young voters at station 1. Tract B is in a retirement neighborhood with
@@ -1167,7 +1163,7 @@ where:
   per tract, with $W$ built via per-bracket Sinkhorn (Section 12.7)
 - $P$ — census demographics per tract
 - $k$ = demographic bracket index ($K = 7$ for age-only calibration,
-  $K = 28$ for full gender × literacy × age calibration)
+  $K = 14$ for full gender × age calibration)
 
 The weight matrix $W(\alpha)$ is the sum of per-bracket transport
 matrices $W^{(k)}$, each balanced to match bracket $k$’s row/column
@@ -1190,104 +1186,6 @@ sse_values <- sapply(alpha_range, function(a) {
     sk_iter = 50
   )
 })
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.09e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.68e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.52e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.68e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.28e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 7.43e-10)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.03e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.40e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.88e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.48e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.24e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 4.19e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.35e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 6.76e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 8.45e-09)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.05e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.29e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.57e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.90e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.28e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.72e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.22e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.79e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 4.43e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.16e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.98e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 6.89e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 7.90e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 9.03e-08)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.03e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.16e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.32e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.48e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.66e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 1.86e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.08e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.31e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.57e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 2.85e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.15e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.48e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 3.84e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 4.23e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 4.64e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.09e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 5.58e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 6.11e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 6.68e-07)
-#> Warning: Sinkhorn did not converge after 50 iterations (max marginal error:
-#> 7.29e-07)
 
 ggplot(data.frame(alpha = alpha_range, sse = sse_values),
        aes(x = alpha, y = sse)) +
@@ -1845,18 +1743,18 @@ components:
     all unrolled Sinkhorn iterations.
 
 where $k_{a}$ is the number of active demographic brackets (7 for
-`calib_type = "age_only"`, up to 28 for `calib_type = "full"`) and
-`bytes` is 4 (float32) or 8 (float64).
+`calib_type = "age_only"`, 14 for `calib_type = "full"`) and `bytes` is
+4 (float32) or 8 (float64).
 
 | Municipality   | Tracts | Stations | $k_{a}$ | Estimated GPU memory |
 |----------------|--------|----------|---------|----------------------|
-| Varginha       | 279    | 37       | 28      | ~28 MB               |
-| Niterói        | 1,169  | 135      | 28      | ~242 MB              |
-| Belo Horizonte | 5,113  | 407      | 28      | ~729 MB              |
-| Rio de Janeiro | 13,370 | 1,392    | 28      | ~2.5 GB              |
+| Varginha       | 279    | 37       | 14      | ~28 MB               |
+| Niterói        | 1,169  | 135      | 14      | ~242 MB              |
+| Belo Horizonte | 5,113  | 407      | 14      | ~729 MB              |
+| Rio de Janeiro | 13,370 | 1,392    | 14      | ~2.5 GB              |
 
 These are actual values reported by the optimizer during precomputation.
-With `calib_type = "age_only"` ($k_{a} = 7$), memory is approximately 4×
+With `calib_type = "age_only"` ($k_{a} = 7$), memory is approximately 2×
 smaller. For very large cities on GPU, consider reducing `batch_size` or
 `sk_iter`, or switching to `dtype = "float32"` (the default) if using
 `"float64"`.
@@ -1901,7 +1799,7 @@ interpElections_cache_clean()      # clear cache
 #### Notation
 
 - $N$ = number of census tracts, $M$ = number of polling stations
-- $K$ = number of calibration brackets (7 for age-only, 28 for full)
+- $K$ = number of calibration brackets (7 for age-only, 14 for full)
 - $t \in {\mathbb{R}}^{N \times M}$: travel time matrix (minutes)
 - $\alpha \in {\mathbb{R}}^{N}$: per-tract decay parameters
 - $P \in {\mathbb{R}}^{N \times K}$: census population by age bracket

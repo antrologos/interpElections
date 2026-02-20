@@ -185,9 +185,9 @@ section). Contains the following column groups:
   bracket at this location (used as calibration data).
 
 - `vot_hom_alf_*`, `vot_hom_nalf_*`, `vot_mul_alf_*`, `vot_mul_nalf_*`:
-  Cross-tabulated voters by gender, literacy, and age bracket (used for
-  "full" calibration mode). 48 columns total (12 age groups x 4
-  gender-literacy categories).
+  Cross-tabulated voters by gender and age bracket (used for "full"
+  calibration mode). Literate and illiterate counts are summed within
+  each gender × age group.
 
 **Conditional on `what`:**
 

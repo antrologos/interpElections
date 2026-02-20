@@ -273,67 +273,83 @@ interpolated results at the tract level.</p>
 1 3170701xxxxx  3170701      68        68        62        88        68        58       144       129
 2 3170701xxxxx  3170701      37        36        47        38        47        44        83        95
 ...</code></pre>
-<p>The data frame also includes 28 calibration columns
-(<code>pop_hom_alf_18_19</code>, <code>pop_hom_nalf_18_19</code>, …,
-<code>pop_mul_nalf_60_69</code>) that cross gender × literacy × 7 age
-brackets. These <strong>calibration variables</strong> bridge census
-tracts and polling stations.</p>
+<p>The data frame also includes calibration columns that cross gender
+(male/female) × 7 age brackets. These <strong>calibration
+variables</strong> bridge census tracts and polling stations.</p>
 <table class="table">
 <colgroup>
-<col width="25%">
-<col width="25%">
-<col width="25%">
-<col width="25%">
+<col width="33%">
+<col width="33%">
+<col width="33%">
 </colgroup>
 <thead><tr class="header">
 <th>Age bracket</th>
-<th>Census (wide)</th>
-<th>Full calibration columns</th>
+<th>Census column</th>
 <th>TSE equivalent</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
 <td>18–19</td>
-<td>2/5 of <code>pop_15_19</code>
+<td>
+<code>pop_hom_18_19</code>, <code>pop_mul_18_19</code>
 </td>
-<td><code>pop_{hom,mul}_{alf,nalf}_18_19</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_18_19</code></td>
+<td>
+<code>vot_hom_18_19</code>, <code>vot_mul_18_19</code>
+</td>
 </tr>
 <tr class="even">
 <td>20–24</td>
-<td><code>pop_20_24</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_20_24</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_20_24</code></td>
+<td>
+<code>pop_hom_20_24</code>, <code>pop_mul_20_24</code>
+</td>
+<td>
+<code>vot_hom_20_24</code>, <code>vot_mul_20_24</code>
+</td>
 </tr>
 <tr class="odd">
 <td>25–29</td>
-<td><code>pop_25_29</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_25_29</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_25_29</code></td>
+<td>
+<code>pop_hom_25_29</code>, <code>pop_mul_25_29</code>
+</td>
+<td>
+<code>vot_hom_25_29</code>, <code>vot_mul_25_29</code>
+</td>
 </tr>
 <tr class="even">
 <td>30–39</td>
-<td><code>pop_30_39</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_30_39</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_30_39</code></td>
+<td>
+<code>pop_hom_30_39</code>, <code>pop_mul_30_39</code>
+</td>
+<td>
+<code>vot_hom_30_39</code>, <code>vot_mul_30_39</code>
+</td>
 </tr>
 <tr class="odd">
 <td>40–49</td>
-<td><code>pop_40_49</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_40_49</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_40_49</code></td>
+<td>
+<code>pop_hom_40_49</code>, <code>pop_mul_40_49</code>
+</td>
+<td>
+<code>vot_hom_40_49</code>, <code>vot_mul_40_49</code>
+</td>
 </tr>
 <tr class="even">
 <td>50–59</td>
-<td><code>pop_50_59</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_50_59</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_50_59</code></td>
+<td>
+<code>pop_hom_50_59</code>, <code>pop_mul_50_59</code>
+</td>
+<td>
+<code>vot_hom_50_59</code>, <code>vot_mul_50_59</code>
+</td>
 </tr>
 <tr class="odd">
 <td>60–69</td>
-<td><code>pop_60_69</code></td>
-<td><code>pop_{hom,mul}_{alf,nalf}_60_69</code></td>
-<td><code>vot_{hom,mul}_{alf,nalf}_60_69</code></td>
+<td>
+<code>pop_hom_60_69</code>, <code>pop_mul_60_69</code>
+</td>
+<td>
+<code>vot_hom_60_69</code>, <code>vot_mul_60_69</code>
+</td>
 </tr>
 </tbody>
 </table>
@@ -347,13 +363,11 @@ which reports a 15–19 group instead of 18–20 — the package applies a
 proxy to approximate the 18–19 voting-age share.</p>
 <p>These 7 matched brackets are the key insight: they are observed at
 <strong>both</strong> levels (census tracts and polling stations),
-enabling calibration. The package also supports <strong>full
-calibration</strong> with <code>calib_type = "full"</code>, which
-crosses gender (male/female) × literacy (literate/illiterate) × 7 age
-groups to produce <strong>28 calibration columns</strong>. This provides
-a stronger spatial signal because the optimizer must simultaneously
-match the spatial distribution of each subgroup. Full calibration is the
-default in <code><a href="../reference/interpolate_election_br.html">interpolate_election_br()</a></code>.</p>
+enabling calibration. The default <strong>full calibration</strong> mode
+(<code>calib_type = "full"</code>) crosses gender × 7 age groups,
+providing a stronger spatial signal because the optimizer must
+simultaneously match the spatial distribution of each gender–age
+subgroup.</p>
 <p><img src="figures/pop-pyramid.png" class="r-plt" alt="" width="90%"></p>
 </div>
 <div class="section level3">
@@ -1119,10 +1133,10 @@ weight matrix must allocate <em>all</em> age groups simultaneously.</p>
 <p>With <strong>aggregate</strong> Sinkhorn (Sections 12.1–12.6), the
 weight matrix has one set of row targets: total population per tract,
 summed across all age brackets. The optimizer must find one set of
-weights that simultaneously matches 7 (or 28, with full calibration)
-different demographic distributions. This is an inherent compromise:
-weights that correctly distribute 18–20 year-olds may systematically
-misallocate 60–69 year-olds, and vice versa.</p>
+weights that simultaneously matches multiple different demographic
+distributions. This is an inherent compromise: weights that correctly
+distribute 18–20 year-olds may systematically misallocate 60–69
+year-olds, and vice versa.</p>
 <p>Consider a concrete scenario. Tract A is near a university with many
 young voters at station 1. Tract B is in a retirement neighborhood with
 elderly voters at station 3. Both tracts might have similar total
@@ -1422,8 +1436,8 @@ built via per-bracket Sinkhorn (Section 12.7)</li>
 = demographic bracket index
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">K = 7</annotation></semantics></math>
 for age-only calibration,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>28</mn></mrow><annotation encoding="application/x-tex">K = 28</annotation></semantics></math>
-for full gender × literacy × age calibration)</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>14</mn></mrow><annotation encoding="application/x-tex">K = 14</annotation></semantics></math>
+for full gender × age calibration)</li>
 </ul>
 <p>The weight matrix
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">W(\alpha)</annotation></semantics></math>
@@ -1449,104 +1463,6 @@ row/column targets, followed by a final aggregate Sinkhorn pass.</p>
 <span>    sk_iter <span class="op">=</span> <span class="fl">50</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.09e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.68e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.52e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.68e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.28e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 7.43e-10)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.03e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.40e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.88e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.48e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.24e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 4.19e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.35e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 6.76e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 8.45e-09)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.05e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.29e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.57e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.90e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.28e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.72e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.22e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.79e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 4.43e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.16e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.98e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 6.89e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 7.90e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 9.03e-08)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.03e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.16e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.32e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.48e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.66e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 1.86e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.08e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.31e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.57e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 2.85e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.15e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.48e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 3.84e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 4.23e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 4.64e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.09e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 5.58e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 6.11e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 6.68e-07)</span></span>
-<span><span class="co">#&gt; Warning: Sinkhorn did not converge after 50 iterations (max marginal error:</span></span>
-<span><span class="co">#&gt; 7.29e-07)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>alpha <span class="op">=</span> <span class="va">alpha_range</span>, sse <span class="op">=</span> <span class="va">sse_values</span><span class="op">)</span>,</span>
 <span>       <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">alpha</span>, y <span class="op">=</span> <span class="va">sse</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
@@ -2251,7 +2167,7 @@ Sinkhorn iterations.</li>
 <p>where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
 is the number of active demographic brackets (7 for
-<code>calib_type = "age_only"</code>, up to 28 for
+<code>calib_type = "age_only"</code>, 14 for
 <code>calib_type = "full"</code>) and <code>bytes</code> is 4 (float32)
 or 8 (float64).</p>
 <table class="table">
@@ -2267,28 +2183,28 @@ or 8 (float64).</p>
 <td>Varginha</td>
 <td>279</td>
 <td>37</td>
-<td>28</td>
+<td>14</td>
 <td>~28 MB</td>
 </tr>
 <tr class="even">
 <td>Niterói</td>
 <td>1,169</td>
 <td>135</td>
-<td>28</td>
+<td>14</td>
 <td>~242 MB</td>
 </tr>
 <tr class="odd">
 <td>Belo Horizonte</td>
 <td>5,113</td>
 <td>407</td>
-<td>28</td>
+<td>14</td>
 <td>~729 MB</td>
 </tr>
 <tr class="even">
 <td>Rio de Janeiro</td>
 <td>13,370</td>
 <td>1,392</td>
-<td>28</td>
+<td>14</td>
 <td>~2.5 GB</td>
 </tr>
 </tbody>
@@ -2296,7 +2212,7 @@ or 8 (float64).</p>
 <p>These are actual values reported by the optimizer during
 precomputation. With <code>calib_type = "age_only"</code>
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">k_a = 7</annotation></semantics></math>),
-memory is approximately 4× smaller. For very large cities on GPU,
+memory is approximately 2× smaller. For very large cities on GPU,
 consider reducing <code>batch_size</code> or <code>sk_iter</code>, or
 switching to <code>dtype = "float32"</code> (the default) if using
 <code>"float64"</code>.</p>
@@ -2341,7 +2257,7 @@ loading r5r for large municipalities.</p>
 = number of polling stations</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
-= number of calibration brackets (7 for age-only, 28 for full)</li>
+= number of calibration brackets (7 for age-only, 14 for full)</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">t \in \mathbb{R}^{N \times M}</annotation></semantics></math>:
 travel time matrix (minutes)</li>
