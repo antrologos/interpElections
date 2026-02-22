@@ -1,8 +1,7 @@
 #' Find optimal decay parameters (alpha) for spatial interpolation
 #'
 #' Optimizes the per-tract-per-bracket decay parameters that minimize the
-#' squared error between Sinkhorn-balanced interpolated values and known
-#' population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
+#' error between interpolated values and known population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
 #' and log-domain 3D Sinkhorn inside torch autograd. Each demographic bracket
 #' gets its own per-tract kernel; gradients flow through all unrolled
 #' iterations. Works on both CPU and GPU (CUDA/MPS).
@@ -57,6 +56,18 @@
 #'   used when `method = "colnorm"`. The penalty term is
 #'   `-barrier_mu * sum(log(V_hat_total))`. Set to 0 to disable.
 #'   Default: 10.
+#' @param loss_fn Character. Loss function for optimization: `"poisson"`
+#'   (Poisson deviance, default) or `"sse"` (sum of squared errors).
+#'   Poisson deviance `2 * sum(V_hat - P + P * log(P / V_hat))` treats
+#'   proportional errors equally across all tracts regardless of population
+#'   size, preventing large tracts from dominating the loss. This
+#'   encourages higher, more spatially meaningful alpha values. SSE is
+#'   retained for backward compatibility.
+#' @param alpha_min Numeric. Lower bound for alpha values. The
+#'   reparameterization becomes `alpha = alpha_min + softplus(theta)`,
+#'   ensuring all alpha values are at least `alpha_min`. Default: 0
+#'   (no lower bound, equivalent to legacy behavior). Set to 1 or 2
+#'   to enforce minimum inverse-distance or inverse-square decay.
 #' @param offset Numeric. Value added to travel times before exponentiation.
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
@@ -67,8 +78,8 @@
 #'     decay parameters. Each row is a census tract, each column is a
 #'     demographic bracket. Inactive brackets (zero population or voters)
 #'     are filled with 1.}
-#'   \item{value}{Numeric. Objective function value at optimum (sum of
-#'     squared errors across all tracts and active brackets).}
+#'   \item{value}{Numeric. Objective function value at optimum (Poisson
+#'     deviance or SSE depending on `loss_fn`).}
 #'   \item{W}{Numeric matrix \[n x m\]. Sinkhorn-balanced weight matrix
 #'     from the best-epoch transport plan. Use directly for interpolation
 #'     via `W \%*\% data`. Column sums are approximately 1.}
@@ -98,9 +109,10 @@
 #' [setup_torch()] if not already available.
 #'
 #' **Parameterization**: alpha\[i,b\] is reparameterized as
-#' `alpha = exp(theta)` with `theta` unconstrained. This avoids gradient
-#' death at any boundary and removes the need for projected gradient
-#' descent or clamping. Alpha is always strictly positive.
+#' `alpha = alpha_min + softplus(theta)` with `theta` unconstrained,
+#' where `softplus(x) = log(1 + exp(x))`. When `alpha_min = 0`
+#' (default), this is similar to the legacy `exp(theta)`. Alpha is
+#' always at least `alpha_min`.
 #'
 #' **Epoch structure**: Each epoch is one full shuffled pass through all
 #' n tracts, divided into mini-batches. The loss reported at each epoch
@@ -150,6 +162,8 @@ optimize_alpha <- function(
     patience = 5L,
     method = c("colnorm", "sinkhorn"),
     barrier_mu = 10,
+    loss_fn = c("poisson", "sse"),
+    alpha_min = 0,
     offset = 1,
     verbose = TRUE
 ) {
@@ -189,8 +203,10 @@ optimize_alpha <- function(
   }
 
   # alpha_init: scalar, n-vector, or n×k matrix.
+  # When alpha_min > 0, ensure initialization is above alpha_min with
+  # enough margin for the softplus gradient to be non-negligible.
   if (is.null(alpha_init)) {
-    alpha_init <- 1  # scalar → recycled inside .optimize_torch
+    alpha_init <- alpha_min + 1  # scalar → recycled inside .optimize_torch
   } else {
     if (!is.numeric(alpha_init))
       stop("alpha_init must be numeric", call. = FALSE)
@@ -240,6 +256,13 @@ optimize_alpha <- function(
     stop("barrier_mu must be a single non-negative number", call. = FALSE)
   }
 
+  # Validate loss_fn and alpha_min
+  loss_fn <- match.arg(loss_fn)
+  if (!is.numeric(alpha_min) || length(alpha_min) != 1 ||
+      !is.finite(alpha_min) || alpha_min < 0) {
+    stop("alpha_min must be a single non-negative finite number", call. = FALSE)
+  }
+
   # Resolve GPU setting
   resolved_use_gpu <- if (!is.null(use_gpu)) {
     use_gpu
@@ -279,6 +302,8 @@ optimize_alpha <- function(
     patience       = as.integer(patience),
     method         = method,
     barrier_mu     = barrier_mu,
+    loss_fn        = loss_fn,
+    alpha_min      = alpha_min,
     verbose        = verbose
   )
 
@@ -322,7 +347,9 @@ optimize_alpha <- function(
     sk_tol              = sk_tol,
     batch_size          = min(batch_size, nrow(t_adj)),
     method_type         = method,
-    barrier_mu          = barrier_mu
+    barrier_mu          = barrier_mu,
+    loss_fn             = loss_fn,
+    alpha_min           = alpha_min
   )
   class(result) <- "interpElections_optim"
 
@@ -344,6 +371,7 @@ optimize_alpha <- function(
 print.interpElections_optim <- function(x, ...) {
   cat("interpElections optimization result\n")
   cat(sprintf("  Method:      %s\n", x$method))
+  cat(sprintf("  Loss fn:     %s\n", x$loss_fn %||% "sse"))
   cat(sprintf("  Objective:   %.4f\n", x$value))
   cat(sprintf("  Convergence: %d\n", x$convergence))
   if (is.matrix(x$alpha)) {

@@ -18,6 +18,7 @@ test_that("optimize_alpha finds lower objective than initial", {
     use_gpu = FALSE,
     max_epochs = 200L,
     sk_tol = 0.01,
+    loss_fn = "sse",
     verbose = FALSE
   ))
 
@@ -35,7 +36,7 @@ test_that("optimize_alpha finds lower objective than initial", {
   expect_true(result$value <= init_val)
 })
 
-test_that("optimize_alpha alpha is always positive (exp reparameterization)", {
+test_that("optimize_alpha alpha is always positive (softplus reparameterization)", {
   skip_if_not_installed("torch")
 
   set.seed(42)
@@ -54,7 +55,7 @@ test_that("optimize_alpha alpha is always positive (exp reparameterization)", {
     verbose = FALSE
   ))
 
-  # alpha = exp(theta): always strictly positive, no clamping
+  # alpha = alpha_min + softplus(theta): always strictly positive
   expect_true(all(result$alpha > 0))
   expect_true(all(is.finite(result$alpha)))
 })
@@ -341,4 +342,199 @@ test_that("compute_weight_matrix method='colnorm' produces valid weights", {
   expect_true(all(abs(colSums(W) - 1) < 0.01))
   # All weights non-negative
   expect_true(all(W >= -1e-10))
+})
+
+# --- Poisson deviance loss tests ---
+
+test_that("optimize_alpha loss_fn='poisson' runs and returns valid structure", {
+  skip_if_not_installed("torch")
+  set.seed(501)
+  n <- 10; m <- 5; k <- 2
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    loss_fn = "poisson",
+    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
+  ))
+
+  expect_s3_class(result, "interpElections_optim")
+  expect_true(all(result$alpha > 0))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
+  expect_true(is.finite(result$value))
+  expect_true(result$value >= 0)
+  expect_equal(result$loss_fn, "poisson")
+})
+
+test_that("optimize_alpha loss_fn='sse' backward compatibility", {
+  skip_if_not_installed("torch")
+  set.seed(502)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    loss_fn = "sse",
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  expect_true(all(result$alpha > 0))
+  expect_equal(result$loss_fn, "sse")
+})
+
+test_that("optimize_alpha default loss_fn is 'poisson'", {
+  skip_if_not_installed("torch")
+  set.seed(503)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  expect_equal(result$loss_fn, "poisson")
+})
+
+test_that("optimize_alpha loss_fn='poisson' with method='sinkhorn'", {
+  skip_if_not_installed("torch")
+  set.seed(507)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    loss_fn = "poisson", method = "sinkhorn",
+    use_gpu = FALSE, max_epochs = 20L, verbose = FALSE
+  ))
+
+  expect_true(grepl("sinkhorn", result$method))
+  expect_equal(result$loss_fn, "poisson")
+  expect_true(all(result$alpha > 0))
+})
+
+test_that("optimize_alpha loss_fn='poisson' handles zero population brackets", {
+  skip_if_not_installed("torch")
+  set.seed(506)
+  n <- 6; m <- 4; k <- 3
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+  # Zero out one bracket entirely
+  p_mat[, 2] <- 0
+  s_mat[, 2] <- 0
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    loss_fn = "poisson",
+    use_gpu = FALSE, max_epochs = 20L, verbose = FALSE
+  ))
+
+  expect_true(all(is.finite(result$alpha)))
+  expect_true(is.finite(result$value))
+  # Inactive bracket should get default alpha = 1
+  expect_true(all(result$alpha[, 2] == 1))
+})
+
+test_that("optimize_alpha rejects invalid loss_fn", {
+  skip_if_not_installed("torch")
+  n <- 4; m <- 2; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 10), nrow = n)
+  p_mat <- matrix(runif(n * k, 5, 20), nrow = n)
+  s_mat <- matrix(runif(m * k, 5, 20), nrow = m)
+
+  expect_error(
+    optimize_alpha(t_mat, p_mat, s_mat, loss_fn = "mse", verbose = FALSE),
+    "should be one of"
+  )
+})
+
+# --- Alpha lower bound tests ---
+
+test_that("optimize_alpha alpha_min enforces lower bound", {
+  skip_if_not_installed("torch")
+  set.seed(504)
+  n <- 8; m <- 4; k <- 2
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    alpha_min = 2,
+    use_gpu = FALSE, max_epochs = 50L, verbose = FALSE
+  ))
+
+  # Active brackets should respect alpha_min
+  # (inactive brackets get default alpha=1, which may be < alpha_min)
+  active_cols <- which(colSums(p_mat) >= 0.5 & colSums(s_mat) >= 0.5)
+  expect_true(all(result$alpha[, active_cols] >= 2 - 1e-6))
+  expect_equal(result$alpha_min, 2)
+})
+
+test_that("optimize_alpha alpha_min=0 backward compatible", {
+  skip_if_not_installed("torch")
+  set.seed(505)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    alpha_min = 0,
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  expect_true(all(result$alpha > 0))
+  expect_equal(result$alpha_min, 0)
+})
+
+test_that("optimize_alpha rejects invalid alpha_min", {
+  skip_if_not_installed("torch")
+  n <- 4; m <- 2; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 10), nrow = n)
+  p_mat <- matrix(runif(n * k, 5, 20), nrow = n)
+  s_mat <- matrix(runif(m * k, 5, 20), nrow = m)
+
+  expect_error(
+    optimize_alpha(t_mat, p_mat, s_mat, alpha_min = -1, verbose = FALSE),
+    "alpha_min"
+  )
+  expect_error(
+    optimize_alpha(t_mat, p_mat, s_mat, alpha_min = Inf, verbose = FALSE),
+    "alpha_min"
+  )
+})
+
+test_that("optimize_alpha combined poisson + alpha_min", {
+  skip_if_not_installed("torch")
+  set.seed(508)
+  n <- 10; m <- 5; k <- 2
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    loss_fn = "poisson", alpha_min = 1,
+    use_gpu = FALSE, max_epochs = 50L, verbose = FALSE
+  ))
+
+  active_cols <- which(colSums(p_mat) >= 0.5 & colSums(s_mat) >= 0.5)
+  expect_true(all(result$alpha[, active_cols] >= 1 - 1e-6))
+  expect_equal(result$loss_fn, "poisson")
+  expect_equal(result$alpha_min, 1)
 })

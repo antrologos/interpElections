@@ -4,8 +4,8 @@
 #
 # Uses mini-batch log-domain 3D Sinkhorn inside torch autograd with
 # per-tract-per-bracket decay kernels: K^b[i,j] = t[i,j]^(-alpha[i,b]).
-# Exponential reparameterization: alpha = exp(theta), theta
-# unconstrained — no clamping, no gradient death at boundaries.
+# Softplus reparameterization: alpha = alpha_min + softplus(theta),
+# theta unconstrained — no clamping, no gradient death at boundaries.
 # Epoch structure: each epoch is one full shuffled pass through
 # all tracts; the loss reported at each epoch is the true
 # objective evaluated on the full dataset.
@@ -14,7 +14,7 @@
                              alpha_init, batch_size, sk_iter, sk_tol,
                              max_epochs, lr_init, device, dtype,
                              convergence_tol, patience,
-                             method, barrier_mu,
+                             method, barrier_mu, loss_fn, alpha_min,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -34,7 +34,7 @@
                batch_size, sk_iter, sk_tol, max_epochs, lr_init,
                device, dtype,
                convergence_tol, patience,
-               method, barrier_mu,
+               method, barrier_mu, loss_fn, alpha_min,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -52,6 +52,7 @@
           device = device, dtype = dtype,
           convergence_tol = convergence_tol, patience = patience,
           method = method, barrier_mu = barrier_mu,
+          loss_fn = loss_fn, alpha_min = alpha_min,
           verbose = verbose
         )
       },
@@ -65,6 +66,7 @@
         device = device, dtype = dtype,
         convergence_tol = convergence_tol, patience = patience,
         method = method, barrier_mu = barrier_mu,
+        loss_fn = loss_fn, alpha_min = alpha_min,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -145,14 +147,14 @@
     if (method == "colnorm") {
       message(sprintf(paste0(
         "  PB-SGD colnorm (%s, %s): batch=%d, barrier_mu=%.1f, ",
-        "max %d epochs (%d batches/epoch)"),
-        device, dtype, b, barrier_mu,
+        "loss=%s, alpha_min=%.1f, max %d epochs (%d batches/epoch)"),
+        device, dtype, b, barrier_mu, loss_fn, alpha_min,
         max_epochs, n_batches_per_epoch))
     } else {
       message(sprintf(paste0(
         "  PB-SGD sinkhorn (%s, %s): batch=%d, sk_iter=%d (tol=%.1e), ",
-        "max %d epochs (%d batches/epoch)"),
-        device, dtype, b, sk_iter, sk_tol,
+        "loss=%s, alpha_min=%.1f, max %d epochs (%d batches/epoch)"),
+        device, dtype, b, sk_iter, sk_tol, loss_fn, alpha_min,
         max_epochs, n_batches_per_epoch))
     }
   }
@@ -197,12 +199,19 @@
     p_active_torch <- torch::torch_tensor(
       p_mat_active, device = device, dtype = torch_dtype)  # (n, ka)
 
-    # --- Exponential reparameterization — per-tract-per-bracket ---
-    # alpha[i,b] = exp(theta[i,b]), theta unconstrained.
+    # --- Softplus reparameterization — per-tract-per-bracket ---
+    # alpha[i,b] = alpha_min + softplus(theta[i,b]), theta unconstrained.
     # One alpha per census tract per active bracket.
     alpha_init_mat <- matrix(
-      pmax(alpha_init, 1e-6), nrow = n, ncol = ka)
-    theta_init <- log(alpha_init_mat)
+      pmax(alpha_init, alpha_min + 1e-6), nrow = n, ncol = ka)
+    # Invert: theta = softplus_inverse(alpha - alpha_min)
+    # softplus_inverse(x) = log(exp(x) - 1); for x > 20, ~ x
+    sp_arg <- alpha_init_mat - alpha_min
+    theta_init <- ifelse(
+      sp_arg > 20,
+      sp_arg,
+      log(pmax(exp(sp_arg) - 1, 1e-30))
+    )
 
     # Break initialization symmetry with small deterministic perturbation
     # so different tracts/brackets get different initial gradients.
@@ -229,8 +238,27 @@
       dtype         = torch_dtype
     )
 
-    # alpha_fn: theta -> alpha (always strictly positive)
-    alpha_fn <- function(th) torch::torch_exp(th)
+    # alpha_fn: theta -> alpha (always >= alpha_min)
+    alpha_min_t <- torch::torch_tensor(
+      alpha_min, device = device, dtype = torch_dtype)
+    alpha_fn <- function(th) alpha_min_t + torch::nnf_softplus(th)
+
+    # Loss computation helper: Poisson deviance or SSE
+    compute_data_loss <- function(V_hat, P, scale_factor) {
+      if (loss_fn == "poisson") {
+        V_clamped <- torch::torch_clamp(V_hat, min = 1e-30)
+        P_safe <- torch::torch_where(
+          P > 0, P, torch::torch_ones_like(P))
+        log_ratio <- torch::torch_where(
+          P > 0,
+          torch::torch_log(P_safe) - torch::torch_log(V_clamped),
+          torch::torch_zeros_like(P))
+        dev <- 2 * (V_clamped - P + P * log_ratio)
+        dev$sum() * scale_factor
+      } else {
+        (V_hat - P)$pow(2)$sum() * scale_factor
+      }
+    }
 
     gpu_tensors$log_t   <- log_t_torch
     gpu_tensors$p_act   <- p_active_torch
@@ -300,11 +328,11 @@
             torch::torch_logsumexp(
               log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
 
-          # Data loss (SSE) on batch only, scaled to full-dataset units
+          # Data loss on batch only, scaled to full-dataset units
           V_hat_batch <- V_hat_all[idx, ]                 # (b_actual, ka)
           P_batch     <- p_active_torch[idx, ]            # (b_actual, ka)
-          data_loss <- (V_hat_batch - P_batch)$pow(2)$sum() *
-            (as.double(n) / b_actual)
+          data_loss <- compute_data_loss(
+            V_hat_batch, P_batch, as.double(n) / b_actual)
 
           # Log-barrier penalty on ALL tracts
           if (barrier_mu > 0) {
@@ -371,8 +399,8 @@
               log_T_final, dim = 3L))$t()                # (b_actual, ka)
 
           P_batch <- p_active_torch[idx, ]               # (b_actual, ka)
-          loss    <- (V_hat_batch - P_batch)$pow(2)$sum() *
-            (as.double(n) / b_actual)
+          loss    <- compute_data_loss(
+            V_hat_batch, P_batch, as.double(n) / b_actual)
         }
 
         loss$backward()
@@ -408,7 +436,7 @@
               log_W_3d_ep + log_c_3d_ep, dim = 3L))$t()  # (n, ka)
 
           epoch_loss_val <- as.numeric(
-            (V_hat_ep - p_active_torch)$pow(2)$sum()$item())
+            compute_data_loss(V_hat_ep, p_active_torch, 1.0)$item())
 
           # Derive W: aggregate per-bracket column-normalized weights
           log_T_ep <- log_W_3d_ep + log_c_3d_ep       # (ka, n, m)
@@ -465,7 +493,7 @@
               log_T_ep, dim = 3L))$t()                 # (n, ka)
 
           epoch_loss_val <- as.numeric(
-            (V_hat_ep - p_active_torch)$pow(2)$sum()$item())
+            compute_data_loss(V_hat_ep, p_active_torch, 1.0)$item())
 
           log_c_agg_ep <- torch::torch_logsumexp(
             log_V_b_torch, dim = 1L)                   # (m,)

@@ -22,6 +22,8 @@ optimize_alpha(
   patience = 5L,
   method = c("colnorm", "sinkhorn"),
   barrier_mu = 10,
+  loss_fn = c("poisson", "sse"),
+  alpha_min = 0,
   offset = 1,
   verbose = TRUE
 )
@@ -94,6 +96,20 @@ used when \code{method = "colnorm"}. The penalty term is
 \code{-barrier_mu * sum(log(V_hat_total))}. Set to 0 to disable.
 Default: 10.}
 
+\item{loss_fn}{Character. Loss function for optimization: \code{"poisson"}
+(Poisson deviance, default) or \code{"sse"} (sum of squared errors).
+Poisson deviance \code{2 * sum(V_hat - P + P * log(P / V_hat))} treats
+proportional errors equally across all tracts regardless of population
+size, preventing large tracts from dominating the loss. This
+encourages higher, more spatially meaningful alpha values. SSE is
+retained for backward compatibility.}
+
+\item{alpha_min}{Numeric. Lower bound for alpha values. The
+reparameterization becomes \code{alpha = alpha_min + softplus(theta)},
+ensuring all alpha values are at least \code{alpha_min}. Default: 0
+(no lower bound, equivalent to legacy behavior). Set to 1 or 2
+to enforce minimum inverse-distance or inverse-square decay.}
+
 \item{offset}{Numeric. Value added to travel times before exponentiation.
 Default: 1.}
 
@@ -106,8 +122,8 @@ A list of class \code{"interpElections_optim"} with components:
 decay parameters. Each row is a census tract, each column is a
 demographic bracket. Inactive brackets (zero population or voters)
 are filled with 1.}
-\item{value}{Numeric. Objective function value at optimum (sum of
-squared errors across all tracts and active brackets).}
+\item{value}{Numeric. Objective function value at optimum (Poisson
+deviance or SSE depending on \code{loss_fn}).}
 \item{W}{Numeric matrix [n x m]. Sinkhorn-balanced weight matrix
 from the best-epoch transport plan. Use directly for interpolation
 via \verb{W \\\%*\\\% data}. Column sums are approximately 1.}
@@ -134,8 +150,7 @@ the last mini-batch of each epoch.}
 }
 \description{
 Optimizes the per-tract-per-bracket decay parameters that minimize the
-squared error between Sinkhorn-balanced interpolated values and known
-population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
+error between interpolated values and known population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
 and log-domain 3D Sinkhorn inside torch autograd. Each demographic bracket
 gets its own per-tract kernel; gradients flow through all unrolled
 iterations. Works on both CPU and GPU (CUDA/MPS).
@@ -145,9 +160,10 @@ The optimization requires the \code{torch} R package. Install it with
 \code{\link[=setup_torch]{setup_torch()}} if not already available.
 
 \strong{Parameterization}: alpha[i,b] is reparameterized as
-\code{alpha = exp(theta)} with \code{theta} unconstrained. This avoids gradient
-death at any boundary and removes the need for projected gradient
-descent or clamping. Alpha is always strictly positive.
+\code{alpha = alpha_min + softplus(theta)} with \code{theta} unconstrained,
+where \code{softplus(x) = log(1 + exp(x))}. When \code{alpha_min = 0}
+(default), this is similar to the legacy \code{exp(theta)}. Alpha is
+always at least \code{alpha_min}.
 
 \strong{Epoch structure}: Each epoch is one full shuffled pass through all
 n tracts, divided into mini-batches. The loss reported at each epoch
