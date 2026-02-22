@@ -21,6 +21,11 @@
 #' @param osm_provider Character. OSM extract provider for `osmextract`.
 #'   Default: `"geofabrik"`. Alternatives: `"bbbike"`,
 #'   `"openstreetmap_fr"`.
+#' @param osm_url Character or NULL. Direct URL to the OSM `.pbf` extract.
+#'   When provided, skips the automatic `osmextract::oe_match()` step and
+#'   downloads from this URL directly. This is useful when `oe_match()`
+#'   selects an overly broad extract (e.g., country-level instead of
+#'   state-level). Default: NULL (auto-detect via `oe_match()`).
 #' @param force Logical. Re-download even if files already exist.
 #'   Default: FALSE.
 #' @param verbose Logical. Default: TRUE.
@@ -58,6 +63,7 @@ download_r5r_data <- function(
     osm = TRUE,
     elevation = FALSE,
     osm_provider = "geofabrik",
+    osm_url = NULL,
     force = FALSE,
     verbose = TRUE
 ) {
@@ -122,19 +128,25 @@ download_r5r_data <- function(
   if (osm) {
     if (verbose) message("  Downloading OSM data...")
 
-    # osmextract matches the area to the best available extract
-    matched <- tryCatch(
-      suppressMessages(osmextract::oe_match(area_sf, provider = osm_provider)),
-      error = function(e) {
-        stop(
-          "Failed to match area to an OSM extract (provider: ",
-          osm_provider, ").\n",
-          "This requires an internet connection. Error: ",
-          conditionMessage(e),
-          call. = FALSE
-        )
-      }
-    )
+    # Determine the OSM extract URL: either from explicit osm_url or
+    # by auto-matching via osmextract::oe_match()
+    if (!is.null(osm_url)) {
+      matched <- list(url = osm_url)
+      if (verbose) message("  Using explicit OSM URL: ", osm_url)
+    } else {
+      matched <- tryCatch(
+        suppressMessages(osmextract::oe_match(area_sf, provider = osm_provider)),
+        error = function(e) {
+          stop(
+            "Failed to match area to an OSM extract (provider: ",
+            osm_provider, ").\n",
+            "This requires an internet connection. Error: ",
+            conditionMessage(e),
+            call. = FALSE
+          )
+        }
+      )
+    }
 
     # Download the state-level .pbf to the persistent cache so it
     # can be reused across municipalities in the same state

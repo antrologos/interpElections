@@ -564,13 +564,12 @@ plot_interactive <- function(
   }
   n <- nrow(df)
 
-  # Detect full mode: columns match pop_hom_alf_* pattern
-  hom_alf <- grep("^pop_hom_alf_", tract_cols, value = TRUE)
-  has_gender <- length(hom_alf) > 0
+  # Detect full mode: columns match pop_hom_* pattern (gender x age)
+  hom_cols <- grep("^pop_hom_", tract_cols, value = TRUE)
+  has_gender <- length(hom_cols) > 0
 
   if (has_gender) {
-    # Extract age suffixes from hom_alf columns
-    ages <- sub("^pop_hom_alf_", "", hom_alf)
+    ages <- sub("^pop_hom_", "", hom_cols)
 
     male_mat <- matrix(0, n, length(ages))
     female_mat <- matrix(0, n, length(ages))
@@ -578,13 +577,8 @@ plot_interactive <- function(
 
     for (i in seq_along(ages)) {
       ag <- ages[i]
-      hom_a <- paste0("pop_hom_alf_", ag)
-      hom_n <- paste0("pop_hom_nalf_", ag)
-      mul_a <- paste0("pop_mul_alf_", ag)
-      mul_n <- paste0("pop_mul_nalf_", ag)
-
-      male_mat[, i] <- .col_or_zero(df, hom_a) + .col_or_zero(df, hom_n)
-      female_mat[, i] <- .col_or_zero(df, mul_a) + .col_or_zero(df, mul_n)
+      male_mat[, i]   <- .col_or_zero(df, paste0("pop_hom_", ag))
+      female_mat[, i] <- .col_or_zero(df, paste0("pop_mul_", ag))
     }
 
     # Human-readable labels

@@ -11,16 +11,17 @@ optimize_alpha(
   row_targets = NULL,
   alpha_init = NULL,
   batch_size = 500L,
-  sk_iter = 15L,
-  max_steps = 800L,
-  lr_init = 0.01,
+  sk_iter = 100L,
+  sk_tol = 1e-06,
+  max_epochs = 200L,
+  lr_init = 0.05,
   use_gpu = NULL,
   device = NULL,
   dtype = "float32",
-  lower_bound = 0.01,
-  upper_bound = 20,
   convergence_tol = 1e-04,
-  patience = 3L,
+  patience = 5L,
+  method = c("colnorm", "sinkhorn"),
+  barrier_mu = 10,
   offset = 1,
   verbose = TRUE
 )
@@ -40,20 +41,28 @@ for Sinkhorn balancing. Each element specifies how much weight a zone
 should attract, proportional to its share of total population. If NULL
 (default), auto-computed as \code{rowSums(pop_matrix) / sum(pop_matrix) * m}.}
 
-\item{alpha_init}{Numeric vector of length n, or a single value to be
-recycled. Initial guess for alpha. Default: \code{rep(1, n)}.}
+\item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
+Initial guess for alpha. A scalar is recycled to all n tracts and k
+brackets. A vector of length n is recycled across brackets. Default: 1.}
 
 \item{batch_size}{Integer. Number of zones (rows) sampled per SGD step.
 For cities with \code{n <= batch_size}, the full batch is used. Default: 500.}
 
-\item{sk_iter}{Integer. Number of log-domain Sinkhorn iterations per
-SGD step. Higher values give more accurate per-bracket transport but
-increase memory usage. Default: 15.}
+\item{sk_iter}{Integer. Maximum number of log-domain Sinkhorn iterations
+per SGD step. The Sinkhorn loop stops early if the dual variables
+converge within \code{sk_tol}. Default: 100.}
 
-\item{max_steps}{Integer. Total number of SGD steps. Default: 800.}
+\item{sk_tol}{Numeric. Convergence tolerance for Sinkhorn iterations.
+Iteration stops when the maximum absolute change in the log-domain
+row dual variable falls below \code{sk_tol}. A warning is issued if
+Sinkhorn does not converge within \code{sk_iter} iterations. Default: 1e-6.}
 
-\item{lr_init}{Numeric. Initial ADAM learning rate. Halved at steps 200,
-400, and 600. Default: 0.01.}
+\item{max_epochs}{Integer. Maximum number of epochs (full passes through
+all tracts). The optimizer may stop earlier if convergence is detected.
+Default: 200.}
+
+\item{lr_init}{Numeric. Initial ADAM learning rate. Reduced automatically
+via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.}
 
 \item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
 \code{FALSE}, use CPU. If \code{NULL} (default), reads the package option
@@ -65,17 +74,25 @@ increase memory usage. Default: 15.}
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
 
-\item{lower_bound}{Numeric. Lower bound for alpha (decay exponent). Default: 0.01.
-Alpha is projected onto \verb{[lower_bound, upper_bound]} after each Adam step
-(projected gradient descent on the box constraint).}
-
-\item{upper_bound}{Numeric. Upper bound for alpha. Default: 20.}
-
-\item{convergence_tol}{Numeric. Relative change in EMA loss below which
+\item{convergence_tol}{Numeric. Relative change in epoch loss below which
 the optimizer considers the solution converged. Default: 1e-4.}
 
-\item{patience}{Integer. Number of consecutive convergence checks (every
-50 steps) that must pass before early stopping. Default: 3.}
+\item{patience}{Integer. Number of consecutive epochs with no improvement
+(at minimum learning rate) before early stopping. The LR scheduler
+uses \code{2 * patience} as its own patience. Default: 5.}
+
+\item{method}{Character. Normalization method: \code{"colnorm"} (column-only
+normalization with log-barrier penalty) or \code{"sinkhorn"} (3D Sinkhorn
+IPF with shared row constraint). Column normalization preserves source
+conservation (column sums = 1) without constraining row sums, giving
+alpha more freedom to control spatial weight patterns. Default:
+\code{"colnorm"}.}
+
+\item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
+prevents any census tract from receiving zero predicted voters. Only
+used when \code{method = "colnorm"}. The penalty term is
+\code{-barrier_mu * sum(log(V_hat_total))}. Set to 0 to disable.
+Default: 10.}
 
 \item{offset}{Numeric. Value added to travel times before exponentiation.
 Default: 1.}
@@ -85,32 +102,57 @@ Default: 1.}
 \value{
 A list of class \code{"interpElections_optim"} with components:
 \describe{
-\item{alpha}{Numeric vector. Optimal alpha values.}
-\item{value}{Numeric. Objective function value at optimum.}
+\item{alpha}{Numeric matrix [n x k]. Optimal per-tract-per-bracket
+decay parameters. Each row is a census tract, each column is a
+demographic bracket. Inactive brackets (zero population or voters)
+are filled with 1.}
+\item{value}{Numeric. Objective function value at optimum (sum of
+squared errors across all tracts and active brackets).}
+\item{W}{Numeric matrix [n x m]. Sinkhorn-balanced weight matrix
+from the best-epoch transport plan. Use directly for interpolation
+via \verb{W \\\%*\\\% data}. Column sums are approximately 1.}
 \item{method}{Character. Method used (e.g.,
 \code{"pb_sgd_sinkhorn_cpu"}, \code{"pb_sgd_sinkhorn_cuda"}).}
-\item{convergence}{Integer. 0 = success.}
-\item{iterations}{Number of SGD steps taken.}
+\item{convergence}{Integer. 0 = early-stopped (improvement plateau
+detected); 1 = stopped at max_epochs.}
+\item{epochs}{Integer. Number of epochs completed.}
+\item{steps}{Integer. Total number of SGD gradient steps.}
 \item{elapsed}{\code{difftime} object. Wall-clock time.}
 \item{message}{Character. Additional information.}
-\item{history}{Numeric vector. Loss values at each step.}
-\item{grad_norm_final}{Numeric. Final gradient norm.}
+\item{history}{Numeric vector. Full-dataset loss at each epoch.}
+\item{grad_norm_final}{Numeric. Final gradient norm (theta-space).}
+\item{grad_history}{Numeric vector. Gradient norm (theta-space) after
+the last mini-batch of each epoch.}
+\item{lr_history}{Numeric vector. Learning rate at each epoch.}
+\item{n_batches_per_epoch}{Integer. Number of mini-batches per epoch
+(\code{ceiling(n / batch_size)}).}
 \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
-\item{sk_iter}{Integer. Sinkhorn iterations per step.}
+\item{sk_iter}{Integer. Maximum Sinkhorn iterations per step.}
+\item{sk_tol}{Numeric. Sinkhorn convergence tolerance.}
 \item{batch_size}{Integer. Mini-batch size used.}
 }
 }
 \description{
-Optimizes the per-zone decay parameters that minimize the squared error
-between per-bracket Sinkhorn-balanced interpolated values and known
+Optimizes the per-tract-per-bracket decay parameters that minimize the
+squared error between Sinkhorn-balanced interpolated values and known
 population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
-and log-domain Sinkhorn inside torch autograd. Each demographic bracket
-gets its own Sinkhorn transport; gradients flow through all unrolled
+and log-domain 3D Sinkhorn inside torch autograd. Each demographic bracket
+gets its own per-tract kernel; gradients flow through all unrolled
 iterations. Works on both CPU and GPU (CUDA/MPS).
 }
 \details{
 The optimization requires the \code{torch} R package. Install it with
 \code{\link[=setup_torch]{setup_torch()}} if not already available.
+
+\strong{Parameterization}: alpha[i,b] is reparameterized as
+\code{alpha = exp(theta)} with \code{theta} unconstrained. This avoids gradient
+death at any boundary and removes the need for projected gradient
+descent or clamping. Alpha is always strictly positive.
+
+\strong{Epoch structure}: Each epoch is one full shuffled pass through all
+n tracts, divided into mini-batches. The loss reported at each epoch
+is the true objective evaluated on the full dataset — not a noisy
+mini-batch estimate.
 
 Two execution paths:
 \itemize{
@@ -120,10 +162,8 @@ device. Fast for small/medium problems (< 2000 tracts).
 problems (> 2000 tracts).
 }
 
-Both paths use PB-SGD: mini-batch ADAM with per-bracket log-domain
-Sinkhorn. Gradients are computed via torch autograd through the unrolled
-Sinkhorn iterations. GPU memory usage is bounded by
-\code{ka * min(batch_size, n) * m * bytes_per_elem * (2 + 2 * sk_iter)}.
+GPU memory usage is bounded by
+\code{2 * ka * min(batch_size, n) * m * bytes_per_elem}.
 }
 \examples{
 \dontrun{
@@ -136,7 +176,7 @@ result$alpha
 
 }
 \seealso{
-\code{\link[=use_gpu]{use_gpu()}} to toggle GPU globally, \code{\link[=sinkhorn_weights]{sinkhorn_weights()}} to
-build the final weight matrix, \code{\link[=sinkhorn_objective]{sinkhorn_objective()}} for the
-objective function, \code{\link[=setup_torch]{setup_torch()}} to install torch.
+\code{\link[=use_gpu]{use_gpu()}} to toggle GPU globally, \code{\link[=compute_weight_matrix]{compute_weight_matrix()}}
+to rebuild the weight matrix from pre-computed alpha,
+\code{\link[=setup_torch]{setup_torch()}} to install torch.
 }

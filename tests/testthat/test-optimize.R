@@ -5,28 +5,37 @@ test_that("optimize_alpha finds lower objective than initial", {
   n <- 10
   m <- 5
   k <- 2
-  t_mat <- matrix(runif(n * m, 1, 50), nrow = n)
+
+  # Structured travel times: each tract is close to one station, far from rest.
+  # This creates clear spatial signal that alpha > 1 can exploit.
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 50L,
+    max_epochs = 200L,
+    sk_tol = 0.01,
     verbose = FALSE
-  )
+  ))
 
   expect_s3_class(result, "interpElections_optim")
-  expect_length(result$alpha, n)
+  # alpha is an n × k matrix
+  expect_true(is.matrix(result$alpha))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
 
-  # Compare with initial alpha = 1
-  pop_total <- rowSums(p_mat)
-  r <- pop_total / sum(pop_total) * m
-  init_val <- sinkhorn_objective(rep(1, n), t_mat + 1, p_mat, s_mat, r)
+  # Compare with initial alpha = 1: compute SSE via W (same method)
+  init_W <- compute_weight_matrix(t_mat, matrix(1, n, k), p_mat, s_mat,
+                                   method = result$method_type, verbose = FALSE)
+  init_fitted <- init_W %*% s_mat
+  init_val <- sum((init_fitted - p_mat)^2)
   expect_true(result$value <= init_val)
 })
 
-test_that("optimize_alpha respects lower_bound and upper_bound", {
+test_that("optimize_alpha alpha is always positive (exp reparameterization)", {
   skip_if_not_installed("torch")
 
   set.seed(42)
@@ -37,18 +46,16 @@ test_that("optimize_alpha respects lower_bound and upper_bound", {
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 50L,
-    lower_bound = 0.01,
-    upper_bound = 20,
+    max_epochs = 50L,
+    sk_tol = 0.01,
     verbose = FALSE
-  )
+  ))
 
-  # Projected gradient descent keeps alpha within [lower_bound, upper_bound]
-  expect_true(all(result$alpha >= 0.01))
-  expect_true(all(result$alpha <= 20))
+  # alpha = exp(theta): always strictly positive, no clamping
+  expect_true(all(result$alpha > 0))
   expect_true(all(is.finite(result$alpha)))
 })
 
@@ -63,15 +70,17 @@ test_that("optimize_alpha returns proper structure", {
   p_mat <- matrix(runif(n * k, 5, 20), nrow = n)
   s_mat <- matrix(runif(m * k, 5, 20), nrow = m)
 
-  result <- optimize_alpha(
+  # Use default sk_iter/sk_tol to test structure; suppress Sinkhorn warnings
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
   expect_true("alpha" %in% names(result))
   expect_true("value" %in% names(result))
+  expect_true("W" %in% names(result))
   expect_true("method" %in% names(result))
   expect_true("convergence" %in% names(result))
   expect_true("elapsed" %in% names(result))
@@ -80,9 +89,24 @@ test_that("optimize_alpha returns proper structure", {
   expect_true("batch_size" %in% names(result))
   expect_true("history" %in% names(result))
   expect_true("grad_norm_final" %in% names(result))
-  expect_equal(result$sk_iter, 15L)
+  expect_true("grad_history" %in% names(result))
+  expect_true("n_batches_per_epoch" %in% names(result))
+  expect_true("epochs" %in% names(result))
+  expect_true("steps" %in% names(result))
+  # W is an n × m matrix
+  expect_true(is.matrix(result$W))
+  expect_equal(nrow(result$W), n)
+  expect_equal(ncol(result$W), m)
+  expect_true(all(is.finite(result$W)))
+  expect_equal(result$sk_iter, 100L)
+  expect_true("sk_tol" %in% names(result))
+  expect_equal(result$sk_tol, 1e-6)
   expect_equal(result$batch_size, n)  # effective batch = min(500, n)
   expect_length(result$row_targets, n)
+  # alpha is an n × k matrix
+  expect_true(is.matrix(result$alpha))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
 })
 
 test_that("optimize_alpha print method works", {
@@ -93,12 +117,12 @@ test_that("optimize_alpha print method works", {
   p_mat <- matrix(runif(4), nrow = 4)
   s_mat <- matrix(runif(2), nrow = 2)
 
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
   expect_output(print(result), "interpElections optimization result")
 })
@@ -114,12 +138,12 @@ test_that("optimize_alpha auto-computes row_targets when NULL", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
   # row_targets should be auto-computed
   expected_r <- rowSums(p_mat) / sum(p_mat) * m
@@ -146,27 +170,31 @@ test_that("optimize_alpha sk_iter parameter works", {
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result_k1 <- optimize_alpha(
+  result_k1 <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
     sk_iter = 1L,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
-  result_k15 <- optimize_alpha(
+  result_k15 <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
     sk_iter = 15L,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
   expect_equal(result_k1$sk_iter, 1L)
   expect_equal(result_k15$sk_iter, 15L)
-  # Both should produce valid results
-  expect_length(result_k1$alpha, n)
-  expect_length(result_k15$alpha, n)
+  # Both should produce valid n×k alpha matrices
+  expect_true(is.matrix(result_k1$alpha))
+  expect_equal(nrow(result_k1$alpha), n)
+  expect_equal(ncol(result_k1$alpha), k)
+  expect_true(is.matrix(result_k15$alpha))
+  expect_equal(nrow(result_k15$alpha), n)
+  expect_equal(ncol(result_k15$alpha), k)
   expect_true(is.finite(result_k1$value))
   expect_true(is.finite(result_k15$value))
 })
@@ -183,26 +211,134 @@ test_that("optimize_alpha batch_size works with small n", {
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
   # batch_size > n should silently use n
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
     batch_size = 999L,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
-  expect_length(result$alpha, n)
+  expect_true(is.matrix(result$alpha))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
   expect_true(is.finite(result$value))
 
   # batch_size = 2 (mini-batch)
-  result2 <- optimize_alpha(
+  result2 <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
     batch_size = 2L,
-    max_steps = 30L,
+    max_epochs = 30L,
     verbose = FALSE
-  )
+  ))
 
-  expect_length(result2$alpha, n)
+  expect_true(is.matrix(result2$alpha))
+  expect_equal(nrow(result2$alpha), n)
+  expect_equal(ncol(result2$alpha), k)
   expect_true(is.finite(result2$value))
+})
+
+test_that("optimize_alpha returns lr_history", {
+  skip_if_not_installed("torch")
+  set.seed(303)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+  storage.mode(p_mat) <- "double"
+  storage.mode(s_mat) <- "double"
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    use_gpu = FALSE,
+    max_epochs = 30L,
+    verbose = FALSE
+  ))
+
+  expect_true("lr_history" %in% names(result))
+  expect_equal(length(result$lr_history), result$epochs)
+  expect_true(all(result$lr_history > 0))
+  # LR should be non-increasing (ReduceLROnPlateau only decreases)
+  expect_true(all(diff(result$lr_history) <= 1e-10))
+})
+
+# --- Column-normalization method tests ---
+
+test_that("optimize_alpha method='colnorm' runs and returns valid structure", {
+  skip_if_not_installed("torch")
+  set.seed(401)
+  n <- 10; m <- 5; k <- 2
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "colnorm", barrier_mu = 10,
+    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
+  ))
+
+  expect_s3_class(result, "interpElections_optim")
+  expect_true(all(result$alpha > 0))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
+  expect_true(grepl("colnorm", result$method))
+  expect_equal(result$method_type, "colnorm")
+})
+
+test_that("optimize_alpha method='colnorm' with barrier_mu=0 works", {
+  skip_if_not_installed("torch")
+  set.seed(402)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "colnorm", barrier_mu = 0,
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  expect_true(all(result$alpha > 0))
+  expect_true(grepl("colnorm", result$method))
+})
+
+test_that("optimize_alpha method='sinkhorn' backward compat", {
+  skip_if_not_installed("torch")
+  set.seed(403)
+  n <- 5; m <- 3; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "sinkhorn",
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  expect_true(grepl("sinkhorn", result$method))
+  expect_equal(result$method_type, "sinkhorn")
+})
+
+test_that("compute_weight_matrix method='colnorm' produces valid weights", {
+  skip_if_not_installed("torch")
+  set.seed(404)
+  n <- 8; m <- 4; k <- 2
+  t_mat <- matrix(runif(n * m, 2, 30), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+  alpha_mat <- matrix(runif(n * k, 0.5, 2.0), nrow = n)
+
+  W <- compute_weight_matrix(t_mat, alpha_mat, p_mat, s_mat,
+                              method = "colnorm", verbose = FALSE)
+
+  expect_equal(dim(W), c(n, m))
+  # Column sums should be approximately 1 (source conservation)
+  expect_true(all(abs(colSums(W) - 1) < 0.01))
+  # All weights non-negative
+  expect_true(all(W >= -1e-10))
 })

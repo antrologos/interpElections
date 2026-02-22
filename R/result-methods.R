@@ -211,7 +211,9 @@ residuals.interpElections_result <- function(object, ...) {
     message("No calibration columns available in result.")
     return(invisible(NULL))
   }
-  if (is.null(object$weights) && is.null(object$time_matrix)) {
+  has_W <- !is.null(object$weights) ||
+    (!is.null(object$optimization) && !is.null(object$optimization$W))
+  if (!has_W && is.null(object$time_matrix)) {
     message(
       "Cannot compute residuals without weights or time_matrix.\n",
       "Re-run with keep = c(\"weights\") or keep = c(\"time_matrix\")."
@@ -239,11 +241,13 @@ residuals.interpElections_result <- function(object, ...) {
   # Get the weight matrix
   if (!is.null(object$weights)) {
     W <- object$weights
+  } else if (!is.null(object$optimization) && !is.null(object$optimization$W)) {
+    W <- object$optimization$W
   } else {
-    W <- sinkhorn_weights(object$time_matrix, object$alpha, object$offset,
-                           row_targets = object$row_targets,
-                           pop_matrix = pop_mat,
-                           source_matrix = src_mat)
+    W <- compute_weight_matrix(object$time_matrix, object$alpha,
+                                pop_mat, src_mat,
+                                offset = object$offset,
+                                method = object$optimization$method_type %||% "colnorm")
   }
 
   # Fitted = W %*% source_matrix

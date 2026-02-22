@@ -30,12 +30,12 @@ test_that("optimize_alpha use_gpu=FALSE uses torch CPU", {
   p_mat <- matrix(runif(4), nrow = 4)
   s_mat <- matrix(runif(2), nrow = 2)
 
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     t_mat, p_mat, s_mat,
     use_gpu = FALSE,
-    max_steps = 50L,
+    max_epochs = 50L,
     verbose = FALSE
-  )
+  ))
   expect_s3_class(result, "interpElections_optim")
   expect_true(grepl("cpu", result$method))
 })

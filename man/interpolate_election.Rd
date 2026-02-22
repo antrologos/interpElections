@@ -158,7 +158,7 @@ result <- interpolate_election(
 
 }
 \seealso{
-\code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=sinkhorn_weights]{sinkhorn_weights()}},
+\code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=compute_weight_matrix]{compute_weight_matrix()}},
 \code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper.
 
 Other wrappers: 

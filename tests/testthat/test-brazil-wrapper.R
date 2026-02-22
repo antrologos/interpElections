@@ -357,7 +357,7 @@ test_that(".br_match_calibration aggregation is numerically correct", {
 
 # --- calib_type = "full" tests ---
 
-test_that(".br_match_calibration full mode for census 2010 produces 28 pairs", {
+test_that(".br_match_calibration full mode for census 2010 produces 14 pairs", {
   skip_if_not_installed("sf")
 
   set.seed(100)
@@ -367,19 +367,18 @@ test_that(".br_match_calibration full mode for census 2010 produces 28 pairs", {
   result <- interpElections:::.br_match_calibration(2010, tracts, elec,
     calib_type = "full")
 
-  expect_equal(length(result$calib_tracts), 28)
-  expect_equal(length(result$calib_sources), 28)
+  # 14 = 2 genders x 7 age groups (literacy aggregated away)
+  expect_equal(length(result$calib_tracts), 14)
+  expect_equal(length(result$calib_sources), 14)
 
-  # First 7 should be hom_alf
-  expect_true(all(grepl("^pop_hom_alf_", result$calib_tracts[1:7])))
-  expect_true(all(grepl("^vot_hom_alf_", result$calib_sources[1:7])))
+  # First 7 should be hom (no alf/nalf distinction)
+  expect_true(all(grepl("^pop_hom_", result$calib_tracts[1:7])))
+  expect_true(all(grepl("^vot_hom_", result$calib_sources[1:7])))
 
   # Check age groups cycle correctly for 2010 (18_20 first)
-  expect_equal(result$calib_tracts[1], "pop_hom_alf_18_20")
-  expect_equal(result$calib_sources[1], "vot_hom_alf_18_20")
-  expect_equal(result$calib_tracts[8], "pop_hom_nalf_18_20")
-  expect_equal(result$calib_tracts[15], "pop_mul_alf_18_20")
-  expect_equal(result$calib_tracts[22], "pop_mul_nalf_18_20")
+  expect_equal(result$calib_tracts[1], "pop_hom_18_20")
+  expect_equal(result$calib_sources[1], "vot_hom_18_20")
+  expect_equal(result$calib_tracts[8], "pop_mul_18_20")
 })
 
 test_that(".br_match_calibration full mode for census 2022 uses 18_19 bracket", {
@@ -392,21 +391,21 @@ test_that(".br_match_calibration full mode for census 2022 uses 18_19 bracket", 
   result <- interpElections:::.br_match_calibration(2022, tracts, elec,
     calib_type = "full")
 
-  expect_equal(length(result$calib_tracts), 28)
-  expect_equal(length(result$calib_sources), 28)
+  expect_equal(length(result$calib_tracts), 14)
+  expect_equal(length(result$calib_sources), 14)
 
-  # 2022 uses 18_19 (not 18_20) as first age group
-  expect_equal(result$calib_tracts[1], "pop_hom_alf_18_19")
-  expect_equal(result$calib_sources[1], "vot_hom_alf_18_19")
-  expect_equal(result$calib_tracts[2], "pop_hom_alf_20_24")
-  expect_equal(result$calib_sources[2], "vot_hom_alf_20_24")
+  # 2022 uses 18_19 (not 18_20) as first age group; literacy aggregated
+  expect_equal(result$calib_tracts[1], "pop_hom_18_19")
+  expect_equal(result$calib_sources[1], "vot_hom_18_19")
+  expect_equal(result$calib_tracts[2], "pop_hom_20_24")
+  expect_equal(result$calib_sources[2], "vot_hom_20_24")
 
-  # pop_hom_alf_18_19 should be pop_hom_alf_15_19 * 2/5
+  # pop_hom_18_19 = (pop_hom_alf_15_19 + pop_hom_nalf_15_19) * 2/5
   tracts_df <- sf::st_drop_geometry(result$tracts_sf)
   orig_df <- sf::st_drop_geometry(tracts)
   expect_equal(
-    tracts_df$pop_hom_alf_18_19,
-    orig_df$pop_hom_alf_15_19 * 2 / 5
+    tracts_df$pop_hom_18_19,
+    (orig_df$pop_hom_alf_15_19 + orig_df$pop_hom_nalf_15_19) * 2 / 5
   )
 })
 
@@ -421,23 +420,31 @@ test_that(".br_match_calibration full mode aggregation is correct", {
     calib_type = "full")
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
   orig_df <- sf::st_drop_geometry(elec)
+  tracts_df <- sf::st_drop_geometry(result$tracts_sf)
+  orig_tracts_df <- sf::st_drop_geometry(tracts)
 
-  # vot_hom_alf_18_20 = vot_hom_alf_18_19 + vot_hom_alf_20
+  # Intermediate step still computed: vot_hom_alf_18_20 = vot_hom_alf_18_19 + vot_hom_alf_20
   expect_equal(
     elec_df$vot_hom_alf_18_20,
     orig_df$vot_hom_alf_18_19 + orig_df$vot_hom_alf_20
   )
 
-  # vot_mul_nalf_30_39 = vot_mul_nalf_30_34 + vot_mul_nalf_35_39
+  # Gender-aggregated: vot_hom_18_20 = vot_hom_alf_18_20 + vot_hom_nalf_18_20
   expect_equal(
-    elec_df$vot_mul_nalf_30_39,
-    orig_df$vot_mul_nalf_30_34 + orig_df$vot_mul_nalf_35_39
+    elec_df$vot_hom_18_20,
+    elec_df$vot_hom_alf_18_20 + elec_df$vot_hom_nalf_18_20
   )
 
-  # vot_hom_nalf_60_69 = vot_hom_nalf_60_64 + vot_hom_nalf_65_69
+  # vot_mul_30_39 = vot_mul_alf_30_39 + vot_mul_nalf_30_39
   expect_equal(
-    elec_df$vot_hom_nalf_60_69,
-    orig_df$vot_hom_nalf_60_64 + orig_df$vot_hom_nalf_65_69
+    elec_df$vot_mul_30_39,
+    elec_df$vot_mul_alf_30_39 + elec_df$vot_mul_nalf_30_39
+  )
+
+  # pop_hom_60_69 = pop_hom_alf_60_69 + pop_hom_nalf_60_69
+  expect_equal(
+    tracts_df$pop_hom_60_69,
+    orig_tracts_df$pop_hom_alf_60_69 + orig_tracts_df$pop_hom_nalf_60_69
   )
 })
 

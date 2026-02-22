@@ -728,7 +728,7 @@ test_that(".build_age_bars_svg with fitted overlay shows legend", {
 test_that(".extract_gender_age detects age-only mode", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  # Mock has calib_cols$tracts = "votantes_18_20" (not pop_hom_alf_*)
+  # Mock has calib_cols$tracts = "votantes_18_20" (not pop_hom_*)
   result <- .extract_gender_age(obj$tracts_sf, obj$calib_cols)
   # Should return NULL (column doesn't match pop_ pattern) or age-only
   # (votantes_18_20 is not a pop_ column so it won't be found)
@@ -738,12 +738,12 @@ test_that(".extract_gender_age detects age-only mode", {
 test_that(".extract_gender_age works with plain matrix (for fitted values)", {
   n <- 4
   ages <- c("18_19", "20_24", "25_29")
-  tract_cols <- paste0("pop_hom_alf_", ages)
+  tract_cols <- paste0("pop_hom_", ages)
   mat <- matrix(runif(n * length(tract_cols)), n, length(tract_cols))
   colnames(mat) <- tract_cols
   calib <- list(tracts = tract_cols, sources = paste0("vot_", ages))
   result <- .extract_gender_age(mat, calib)
-  # hom_alf detected -> has_gender = TRUE
+  # pop_hom_ detected -> has_gender = TRUE
   expect_true(result$has_gender)
   expect_equal(nrow(result$male), n)
   expect_equal(ncol(result$male), length(ages))
@@ -756,16 +756,12 @@ test_that(".extract_gender_age detects full gender mode", {
   n <- nrow(obj$tracts_sf)
   ages <- c("18_19", "20_24", "25_29", "30_39", "40_49", "50_59", "60_69")
   for (ag in ages) {
-    obj$tracts_sf[[paste0("pop_hom_alf_", ag)]] <- runif(n, 10, 50)
-    obj$tracts_sf[[paste0("pop_hom_nalf_", ag)]] <- runif(n, 1, 5)
-    obj$tracts_sf[[paste0("pop_mul_alf_", ag)]] <- runif(n, 10, 50)
-    obj$tracts_sf[[paste0("pop_mul_nalf_", ag)]] <- runif(n, 1, 5)
+    obj$tracts_sf[[paste0("pop_hom_", ag)]] <- runif(n, 10, 50)
+    obj$tracts_sf[[paste0("pop_mul_", ag)]] <- runif(n, 10, 50)
   }
   calib <- list(
-    tracts = paste0("pop_", rep(c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf"),
-                                 each = 7), "_", ages),
-    sources = paste0("vot_", rep(c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf"),
-                                  each = 7), "_", ages)
+    tracts  = paste0("pop_", rep(c("hom", "mul"), each = 7), "_", ages),
+    sources = paste0("vot_", rep(c("hom", "mul"), each = 7), "_", ages)
   )
   result <- .extract_gender_age(obj$tracts_sf, calib)
   expect_true(result$has_gender)

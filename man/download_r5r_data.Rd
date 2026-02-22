@@ -10,6 +10,7 @@ download_r5r_data(
   osm = TRUE,
   elevation = FALSE,
   osm_provider = "geofabrik",
+  osm_url = NULL,
   force = FALSE,
   verbose = TRUE
 )
@@ -30,6 +31,12 @@ walking/cycling routing on hilly terrain. Default: FALSE.}
 \item{osm_provider}{Character. OSM extract provider for \code{osmextract}.
 Default: \code{"geofabrik"}. Alternatives: \code{"bbbike"},
 \code{"openstreetmap_fr"}.}
+
+\item{osm_url}{Character or NULL. Direct URL to the OSM \code{.pbf} extract.
+When provided, skips the automatic \code{osmextract::oe_match()} step and
+downloads from this URL directly. This is useful when \code{oe_match()}
+selects an overly broad extract (e.g., country-level instead of
+state-level). Default: NULL (auto-detect via \code{oe_match()}).}
 
 \item{force}{Logical. Re-download even if files already exist.
 Default: FALSE.}

@@ -110,10 +110,9 @@
 #'   - `id`: Sequential integer ID.
 #'   - `votantes_18_20`, ..., `votantes_65_69`: Registered voters per
 #'     age bracket at this location (used as calibration data).
-#'   - `vot_hom_alf_*`, `vot_hom_nalf_*`, `vot_mul_alf_*`,
-#'     `vot_mul_nalf_*`: Cross-tabulated voters by gender and age
-#'     bracket (used for "full" calibration mode). Literate and
-#'     illiterate counts are summed within each gender × age group.
+#'   - `vot_hom_*`, `vot_mul_*`: Registered voters by gender and
+#'     age bracket (7 brackets each, 14 columns total). Used as
+#'     calibration data for the interpolation.
 #'
 #'   **Conditional on `what`:**
 #'   - `"candidates"`: `CAND_<number>` columns + `QT_COMPARECIMENTO`.

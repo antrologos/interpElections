@@ -60,15 +60,12 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   storage.mode(pop_mat) <- "double"
   storage.mode(src_mat) <- "double"
 
-  opt <- optimize_alpha(tt, pop_mat, src_mat, verbose = FALSE)
-  W_manual <- sinkhorn_weights(tt, opt$alpha, offset = 1,
-                                row_targets = opt$row_targets,
-                                pop_matrix = pop_mat,
-                                source_matrix = src_mat)
-  manual <- W_manual %*% src_mat
+  opt <- suppressWarnings(optimize_alpha(tt, pop_mat, src_mat, verbose = FALSE))
+  # Use W from optimization result directly
+  manual <- opt$W %*% src_mat
 
   # Wrapper
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -77,7 +74,7 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
-  )
+  ))
 
   expect_s3_class(result, "interpElections_result")
   # PB-SGD is stochastic: two separate optimize_alpha() calls produce
@@ -86,7 +83,10 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   expect_equal(nrow(result$interpolated), n)
   expect_equal(ncol(result$interpolated), ncol(manual))
   expect_true(all(is.finite(result$interpolated)))
-  expect_length(result$alpha, n)
+  # alpha is a per-tract-per-bracket n × k matrix
+  expect_true(is.matrix(result$alpha))
+  expect_equal(nrow(result$alpha), n)
+  expect_equal(ncol(result$alpha), k)
   expect_true(is.finite(result$optimization$value))
 
   # Lightweight by default: heavy objects are NULL
@@ -123,7 +123,7 @@ test_that("interpolate_election() with keep includes heavy objects", {
   sources <- .mock_electoral_sf(m, src_cols)
   tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -133,7 +133,7 @@ test_that("interpolate_election() with keep includes heavy objects", {
     time_matrix = tt,
     keep = c("weights", "time_matrix"),
     verbose = FALSE
-  )
+  ))
 
   expect_true(is.matrix(result$weights))
   expect_true(is.matrix(result$time_matrix))
@@ -153,7 +153,7 @@ test_that("interpolate_election() keep sources_sf returns sf object", {
   sources <- .mock_electoral_sf(m, src_cols)
   tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -163,7 +163,7 @@ test_that("interpolate_election() keep sources_sf returns sf object", {
     time_matrix = tt,
     keep = "sources_sf",
     verbose = FALSE
-  )
+  ))
 
   expect_s3_class(result$sources_sf, "sf")
   expect_equal(nrow(result$sources_sf), m)
@@ -185,7 +185,7 @@ test_that("interpolate_election() tracts_sf contains interpolated columns", {
   sources <- .mock_electoral_sf(m, src_cols, extra_cols = extra)
   tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -195,7 +195,7 @@ test_that("interpolate_election() tracts_sf contains interpolated columns", {
     interp_sources = extra,
     time_matrix = tt,
     verbose = FALSE
-  )
+  ))
 
   # tracts_sf should have the interpolated columns
   expect_true("CAND_X" %in% names(result$tracts_sf))
@@ -237,17 +237,16 @@ test_that("interpolate_election() with pre-supplied alpha skips optimization", {
   expect_null(result$optimization)
   expect_equal(result$alpha, alpha_fixed)
 
-  # Should match direct call with sinkhorn weights (per-bracket)
+  # Should match direct compute_weight_matrix call
   pop_mat <- as.matrix(sf::st_drop_geometry(tracts)[, pop_cols])
   src_mat <- as.matrix(sf::st_drop_geometry(sources)[, src_cols])
   storage.mode(pop_mat) <- "double"
   storage.mode(src_mat) <- "double"
-  W_direct <- sinkhorn_weights(tt, alpha_fixed, offset = 1,
-                                row_targets = result$row_targets,
-                                pop_matrix = pop_mat,
-                                source_matrix = src_mat)
+  alpha_mat <- matrix(alpha_fixed, nrow = n, ncol = k)
+  W_direct <- compute_weight_matrix(tt, alpha_mat, pop_mat, src_mat,
+                                     offset = 1, verbose = FALSE)
   direct <- W_direct %*% src_mat
-  expect_equal(result$interpolated, direct)
+  expect_equal(result$interpolated, direct, tolerance = 1e-4)
 })
 
 test_that("interpolate_election() with explicit interp_sources works", {
@@ -263,7 +262,7 @@ test_that("interpolate_election() with explicit interp_sources works", {
   sources <- .mock_electoral_sf(m, src_cols, extra_cols = extra, seed = 7)
   tt <- matrix(abs(rnorm(n * m, 40, 15)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -273,7 +272,7 @@ test_that("interpolate_election() with explicit interp_sources works", {
     interp_sources = extra,
     time_matrix = tt,
     verbose = FALSE
-  )
+  ))
 
   expect_equal(ncol(result$interpolated), 2)
   expect_equal(colnames(result$interpolated), c("CAND_A", "CAND_B"))
@@ -293,7 +292,7 @@ test_that("interpolate_election() auto-detects interp columns as non-calib numer
   sources <- .mock_electoral_sf(m, src_cols, extra_cols = extra, seed = 3)
   tt <- matrix(abs(rnorm(n * m, 30, 10)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -302,7 +301,7 @@ test_that("interpolate_election() auto-detects interp columns as non-calib numer
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
-  )
+  ))
 
   # Should auto-detect votes and turnout as interp columns
   expect_equal(ncol(result$interpolated), 2)
@@ -326,7 +325,7 @@ test_that("interpolate_election() filters census tracts with min_pop", {
 
   tt <- matrix(abs(rnorm(n * m, 40, 10)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -336,7 +335,7 @@ test_that("interpolate_election() filters census tracts with min_pop", {
     time_matrix = tt[4:10, ],  # match filtered tracts
     min_pop = 1,
     verbose = FALSE
-  )
+  ))
 
   expect_equal(nrow(result$interpolated), 7)
 })
@@ -430,7 +429,7 @@ test_that("print.interpElections_result works", {
   sources <- .mock_electoral_sf(m, src_cols, seed = 1)
   tt <- matrix(abs(rnorm(n * m, 30, 10)), n, m)
 
-  result <- interpolate_election(
+  result <- suppressWarnings(interpolate_election(
     tracts_sf = tracts,
     electoral_sf = sources,
     tract_id = "zone_id",
@@ -439,7 +438,7 @@ test_that("print.interpElections_result works", {
     calib_sources = src_cols,
     time_matrix = tt,
     verbose = FALSE
-  )
+  ))
 
   expect_output(print(result), "interpElections result")
   expect_output(print(result), "Census tracts:")

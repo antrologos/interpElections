@@ -195,8 +195,8 @@ The full interpolation pipeline has six steps:
    stations (`compute_travel_times()`)
 5. **Optimization**: find per-tract decay parameters $\alpha$ that
    minimize demographic mismatch (`optimize_alpha()`)
-6. **Interpolation**: build the per-bracket Sinkhorn weight matrix
-   (`sinkhorn_weights()`) and apply it to any station-level variable
+6. **Interpolation**: use the Sinkhorn-balanced weight matrix from
+   optimization (or rebuild with `compute_weight_matrix()`) and apply it to any station-level variable
    ($\hat{X} = W \times V$)
 
 The convenience function `interpolate_election_br()` wraps all six steps
@@ -832,9 +832,28 @@ ggplot(conv_df, aes(x = iteration, y = max_error)) +
   theme(plot.title = element_text(face = "bold"))
 ```
 
-### 12.5 The formal algorithm
+### 12.5 Wrapping it up
 
-Using the package function:
+The row-and-column scaling loop above is all there is to Sinkhorn
+balancing. Let's wrap it into a small helper so we can reuse it in the
+examples that follow:
+
+```{r sinkhorn-balance-toy, eval = TRUE}
+sinkhorn_balance <- function(W, row_targets, col_targets,
+                              max_iter = 1000L, tol = 1e-10) {
+  for (iter in seq_len(max_iter)) {
+    rs <- rowSums(W); rs[rs == 0] <- 1
+    W <- W * (row_targets / rs)
+    cs <- colSums(W); cs[cs == 0] <- 1
+    W <- t(t(W) * (col_targets / cs))
+    if (max(abs(rowSums(W) - row_targets),
+            abs(colSums(W) - col_targets)) < tol) break
+  }
+  W
+}
+```
+
+Let's verify it on our toy example:
 
 ```{r sinkhorn-verify, eval = TRUE}
 W_balanced <- sinkhorn_balance(W_raw,
@@ -1075,14 +1094,17 @@ single aggregate Sinkhorn pass. Section 14.3 derives the log-domain
 Sinkhorn updates, and Section 14.4 presents the complete 3D-tensor
 pseudocode.
 
-After optimization, `sinkhorn_weights()` builds the final weight
-matrix using the same per-bracket logic with full convergence (up to
-1000 Sinkhorn iterations, or until marginal error falls below
-$10^{-10}$):
+After optimization, the weight matrix $W$ is returned directly from
+`optimize_alpha()` as `result$W`. It can also be recomputed from
+pre-existing alpha values using `compute_weight_matrix()`, which runs
+the same 3D Sinkhorn IPF on torch (CPU or GPU):
 
 ```{r per-bracket-final, eval = FALSE}
-W <- sinkhorn_weights(time_matrix, alpha, offset = 1,
-  row_targets = row_targets,
+# W is already in the optimization result
+W <- optim_result$W
+
+# Or recompute from alpha
+W <- compute_weight_matrix(time_matrix, alpha,
   pop_matrix = pop_matrix,
   source_matrix = source_matrix)
 ```
@@ -1165,14 +1187,13 @@ src_matrix_toy <- matrix(c(250, 400, 350), ncol = 1)
 
 alpha_range <- seq(0.1, 8, by = 0.1)
 sse_values <- sapply(alpha_range, function(a) {
-  sinkhorn_objective(
-    alpha = rep(a, 5),
-    time_matrix = tt_adj,
-    pop_matrix = pop_matrix_toy,
-    source_matrix = src_matrix_toy,
-    row_targets = pop_toy / sum(pop_toy) * 3,
-    sk_iter = 50
-  )
+  # Compute Sinkhorn-balanced weights and SSE manually
+  K <- tt_adj ^ (-a)
+  K[!is.finite(K)] <- 0
+  r <- pop_toy / sum(pop_toy) * 3
+  W <- sinkhorn_balance(K, row_targets = r, col_targets = rep(1, 3))
+  v_hat <- W %*% src_matrix_toy
+  sum((v_hat - pop_matrix_toy)^2)
 })
 
 ggplot(data.frame(alpha = alpha_range, sse = sse_values),
@@ -1217,10 +1238,10 @@ ones. This opens a key tradeoff:
   negligible.
 
 The default `sk_iter = 15` balances gradient accuracy against memory
-cost. The **final** weight computation after optimization (via
-`sinkhorn_weights()`) uses full convergence-based Sinkhorn with up to
-1000 iterations, so the final interpolation is always exact regardless
-of `sk_iter` during training.
+cost. The **final** weight matrix is returned directly from
+`optimize_alpha()` (or can be recomputed via `compute_weight_matrix()`
+with full convergence), so the final interpolation uses the same
+converged Sinkhorn transport regardless of `sk_iter` during training.
 
 
 ## 14. Optimization: Per-Bracket SGD with Log-Domain Sinkhorn
@@ -1327,7 +1348,7 @@ for each bracket b in 1..ka:
     r_mat[b,:] = P[:,b] / sum(P[:,b]) * sum(V[:,b])  # rescale rows
     c_mat[b,:] = V[:,b]
 
-# --- PB-SGD step (repeated for max_steps iterations) ---
+# --- PB-SGD step (repeated across max_epochs epochs) ---
 # Sample mini-batch of b tracts
 idx = sample(1..n, batch_size)
 r_batch = r_mat[:, idx]                    # [ka x b]
@@ -1394,19 +1415,31 @@ transport problem that is consistent with the full-data objective.
 ### 14.5 PB-SGD: Per-Bracket Stochastic Gradient Descent
 
 We use **ADAM** (Adaptive Moment Estimation) as the underlying optimizer,
-with **mini-batch sampling** and **per-bracket Sinkhorn transport**. At
-each of the 800 PB-SGD steps:
+with **epoch-based mini-batch sampling** and **per-bracket Sinkhorn
+transport**. Each epoch is one full shuffled pass through all n tracts,
+divided into sequential batches of `batch_size`. At each gradient step
+within an epoch:
 
-1. **Sample** a mini-batch of `batch_size` tracts (default 500)
+1. **Sample** the next mini-batch of tracts from the shuffled epoch order
 2. **Per-bracket Sinkhorn**: each demographic column gets its own
    log-domain Sinkhorn transport on `[ka x batch x m]` tensors
 3. **Aggregate** bracket contributions and column-normalize
 4. **Compute loss**: scaled SSE between interpolated and observed values
-5. **Gradient masking**: only update optimizer moments for sampled tracts
-6. **Gradient clipping** at norm 5.0 prevents divergence
-7. **Alpha clamped** to `[lower_bound, upper_bound]` (default [0.01, 20])
+5. **Backward + Adam step** on the unconstrained `theta` parameters
 
-The learning rate halves at steps 200, 400, and 600.
+At the end of each epoch, the **true objective** is evaluated on the full
+dataset (no gradient) and used for convergence monitoring and logging.
+
+**Exponential reparameterization**: alpha is not optimized directly.
+Instead we optimize `theta` (unconstrained) where `alpha = exp(theta)`,
+initialized as `theta = log(alpha_init)`. This ensures:
+
+- Alpha is always strictly positive — no clamping or projection needed
+- Gradient `d(alpha)/d(theta) = alpha` — no saturation at any boundary
+- Corner solutions due to hard boundary constraints cannot occur
+
+The learning rate is reduced by half when the epoch loss plateaus
+(ReduceLROnPlateau with patience = 2 × early-stop patience).
 
 ```{r optimize-call, eval = FALSE}
 optim_result <- optimize_alpha(
@@ -1414,10 +1447,10 @@ optim_result <- optimize_alpha(
   pop_matrix    = pop_matrix,
   source_matrix = source_matrix,
   row_targets   = row_targets,
-  batch_size    = 500,     # mini-batch size (full-batch if n <= 500)
+  batch_size    = 500,     # tracts per step (full-batch if n <= 500)
   sk_iter       = 15,      # Sinkhorn iterations per step
-  max_steps     = 800,     # total SGD steps
-  lr_init       = 0.05,    # initial learning rate
+  max_epochs    = 200,     # maximum epochs (full passes through all tracts)
+  lr_init       = 0.05,    # initial learning rate (auto-reduced on plateau)
   use_gpu       = FALSE    # CPU for small problems
 )
 ```
@@ -1426,29 +1459,21 @@ optim_result <- optimize_alpha(
 knitr::include_graphics("figures/optim-convergence.png")
 ```
 
-The typical loss curve shows three phases: (1) **rapid descent** in the
-first ~200 steps as the optimizer finds the right ballpark for each
-alpha, (2) a **slower refinement** phase (steps 200--600) where the
-learning rate halves twice and the optimizer fine-tunes per-tract
-parameters, and (3) a **plateau** in the final 200 steps where
-improvements become marginal.
-
-Because the loss is computed on a random mini-batch at each step, the
-curve will **fluctuate** --- this is normal and expected for stochastic
-optimization. The package tracks the best loss seen across all steps and
-returns the corresponding alpha values, so transient spikes do not
-affect the final result.
+The epoch loss curve shows the **true objective** evaluated on all tracts
+at the end of each epoch — not a noisy mini-batch estimate. Each epoch
+covers all tracts exactly once (in shuffled order), so every tract
+receives exactly one gradient update per epoch. The package tracks the
+best epoch loss and returns the corresponding alpha values.
 
 **Key tuning parameters**:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `batch_size` | 500 | Tracts per SGD step. Smaller = less memory. |
+| `batch_size` | 500 | Tracts per gradient step. Smaller = less memory. |
 | `sk_iter` | 15 | Sinkhorn iterations per step. Higher = more accurate transport. |
-| `max_steps` | 800 | Total SGD steps. |
-| `lr_init` | 0.05 | Initial learning rate. Halves at 200/400/600. |
+| `max_epochs` | 200 | Maximum epochs (full passes through all tracts). |
+| `lr_init` | 0.05 | Initial learning rate. Auto-reduced when loss plateaus. |
 | `dtype` | `"float32"` | `"float64"` for more precision (2x memory). |
-| `lower_bound` / `upper_bound` | 0.01, 20 | Alpha clamp range. |
 
 
 # Part VI: Results and Validation
@@ -1460,7 +1485,7 @@ knitr::include_graphics("figures/alpha-histogram.png")
 ```
 
 Most alphas cluster in a moderate range, with tails extending toward 0
-(uniform allocation) and the upper bound (nearest-station-only).
+(uniform allocation) and large values (nearest-station-only).
 
 ```{r fig-alpha-map, echo = FALSE, out.width = "100%"}
 knitr::include_graphics("figures/alpha-map.png")
@@ -1523,9 +1548,8 @@ multiple variables: $\hat{X} = W \times V_{\text{matrix}}$ where
 $V_{\text{matrix}}$ is [M × P].
 
 ```{r interpolation-code, eval = FALSE}
-W <- sinkhorn_weights(time_matrix, optim_result$alpha,
-  offset = 1, row_targets = row_targets,
-  pop_matrix = pop_matrix, source_matrix = source_matrix)
+# W is returned directly from optimization
+W <- optim_result$W
 
 electoral_data <- as.matrix(
   sources[, c("CAND_13", "CAND_22", "QT_COMPARECIMENTO")]
@@ -1712,7 +1736,7 @@ influence of extreme values and improve linearity.
 ## 18. Performance and Tuning
 
 All timings below assume default PB-SGD parameters:
-`batch_size = 500`, `sk_iter = 15`, `max_steps = 800`, `dtype = "float32"`.
+`batch_size = 500`, `sk_iter = 15`, `max_epochs = 200`, `dtype = "float32"`.
 
 | Problem size (tracts) | Recommendation | Typical optimization time |
 |---|---|---|

@@ -1,18 +1,21 @@
 # ============================================================
-# Internal: Per-Bracket SGD via torch (GPU or CPU)
+# Internal: Per-Tract-Per-Bracket SGD via torch (GPU or CPU)
 # ============================================================
 #
-# This is the single optimization engine for the package.
-# Uses mini-batch per-bracket log-domain Sinkhorn inside torch
-# autograd. Each demographic bracket gets its own Sinkhorn
-# transport; gradients flow through all unrolled iterations.
-# Works on both CPU and GPU (cuda/mps) devices.
+# Uses mini-batch log-domain 3D Sinkhorn inside torch autograd with
+# per-tract-per-bracket decay kernels: K^b[i,j] = t[i,j]^(-alpha[i,b]).
+# Exponential reparameterization: alpha = exp(theta), theta
+# unconstrained — no clamping, no gradient death at boundaries.
+# Epoch structure: each epoch is one full shuffled pass through
+# all tracts; the loss reported at each epoch is the true
+# objective evaluated on the full dataset.
 
 .optimize_torch <- function(time_matrix, pop_matrix, source_matrix,
-                             alpha_init, batch_size, sk_iter,
-                             max_steps, lr_init, device, dtype,
-                             lower_bound, upper_bound,
-                             convergence_tol, patience, verbose) {
+                             alpha_init, batch_size, sk_iter, sk_tol,
+                             max_epochs, lr_init, device, dtype,
+                             convergence_tol, patience,
+                             method, barrier_mu,
+                             verbose) {
 
   # --- RStudio subprocess delegation ---
   if (.is_rstudio() && !identical(Sys.getenv("INTERPELECTIONS_SUBPROCESS"), "1")) {
@@ -28,9 +31,10 @@
     }
     result <- callr::r(
       function(time_matrix, pop_matrix, source_matrix, alpha_init,
-               batch_size, sk_iter, max_steps, lr_init,
-               device, dtype, lower_bound, upper_bound,
+               batch_size, sk_iter, sk_tol, max_epochs, lr_init,
+               device, dtype,
                convergence_tol, patience,
+               method, barrier_mu,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -43,11 +47,11 @@
           pop_matrix = pop_matrix,
           source_matrix = source_matrix,
           alpha_init = alpha_init,
-          batch_size = batch_size, sk_iter = sk_iter,
-          max_steps = max_steps, lr_init = lr_init,
+          batch_size = batch_size, sk_iter = sk_iter, sk_tol = sk_tol,
+          max_epochs = max_epochs, lr_init = lr_init,
           device = device, dtype = dtype,
-          lower_bound = lower_bound, upper_bound = upper_bound,
           convergence_tol = convergence_tol, patience = patience,
+          method = method, barrier_mu = barrier_mu,
           verbose = verbose
         )
       },
@@ -56,11 +60,11 @@
         pop_matrix = pop_matrix,
         source_matrix = source_matrix,
         alpha_init = alpha_init,
-        batch_size = batch_size, sk_iter = sk_iter,
-        max_steps = max_steps, lr_init = lr_init,
+        batch_size = batch_size, sk_iter = sk_iter, sk_tol = sk_tol,
+        max_epochs = max_epochs, lr_init = lr_init,
         device = device, dtype = dtype,
-        lower_bound = lower_bound, upper_bound = upper_bound,
         convergence_tol = convergence_tol, patience = patience,
+        method = method, barrier_mu = barrier_mu,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -78,9 +82,8 @@
   # --- Per-bracket preprocessing (R-side) ---
   P_cpu <- pop_matrix
   V_cpu <- source_matrix
-  r_mat <- matrix(0, k, n)
   c_mat <- matrix(0, k, m)
-  skip <- logical(k)
+  skip  <- logical(k)
 
   for (bi in seq_len(k)) {
     rb <- P_cpu[, bi]
@@ -89,28 +92,34 @@
       skip[bi] <- TRUE
       next
     }
-    # Rescale row targets so sum(rb) == sum(cb)
-    rb <- rb / sum(rb) * sum(cb)
-    r_mat[bi, ] <- rb
     c_mat[bi, ] <- cb
   }
 
   active <- which(!skip)
-  ka <- length(active)
+  ka     <- length(active)
 
   if (ka == 0L) {
     stop("All demographic brackets are empty (sum < 0.5). Cannot optimize.",
          call. = FALSE)
   }
 
-  r_mat <- r_mat[active, , drop = FALSE]
   c_mat <- c_mat[active, , drop = FALSE]
-  r_totals <- rowSums(r_mat)
+
+  # --- Epoch structure ---
+  # Each epoch = one full shuffled pass through all n tracts.
+  # max_epochs is the parameter directly (no conversion from steps).
+  n_batches_per_epoch <- ceiling(n / b)
+
+  # LR schedule: ReduceLROnPlateau — halve LR when epoch loss plateaus.
+  min_lr <- lr_init * 1e-3
+
+  # Verbose: print ~20 lines regardless of epoch count
+  report_every <- max(1L, max_epochs %/% 20L)
 
   # --- Memory safety check (GPU only) ---
   bytes_per_elem <- if (dtype == "float32") 4 else 8
-  estimated_mb <- as.double(ka) * b * m * bytes_per_elem *
-    (2 + 2 * sk_iter) / 1e6
+  # Dominant cost: log_K_3d (ka×b×m) + one log_KV copy per IPF step
+  estimated_mb   <- (2.0 * as.double(ka) * b * m) * bytes_per_elem / 1e6
 
   if (grepl("cuda", device, fixed = TRUE)) {
     vram_mb <- tryCatch({
@@ -133,9 +142,19 @@
   }
 
   if (verbose) {
-    message(sprintf(
-      "  PB-SGD (%s, %s): batch=%d, sk_iter=%d, %d steps",
-      device, dtype, b, sk_iter, max_steps))
+    if (method == "colnorm") {
+      message(sprintf(paste0(
+        "  PB-SGD colnorm (%s, %s): batch=%d, barrier_mu=%.1f, ",
+        "max %d epochs (%d batches/epoch)"),
+        device, dtype, b, barrier_mu,
+        max_epochs, n_batches_per_epoch))
+    } else {
+      message(sprintf(paste0(
+        "  PB-SGD sinkhorn (%s, %s): batch=%d, sk_iter=%d (tol=%.1e), ",
+        "max %d epochs (%d batches/epoch)"),
+        device, dtype, b, sk_iter, sk_tol,
+        max_epochs, n_batches_per_epoch))
+    }
   }
 
   # Track tensors for cleanup
@@ -152,182 +171,405 @@
     # Transfer to tensors
     log_t_torch <- torch::torch_log(torch::torch_tensor(
       time_matrix, device = device, dtype = torch_dtype))
-    p_torch <- torch::torch_tensor(
-      pop_matrix, device = device, dtype = torch_dtype)
-    v_torch <- torch::torch_tensor(
-      source_matrix, device = device, dtype = torch_dtype)
 
-    # --- Direct parameterization (projected gradient descent) ---
-    # Optimize alpha directly. After each Adam step, project back onto
-    # the feasible set via clamp_(lower_bound, upper_bound).
-    alpha_init_vec <- rep(alpha_init, length.out = n)
-    alpha_init_vec <- pmin(pmax(alpha_init_vec, lower_bound), upper_bound)
-    a_torch <- torch::torch_tensor(
-      alpha_init_vec,
-      device = device,
-      requires_grad = TRUE,
-      dtype = torch_dtype
+    # --- 3D IPF pre-computations ---
+    # Uses original (unrescaled) population for Property 2 row targets.
+    p_mat_active <- P_cpu[, active, drop = FALSE]   # n × ka
+    r_pop_total  <- rowSums(p_mat_active)            # n-vector
+    P_total_val  <- sum(r_pop_total)
+    r_total_norm <- r_pop_total / pmax(P_total_val, 1e-30)
+
+    V_total_val  <- sum(c_mat)
+
+    # Row targets: r_norm[i] * V_total
+    # Col targets: c_mat[b,j] = V^b_j
+    # Both sum to V_total_val, so the 3D IPF is feasible.
+    log_row_target_full <- torch::torch_tensor(
+      log(pmax(r_total_norm, 1e-30)) +
+        log(pmax(V_total_val, 1e-30)),
+      device = device, dtype = torch_dtype)          # (n,)
+
+    log_V_b_torch <- torch::torch_tensor(
+      log(pmax(c_mat, 1e-30)),
+      device = device, dtype = torch_dtype)          # (ka, m)
+
+    # Active-bracket population tensor for loss computation
+    p_active_torch <- torch::torch_tensor(
+      p_mat_active, device = device, dtype = torch_dtype)  # (n, ka)
+
+    # --- Exponential reparameterization — per-tract-per-bracket ---
+    # alpha[i,b] = exp(theta[i,b]), theta unconstrained.
+    # One alpha per census tract per active bracket.
+    alpha_init_mat <- matrix(
+      pmax(alpha_init, 1e-6), nrow = n, ncol = ka)
+    theta_init <- log(alpha_init_mat)
+
+    # Break initialization symmetry with small deterministic perturbation
+    # so different tracts/brackets get different initial gradients.
+    old_seed <- if (exists(".Random.seed", envir = globalenv()))
+      get(".Random.seed", envir = globalenv()) else NULL
+    on.exit({
+      if (is.null(old_seed)) {
+        if (exists(".Random.seed", envir = globalenv()))
+          rm(".Random.seed", envir = globalenv())
+      } else {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      }
+    }, add = TRUE)
+    set.seed(n * 7919L + ka * 104729L)
+    theta_init <- theta_init + matrix(
+      stats::rnorm(n * ka, mean = 0, sd = 0.1),
+      nrow = n, ncol = ka
     )
 
-    gpu_tensors$log_t <- log_t_torch
-    gpu_tensors$p <- p_torch
-    gpu_tensors$v <- v_torch
-    gpu_tensors$a <- a_torch
+    theta_torch <- torch::torch_tensor(
+      theta_init,
+      device        = device,
+      requires_grad = TRUE,
+      dtype         = torch_dtype
+    )
 
-    optimizer <- torch::optim_adam(list(a_torch), lr = lr_init, amsgrad = TRUE)
+    # alpha_fn: theta -> alpha (always strictly positive)
+    alpha_fn <- function(th) torch::torch_exp(th)
 
-    best_loss <- Inf
-    best_alpha <- alpha_init_vec  # Guard: never return NULL
-    losses <- numeric(max_steps)
-    last_grad_norm <- NA_real_
+    gpu_tensors$log_t   <- log_t_torch
+    gpu_tensors$p_act   <- p_active_torch
+    gpu_tensors$theta   <- theta_torch
+    gpu_tensors$log_V_b <- log_V_b_torch
+    gpu_tensors$log_r   <- log_row_target_full
 
-    # --- Convergence tracking ---
-    ema_loss <- NA_real_
-    ema_decay <- 0.95
+    optimizer <- torch::optim_adam(
+      list(theta_torch), lr = lr_init, betas = c(0.9, 0.99))
+
+    scheduler <- torch::lr_reduce_on_plateau(
+      optimizer,
+      mode       = "min",
+      factor     = 0.5,
+      patience   = as.integer(patience * 2L),
+      threshold  = convergence_tol,
+      threshold_mode = "rel",
+      min_lr     = min_lr,
+      verbose    = FALSE
+    )
+
+    best_epoch_loss  <- Inf
+    best_alpha <- as.matrix(
+      alpha_fn(theta_torch)$detach()$cpu())            # (n, ka)
+    best_W     <- NULL                                   # n × m R matrix
+    epoch_losses     <- numeric(max_epochs)
+    lr_history       <- numeric(max_epochs)
+    last_grad_norm   <- NA_real_
+    step_counter     <- 0L
+    epoch            <- 0L
+
+    # Convergence tracking
     patience_counter <- 0L
-    converged <- FALSE
-    steps_completed <- 0L
+    converged        <- FALSE
 
-    for (step in seq_len(max_steps)) {
-      # LR schedule: halve at steps 200, 400, 600
-      if (step %in% c(200L, 400L, 600L)) {
-        for (pg in optimizer$param_groups) {
-          pg$lr <- pg$lr * 0.5
-        }
-      }
+    grad_history <- numeric(max_epochs)
+    sk_nonconv_count <- 0L
 
-      # Sample mini-batch
-      idx <- sample.int(n, b)
-      r_batch <- r_mat[, idx, drop = FALSE]
-      batch_totals <- rowSums(r_batch)
-      scale_f <- batch_totals / pmax(r_totals, 1e-30)
-      c_batch <- c_mat * scale_f
+    for (epoch in seq_len(max_epochs)) {
 
-      # Build 3D tensors for per-bracket Sinkhorn
-      log_r_3d <- torch::torch_tensor(
-        array(log(pmax(r_batch, 1e-30)), dim = c(ka, b, 1L)),
-        device = device, dtype = torch_dtype)
-      log_c_3d <- torch::torch_tensor(
-        array(log(pmax(c_batch, 1e-30)), dim = c(ka, 1L, m)),
-        device = device, dtype = torch_dtype)
+      # Shuffle all n tracts into sequential mini-batches
+      perm       <- sample.int(n)
+      batch_list <- split(perm, ceiling(seq_along(perm) / b))
 
-      optimizer$zero_grad()
+      # --- Mini-batch gradient steps ---
+      for (idx in batch_list) {
+        b_actual <- length(idx)
 
-      # Build log-kernel for batch: log(K) = -alpha * log(t)
-      log_t_batch <- log_t_torch[idx, ]
-      log_K <- -a_torch[idx]$unsqueeze(2L) * log_t_batch
-      log_K_3d <- log_K$unsqueeze(1L)
+        optimizer$zero_grad()
 
-      # Log-domain Sinkhorn iterations (per bracket)
-      log_u <- torch::torch_zeros(c(ka, b, 1L),
-                                   device = device, dtype = torch_dtype)
-      log_v <- torch::torch_zeros(c(ka, 1L, m),
-                                   device = device, dtype = torch_dtype)
+        if (method == "colnorm") {
+          # Column-only normalization: W[b,i,j] = K[b,i,j] / colSum(K)[j]
+          # All n tracts participate in column sums (not just batch).
+          alpha_all <- alpha_fn(theta_torch)              # (n, ka)
+          log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
+            log_t_torch$unsqueeze(1L)                     # (ka, n, m)
 
-      for (i in seq_len(sk_iter)) {
-        log_u <- log_r_3d - torch::torch_logsumexp(
-          log_K_3d + log_v, dim = 3L, keepdim = TRUE)
-        log_v <- log_c_3d - torch::torch_logsumexp(
-          log_K_3d + log_u, dim = 2L, keepdim = TRUE)
-      }
+          # Column normalization in log-space
+          log_col_sum_full <- torch::torch_logsumexp(
+            log_K_3d_full, dim = 2L)                      # (ka, m)
+          log_W_3d <- log_K_3d_full -
+            log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
 
-      # Aggregate across brackets and column-normalize
-      W_all <- torch::torch_exp(log_u + log_K_3d + log_v)
-      W_total <- W_all$sum(dim = 1L)
-      cs <- W_total$sum(dim = 1L, keepdim = TRUE) + 1e-30
-      W_norm <- W_total / cs
+          # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
+          log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
+          V_hat_all <- torch::torch_exp(
+            torch::torch_logsumexp(
+              log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
 
-      # Compute batch loss
-      V_scaled <- v_torch * (as.double(b) / n)
-      V_hat <- torch::torch_mm(W_norm, V_scaled)
-      P_batch <- p_torch[idx, ]
-      loss <- (V_hat - P_batch)$pow(2)$sum() * (as.double(n) / b)
+          # Data loss (SSE) on batch only, scaled to full-dataset units
+          V_hat_batch <- V_hat_all[idx, ]                 # (b_actual, ka)
+          P_batch     <- p_active_torch[idx, ]            # (b_actual, ka)
+          data_loss <- (V_hat_batch - P_batch)$pow(2)$sum() *
+            (as.double(n) / b_actual)
 
-      loss$backward()
+          # Log-barrier penalty on ALL tracts
+          if (barrier_mu > 0) {
+            V_hat_total <- V_hat_all$sum(dim = 2L)        # (n,)
+            barrier <- -barrier_mu *
+              torch::torch_log(
+                torch::torch_clamp(V_hat_total, min = 1e-30))$sum()
+            loss <- data_loss + barrier
+          } else {
+            loss <- data_loss
+          }
 
-      # Gradient masking: only update sampled tracts
-      torch::with_no_grad({
-        grad <- a_torch$grad
-        mask <- torch::torch_zeros_like(grad)
-        mask[idx] <- 1
-        a_torch$grad <- grad * mask
-      })
-
-      optimizer$step()
-
-      # Project onto feasible set: alpha in [lower_bound, upper_bound]
-      torch::with_no_grad({
-        a_torch$clamp_(lower_bound, upper_bound)
-      })
-
-      lv <- loss$item()
-      losses[step] <- lv
-      steps_completed <- step
-
-      # Track best alpha
-      if (is.finite(lv) && lv < best_loss) {
-        best_loss <- lv
-        best_alpha <- as.numeric(a_torch$detach()$cpu())
-      }
-
-      last_grad_norm <- tryCatch(
-        as.numeric(a_torch$grad$norm()$cpu()),
-        error = function(e) NA_real_
-      )
-
-      # --- Convergence check (EMA-based) ---
-      if (is.finite(lv)) {
-        if (is.na(ema_loss)) {
-          ema_loss <- lv
         } else {
-          prev_ema <- ema_loss
-          ema_loss <- ema_decay * ema_loss + (1 - ema_decay) * lv
-          # Check relative improvement every 50 steps after warmup
-          if (step >= 200L && step %% 50L == 0L) {
-            rel_change <- abs(ema_loss - prev_ema) / (abs(prev_ema) + 1e-30)
-            if (rel_change < convergence_tol) {
-              patience_counter <- patience_counter + 1L
-              if (patience_counter >= patience) {
-                converged <- TRUE
-                if (verbose) {
-                  message(sprintf(
-                    "  Converged at step %d (EMA loss=%.0f, rel_change=%.2e)",
-                    step, ema_loss, rel_change))
-                }
-                break
-              }
-            } else {
-              patience_counter <- 0L
+          # --- Sinkhorn IPF path ---
+          # Mini-batch 3D IPF targets
+          r_total_batch <- r_total_norm[idx]
+          batch_r_sum   <- sum(r_total_batch)
+          log_r_batch <- torch::torch_tensor(
+            log(pmax(r_total_batch, 1e-30)) +
+              log(pmax(V_total_val, 1e-30)),
+            device = device, dtype = torch_dtype)        # (b_actual,)
+          log_col_batch <- log_V_b_torch +
+            log(pmax(batch_r_sum, 1e-30))                # (ka, m)
+
+          log_t_batch  <- log_t_torch[idx, ]             # (b_actual, m)
+          alpha_batch  <- alpha_fn(theta_torch[idx, ])   # (b_actual, ka)
+          # (ka, b_actual, 1) * (1, b_actual, m) -> (ka, b_actual, m)
+          log_K_3d_batch <- -alpha_batch$t()$unsqueeze(3L) *
+            log_t_batch$unsqueeze(1L)
+
+          # 3D log-domain IPF (Sinkhorn)
+          log_u <- torch::torch_zeros(
+            b_actual, device = device, dtype = torch_dtype)
+          log_v <- torch::torch_zeros(
+            c(ka, m), device = device, dtype = torch_dtype)
+
+          for (sk_i in seq_len(sk_iter)) {
+            log_u_prev <- log_u
+
+            log_KV <- log_K_3d_batch + log_v$unsqueeze(2L)
+            log_row_sum <- torch::torch_logsumexp(
+              torch::torch_logsumexp(log_KV, dim = 3L),
+              dim = 1L)                                  # (b_actual,)
+            log_u <- log_r_batch - log_row_sum
+
+            log_KU <- log_K_3d_batch +
+              log_u$unsqueeze(1L)$unsqueeze(3L)
+            log_col_sum <- torch::torch_logsumexp(
+              log_KU, dim = 2L)                          # (ka, m)
+            log_v <- log_col_batch - log_col_sum
+
+            if (sk_i >= 2L) {
+              sk_delta <- (log_u - log_u_prev)$abs()$max()$item()
+              if (is.finite(sk_delta) && sk_delta < sk_tol) break
             }
           }
+
+          # Transport plan: T[b,i,j] = K^b[i,j] * u[i] * v[b,j]
+          log_T_final <- log_K_3d_batch +
+            log_u$unsqueeze(1L)$unsqueeze(3L) +
+            log_v$unsqueeze(2L)
+          V_hat_batch <- torch::torch_exp(
+            torch::torch_logsumexp(
+              log_T_final, dim = 3L))$t()                # (b_actual, ka)
+
+          P_batch <- p_active_torch[idx, ]               # (b_actual, ka)
+          loss    <- (V_hat_batch - P_batch)$pow(2)$sum() *
+            (as.double(n) / b_actual)
+        }
+
+        loss$backward()
+
+        # Capture pre-clip gradient norm, then clip
+        last_grad_norm <- tryCatch(
+          as.numeric(theta_torch$grad$norm()$cpu()),
+          error = function(e) NA_real_
+        )
+        torch::nn_utils_clip_grad_norm_(
+          list(theta_torch), max_norm = 1.0)
+
+        optimizer$step()
+        step_counter <- step_counter + 1L
+      }  # end mini-batch loop
+
+      # --- True epoch loss: full-dataset forward pass ---
+      torch::with_no_grad({
+        alpha_ep <- alpha_fn(theta_torch)              # (n, ka)
+        log_K_3d_ep <- -alpha_ep$t()$unsqueeze(3L) *
+          log_t_torch$unsqueeze(1L)                    # (ka, n, m)
+
+        if (method == "colnorm") {
+          # Column normalization
+          log_col_sum_ep <- torch::torch_logsumexp(
+            log_K_3d_ep, dim = 2L)                     # (ka, m)
+          log_W_3d_ep <- log_K_3d_ep -
+            log_col_sum_ep$unsqueeze(2L)               # (ka, n, m)
+
+          log_c_3d_ep <- log_V_b_torch$unsqueeze(2L)  # (ka, 1, m)
+          V_hat_ep <- torch::torch_exp(
+            torch::torch_logsumexp(
+              log_W_3d_ep + log_c_3d_ep, dim = 3L))$t()  # (n, ka)
+
+          epoch_loss_val <- as.numeric(
+            (V_hat_ep - p_active_torch)$pow(2)$sum()$item())
+
+          # Derive W: aggregate per-bracket column-normalized weights
+          log_T_ep <- log_W_3d_ep + log_c_3d_ep       # (ka, n, m)
+          log_c_agg_ep <- torch::torch_logsumexp(
+            log_V_b_torch, dim = 1L)                   # (m,)
+          log_T_agg_ep <- torch::torch_logsumexp(
+            log_T_ep, dim = 1L)                        # (n, m)
+          W_candidate <- as.matrix(torch::torch_exp(
+            log_T_agg_ep - log_c_agg_ep$unsqueeze(1L))$cpu())
+
+        } else {
+          # Full-dataset 3D Sinkhorn IPF
+          log_u_ep <- torch::torch_zeros(
+            n, device = device, dtype = torch_dtype)
+          log_v_ep <- torch::torch_zeros(
+            c(ka, m), device = device, dtype = torch_dtype)
+
+          sk_converged_ep <- FALSE
+          sk_delta_ep     <- Inf
+          for (sk_i_ep in seq_len(sk_iter)) {
+            log_u_ep_prev <- log_u_ep
+
+            log_KV_ep <- log_K_3d_ep + log_v_ep$unsqueeze(2L)
+            log_row_sum_ep <- torch::torch_logsumexp(
+              torch::torch_logsumexp(log_KV_ep, dim = 3L),
+              dim = 1L)
+            log_u_ep <- log_row_target_full - log_row_sum_ep
+
+            log_KU_ep <- log_K_3d_ep +
+              log_u_ep$unsqueeze(1L)$unsqueeze(3L)
+            log_col_sum_ep <- torch::torch_logsumexp(
+              log_KU_ep, dim = 2L)
+            log_v_ep <- log_V_b_torch - log_col_sum_ep
+
+            if (sk_i_ep >= 2L) {
+              sk_delta_ep <- (log_u_ep - log_u_ep_prev
+                )$abs()$max()$item()
+              if (is.finite(sk_delta_ep) &&
+                  sk_delta_ep < sk_tol) {
+                sk_converged_ep <- TRUE
+                break
+              }
+            }
+          }
+          if (!sk_converged_ep) {
+            sk_nonconv_count <- sk_nonconv_count + 1L
+          }
+
+          log_T_ep <- log_K_3d_ep +
+            log_u_ep$unsqueeze(1L)$unsqueeze(3L) +
+            log_v_ep$unsqueeze(2L)
+          V_hat_ep <- torch::torch_exp(
+            torch::torch_logsumexp(
+              log_T_ep, dim = 3L))$t()                 # (n, ka)
+
+          epoch_loss_val <- as.numeric(
+            (V_hat_ep - p_active_torch)$pow(2)$sum()$item())
+
+          log_c_agg_ep <- torch::torch_logsumexp(
+            log_V_b_torch, dim = 1L)                   # (m,)
+          log_T_agg_ep <- torch::torch_logsumexp(
+            log_T_ep, dim = 1L)                        # (n, m)
+          W_candidate <- as.matrix(torch::torch_exp(
+            log_T_agg_ep - log_c_agg_ep$unsqueeze(1L))$cpu())
+        }
+
+        alpha_candidate <- as.matrix(alpha_ep$cpu())
+      })
+
+      epoch_losses[epoch] <- epoch_loss_val
+
+      # Step the LR scheduler with the true epoch loss
+      scheduler$step(epoch_loss_val)
+
+      grad_history[epoch] <- last_grad_norm
+      lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+
+      # --- Convergence check ---
+      # Converge when LR has been reduced to min_lr AND no improvement
+      # for `patience` consecutive epochs at that LR.
+      # NOTE: must check BEFORE updating best_epoch_loss, otherwise the
+      # comparison (epoch_loss_val < best_epoch_loss - tol*|best|) is
+      # always false after a best-loss update.
+      current_lr <- optimizer$param_groups[[1]]$lr
+      lr_at_min  <- (current_lr <= min_lr * 1.01)
+
+      if (is.finite(epoch_loss_val) && epoch >= 5L) {
+        if (epoch_loss_val < best_epoch_loss -
+              convergence_tol * abs(best_epoch_loss)) {
+          patience_counter <- 0L
+        } else {
+          patience_counter <- patience_counter + 1L
+        }
+
+        if (lr_at_min && patience_counter >= patience) {
+          converged <- TRUE
+          if (verbose) {
+            message(sprintf(paste0(
+              "  Converged at epoch %d (loss=%s, lr=%.1e, ",
+              "no improvement for %d epochs)"),
+              epoch,
+              format(round(epoch_loss_val), big.mark = ","),
+              current_lr, patience))
+          }
+          break
         }
       }
 
-      if (verbose && step %% 100L == 0L) {
-        cur_alpha <- as.numeric(a_torch$detach()$cpu())
-        message(sprintf(
-          "  Step %3d/%d: loss=%s, grad=%.2e, alpha=[%.2f, %.2f, %.2f]",
-          step, max_steps,
-          format(round(lv), big.mark = ","),
+      # Track best alpha by true epoch loss (after convergence check)
+      if (is.finite(epoch_loss_val) &&
+          epoch_loss_val < best_epoch_loss) {
+        best_epoch_loss <- epoch_loss_val
+        best_alpha <- alpha_candidate
+        best_W <- W_candidate
+      }
+
+      if (verbose &&
+          (epoch == 1L || epoch %% report_every == 0L)) {
+        message(sprintf(paste0(
+          "  Epoch %3d/%d: loss=%s, grad=%.2e, lr=%.1e, ",
+          "alpha=[%.2f, %.2f, %.2f]"),
+          epoch, max_epochs,
+          format(round(epoch_loss_val), big.mark = ","),
           last_grad_norm,
-          min(cur_alpha), stats::median(cur_alpha), max(cur_alpha)
+          optimizer$param_groups[[1]]$lr,
+          min(alpha_candidate), stats::median(alpha_candidate),
+          max(alpha_candidate)
         ))
       }
+    }  # end epoch loop
+
+    # Warn if Sinkhorn did not converge in any epoch
+    if (method == "sinkhorn" && sk_nonconv_count > 0L) {
+      warning(sprintf(paste0(
+        "Sinkhorn did not converge within %d iterations ",
+        "in %d of %d epoch evaluations (tol=%.1e). ",
+        "Consider increasing sk_iter."),
+        sk_iter, sk_nonconv_count, epoch, sk_tol
+      ), call. = FALSE)
     }
 
     list(
-      alpha = best_alpha,
-      value = best_loss,
-      method = paste0("pb_sgd_sinkhorn_", device),
-      convergence = if (converged) 0L else 1L,
-      iterations = steps_completed,
-      message = sprintf(
-        "PB-SGD on %s (%s), %d/%d steps%s, batch=%d, %d brackets, sk_iter=%d",
-        device, dtype, steps_completed, max_steps,
-        if (converged) " (converged)" else "",
-        b, ka, sk_iter),
-      history = losses[seq_len(steps_completed)],
-      grad_norm_final = last_grad_norm
+      alpha           = best_alpha,   # n × ka matrix
+      active_brackets = active,       # which brackets are active
+      W               = best_W,       # n × m weight matrix
+      value           = best_epoch_loss,
+      method          = paste0("pb_sgd_", method, "_", device),
+      convergence     = if (converged) 0L else 1L,
+      epochs          = epoch,
+      steps           = step_counter,
+      message         = sprintf(paste0(
+        "PB-SGD on %s (%s), %d epochs (%d steps), ",
+        "batch=%d, %d brackets, ",
+        "sk_iter=%d (tol=%.1e)"),
+        device, dtype, epoch, step_counter,
+        b, ka, sk_iter, sk_tol),
+      history             = epoch_losses[seq_len(epoch)],
+      grad_norm_final     = last_grad_norm,
+      grad_history        = grad_history[seq_len(epoch)],
+      lr_history          = lr_history[seq_len(epoch)],
+      n_batches_per_epoch = n_batches_per_epoch
     )
   }, error = function(e) {
     stop(sprintf(

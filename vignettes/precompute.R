@@ -41,14 +41,14 @@ save_fig <- function(p, filename, width = 8, height = 6, dpi = 200) {
   message("  Saved: ", path)
 }
 
-# Helper: aggregate calibration matrix from 28 cols (gender x literacy x age)
-# down to 7 age brackets by summing across gender and literacy categories.
+# Helper: aggregate calibration matrix from 14 cols (gender x age)
+# down to 7 age brackets by summing across gender categories.
 # Returns a matrix with clean age labels as column names.
 aggregate_to_age <- function(mat, col_names = colnames(mat)) {
   n_cols <- length(col_names)
-  # Extract age suffix: e.g., "pop_hom_alf_18_19" -> "18_19"
+  # Extract age suffix: e.g., "pop_hom_18_19" -> "18_19"
   age_suffix <- sapply(strsplit(col_names, "_"), function(parts) {
-    paste(parts[4:length(parts)], collapse = "_")
+    paste(parts[3:length(parts)], collapse = "_")
   })
   unique_ages <- unique(age_suffix)
   n_ages <- length(unique_ages)
@@ -68,7 +68,7 @@ aggregate_to_age <- function(mat, col_names = colnames(mat)) {
 # Helper: aggregate column-level sums to age brackets
 aggregate_sums_to_age <- function(col_sums, col_names = names(col_sums)) {
   age_suffix <- sapply(strsplit(col_names, "_"), function(parts) {
-    paste(parts[4:length(parts)], collapse = "_")
+    paste(parts[3:length(parts)], collapse = "_")
   })
   unique_ages <- unique(age_suffix)
   agg <- vapply(unique_ages, function(a) {
@@ -468,7 +468,7 @@ if (length(cand_13_col) > 0 && length(cand_22_col) > 0) {
 }
 
 # 3.14: Scatter plot — interpolated vs census demographics
-# Aggregate 28 columns to 7 age brackets
+# Aggregate 14 columns to 7 age brackets
 fitted_demo <- W_vga %*% source_matrix_vga
 fitted_agg <- aggregate_to_age(fitted_demo, calib_cols_vga$tracts)
 pop_agg <- aggregate_to_age(pop_matrix_vga, calib_cols_vga$tracts)
@@ -1293,7 +1293,7 @@ tryCatch({
       tracts_rj_result[cop_mask2, ])
 
     calib_tract_cols <- calib_rj$tracts
-    # Aggregate 28-column sums to 7 age brackets
+    # Aggregate 14-column sums to 7 age brackets
     roc_census_raw <- colSums(
       roc_result_df[, calib_tract_cols, drop = FALSE])
     cop_census_raw <- colSums(

@@ -602,6 +602,14 @@ interpolate_election_br <- function(
 
   # --- Step 8: Call interpolate_election() ---
   # Pass step offset so inner steps continue the unified numbering
+  # Construct state-level OSM URL to avoid oe_match() selecting
+  # overly broad extracts (country/continent level)
+  osm_url <- if (osm_provider == "openstreetmap_fr") {
+    .br_osm_url(muni_info$uf)
+  } else {
+    NULL
+  }
+
   ie_result <- interpolate_election(
     tracts_sf = tracts_sf,
     electoral_sf = electoral_sf,
@@ -620,6 +628,7 @@ interpolate_election_br <- function(
     use_gpu = use_gpu,
     verbose = verbose,
     osm_provider = osm_provider,
+    osm_url = osm_url,
     point_method = point_method,
     pop_raster = pop_raster,
     pop_min_area = pop_min_area,
@@ -914,20 +923,23 @@ interpolate_election_br <- function(
     calib_sources <- paste0("votantes_", age_groups)
 
   } else {
-    # Full calibration: gender x age pairs
-    # IBGE splits by literacy (alf/nalf), but we always sum them.
-    # The 4 categories below are an intermediate step: alf + nalf
-    # gets aggregated to produce gender x 7 age brackets.
-    categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
+    # Full calibration: gender x age pairs (14 brackets = 2 genders x 7 ages)
+    # IBGE/TSE split by literacy (alf/nalf); we aggregate them here.
+    lit_categories <- c("hom_alf", "hom_nalf", "mul_alf", "mul_nalf")
 
-    for (cat in categories) {
-      electoral_sf <- .aggregate_tse_groups(
-        electoral_sf, elec_df, paste0("vot_", cat, "_"), is_2022 = is_2022)
-    }
+    # Step 1: aggregate fine TSE age groups within each literacy category.
+    # Some alf/nalf columns may be absent (e.g., nalf_20 for young cohorts);
+    # .safe_sum handles missing columns as zero — suppress those warnings.
+    suppressWarnings({
+      for (cat in lit_categories) {
+        electoral_sf <- .aggregate_tse_groups(
+          electoral_sf, elec_df, paste0("vot_", cat, "_"), is_2022 = is_2022)
+      }
+    })
 
     if (is_2022) {
-      # Apply 2/5 proxy for 18-19 from census 15-19 bracket, per category
-      for (cat in categories) {
+      # Apply 2/5 proxy for 18-19 from census 15-19 bracket, per lit category
+      for (cat in lit_categories) {
         pop_15_19_col <- paste0("pop_", cat, "_15_19")
         pop_18_19_col <- paste0("pop_", cat, "_18_19")
         if (pop_15_19_col %in% names(tracts_df)) {
@@ -936,8 +948,33 @@ interpolate_election_br <- function(
       }
     }
 
-    calib_tracts <- paste0("pop_", rep(categories, each = 7), "_", age_groups)
-    calib_sources <- paste0("vot_", rep(categories, each = 7), "_", age_groups)
+    # Step 2: sum alf + nalf to get gender-only brackets (14 = 2 x 7)
+    # Some alf/nalf columns may be absent for certain age groups; that is
+    # expected and handled silently by .safe_sum (missing = 0).
+    gender_categories <- c("hom", "mul")
+    elec_df2_tmp <- sf::st_drop_geometry(electoral_sf)
+    tracts_df2_tmp <- sf::st_drop_geometry(tracts_sf)
+
+    suppressWarnings({
+      for (gender in gender_categories) {
+        for (ag in age_groups) {
+          alf_vot  <- paste0("vot_", gender, "_alf_", ag)
+          nalf_vot <- paste0("vot_", gender, "_nalf_", ag)
+          agg_vot  <- paste0("vot_", gender, "_", ag)
+          electoral_sf[[agg_vot]] <- .safe_sum(elec_df2_tmp, c(alf_vot, nalf_vot))
+
+          alf_pop  <- paste0("pop_", gender, "_alf_", ag)
+          nalf_pop <- paste0("pop_", gender, "_nalf_", ag)
+          agg_pop  <- paste0("pop_", gender, "_", ag)
+          tracts_sf[[agg_pop]] <- .safe_sum(tracts_df2_tmp, c(alf_pop, nalf_pop))
+        }
+      }
+    })
+
+    calib_tracts <- paste0("pop_", rep(gender_categories, each = 7), "_",
+                           age_groups)
+    calib_sources <- paste0("vot_", rep(gender_categories, each = 7), "_",
+                            age_groups)
   }
 
   # Verify all columns exist
@@ -983,6 +1020,65 @@ interpolate_election_br <- function(
     NULL
   })
 }
+
+# --- Internal: construct state-level OSM URL for openstreetmap_fr ---
+# Maps a two-letter UF code to the openstreetmap.fr state-level extract URL.
+# This avoids relying on osmextract::oe_match() bounding-box matching, which
+# can select country/continent-level extracts when polling station geocodes
+# have outliers that inflate the bounding box.
+
+.br_osm_url <- function(uf) {
+  uf <- toupper(trimws(uf))
+
+  # UF -> c(region, state_slug) for openstreetmap.fr
+  uf_map <- list(
+    # Norte
+    AC = c("north", "acre"),
+    AM = c("north", "amazonas"),
+    AP = c("north", "amapa"),
+    PA = c("north", "para"),
+    RO = c("north", "rondonia"),
+    RR = c("north", "roraima"),
+    TO = c("north", "tocantins"),
+    # Nordeste
+    AL = c("northeast", "alagoas"),
+    BA = c("northeast", "bahia"),
+    CE = c("northeast", "ceara"),
+    MA = c("northeast", "maranhao"),
+    PB = c("northeast", "paraiba"),
+    PE = c("northeast", "pernambuco"),
+    PI = c("northeast", "piaui"),
+    RN = c("northeast", "rio-grande-do-norte"),
+    SE = c("northeast", "sergipe"),
+    # Centro-Oeste
+    DF = c("central-west", "distrito-federal"),
+    GO = c("central-west", "goias"),
+    MS = c("central-west", "mato-grosso-do-sul"),
+    MT = c("central-west", "mato-grosso"),
+    # Sudeste
+    ES = c("southeast", "espirito-santo"),
+    MG = c("southeast", "minas-gerais"),
+    RJ = c("southeast", "rio-de-janeiro"),
+    SP = c("southeast", "sao-paulo"),
+    # Sul
+    PR = c("south", "parana"),
+    RS = c("south", "rio-grande-do-sul"),
+    SC = c("south", "santa-catarina")
+  )
+
+  info <- uf_map[[uf]]
+  if (is.null(info)) {
+    warning(sprintf("Unknown UF '%s'; falling back to oe_match()", uf),
+            call. = FALSE)
+    return(NULL)
+  }
+
+  sprintf(
+    "http://download.openstreetmap.fr/extracts/south-america/brazil/%s/%s-latest.osm.pbf",
+    info[1], info[2]
+  )
+}
+
 
 # Sum columns safely (returns 0 for missing columns, warns about missing)
 .safe_sum <- function(df, cols) {

@@ -248,7 +248,7 @@ observed) for each tract and age bracket. Requires `keep = "weights"` or
 ```{r residuals, eval = FALSE}
 resid <- residuals(result_nit)
 str(resid)
-#> num [1:1169, 1:28] ...
+#> num [1:1169, 1:14] ...
 
 # Per-bracket summary
 colMeans(resid)                        # mean residual per bracket

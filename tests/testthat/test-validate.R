@@ -76,10 +76,18 @@ test_that(".validate_matrices accepts valid input", {
   expect_true(interpElections:::.validate_matrices(m, p, s))
 })
 
-test_that(".validate_alpha rejects matrix alpha", {
+test_that(".validate_alpha accepts matrix alpha and validates dimensions", {
+  # Valid matrix (n=2, k=2)
+  expect_true(interpElections:::.validate_alpha(matrix(1:4, 2, 2), n = 2L, k = 2L))
+  # Wrong number of rows
   expect_error(
-    interpElections:::.validate_alpha(matrix(1:4, 2, 2), 2),
-    "not a matrix"
+    interpElections:::.validate_alpha(matrix(1:6, 3, 2), n = 2L, k = 2L),
+    "rows"
+  )
+  # Wrong number of columns
+  expect_error(
+    interpElections:::.validate_alpha(matrix(1:6, 2, 3), n = 2L, k = 2L),
+    "columns"
   )
 })
 

@@ -110,7 +110,7 @@
 #'
 #' @family wrappers
 #'
-#' @seealso [optimize_alpha()], [sinkhorn_weights()],
+#' @seealso [optimize_alpha()], [compute_weight_matrix()],
 #'   [interpolate_election_br()] for the Brazilian-specific wrapper.
 #'
 #' @export
@@ -451,10 +451,14 @@ interpolate_election <- function(
   # --- Step 5: Interpolate ---
   if (verbose) message(sprintf("[%d/%d] Interpolating...",
                                step_num, total_steps))
-  W <- sinkhorn_weights(time_matrix, alpha, offset = offset,
-                         row_targets = row_targets,
-                         pop_matrix = pop_matrix,
-                         source_matrix = source_matrix)
+  if (!is.null(optim_result) && !is.null(optim_result$W)) {
+    W <- optim_result$W
+  } else {
+    method_val <- dots[["method"]] %||% "colnorm"
+    W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
+                                offset = offset, method = method_val,
+                                use_gpu = use_gpu)
+  }
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
     colnames(interpolated) <- colnames(interp_data)

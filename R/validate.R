@@ -21,6 +21,7 @@
 
   n <- nrow(time_matrix)
   m <- ncol(time_matrix)
+  k <- ncol(pop_matrix)
 
   if (nrow(pop_matrix) != n) {
     stop(sprintf(
@@ -51,30 +52,41 @@
   }
 
   if (!is.null(alpha)) {
-    .validate_alpha(alpha, n)
+    .validate_alpha(alpha, n, k = k)
   }
 
   invisible(TRUE)
 }
 
-.validate_alpha <- function(alpha, n) {
+.validate_alpha <- function(alpha, n, m = NULL, k = NULL) {
   if (is.matrix(alpha)) {
-    stop("alpha must be a numeric vector, not a matrix", call. = FALSE)
-  }
-  if (!is.numeric(alpha)) {
-    stop("alpha must be a numeric vector", call. = FALSE)
-  }
-  if (length(alpha) != n) {
-    stop(sprintf(
-      "alpha has length %d but expected length %d",
-      length(alpha), n
-    ), call. = FALSE)
-  }
-  if (anyNA(alpha) || any(!is.finite(alpha))) {
-    stop("alpha must not contain NA, NaN, or Inf values", call. = FALSE)
-  }
-  if (any(alpha < 0)) {
-    stop("alpha values must be non-negative", call. = FALSE)
+    # Per-tract-bracket matrix: shape (n_tracts, k_brackets)
+    if (!is.numeric(alpha))
+      stop("alpha matrix must be numeric", call. = FALSE)
+    if (nrow(alpha) != n)
+      stop(sprintf(
+        "alpha matrix must have %d rows (one per tract), got %d",
+        n, nrow(alpha)), call. = FALSE)
+    if (!is.null(k) && ncol(alpha) != k)
+      stop(sprintf(
+        "alpha matrix must have %d columns (one per bracket), got %d",
+        k, ncol(alpha)), call. = FALSE)
+    if (anyNA(alpha) || any(!is.finite(alpha)))
+      stop("alpha must not contain NA, NaN, or Inf values", call. = FALSE)
+    if (any(alpha < 0))
+      stop("alpha values must be non-negative", call. = FALSE)
+  } else {
+    # Per-tract vector: original behaviour
+    if (!is.numeric(alpha))
+      stop("alpha must be a numeric vector", call. = FALSE)
+    if (length(alpha) != n)
+      stop(sprintf(
+        "alpha has length %d but expected length %d",
+        length(alpha), n), call. = FALSE)
+    if (anyNA(alpha) || any(!is.finite(alpha)))
+      stop("alpha must not contain NA, NaN, or Inf values", call. = FALSE)
+    if (any(alpha < 0))
+      stop("alpha values must be non-negative", call. = FALSE)
   }
   invisible(TRUE)
 }

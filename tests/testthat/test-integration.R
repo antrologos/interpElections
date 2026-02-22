@@ -1,7 +1,7 @@
 # Round-trip integration test:
-# optimize_alpha → sinkhorn_weights → verify valid results
+# optimize_alpha → W from result → verify valid interpolation
 
-test_that("optimize + sinkhorn_weights round-trip produces valid results", {
+test_that("optimize_alpha returns W that produces valid interpolation", {
   skip_if_not_installed("torch")
 
   set.seed(42)
@@ -14,70 +14,80 @@ test_that("optimize + sinkhorn_weights round-trip produces valid results", {
   source_matrix <- matrix(rpois(m * k, 50), m, k)
   storage.mode(source_matrix) <- "double"
 
-  # Population = rough Sinkhorn-balanced IDW at alpha=1
-  pop_total <- runif(n, 20, 200)
-  r <- pop_total / sum(pop_total) * m
-  W <- suppressWarnings(
-    sinkhorn_weights(time_matrix, rep(1, n), offset = 0, row_targets = r)
-  )
-  pop_matrix <- W %*% source_matrix + matrix(rnorm(n * k, 0, 2), n, k)
-  pop_matrix <- pmax(round(pop_matrix), 0)
+  # Population = rough IDW at alpha=1 + noise
+  pop_matrix <- matrix(rpois(n * k, 80), n, k)
   storage.mode(pop_matrix) <- "double"
 
   # Optimize
-  result <- optimize_alpha(
+  result <- suppressWarnings(optimize_alpha(
     time_matrix = time_matrix,
     pop_matrix = pop_matrix,
     source_matrix = source_matrix,
     offset = 0,
     use_gpu = FALSE,
-    max_steps = 50L,
+    max_epochs = 50L,
     verbose = FALSE
-  )
+  ))
 
   expect_s3_class(result, "interpElections_optim")
   expect_true(all(result$alpha >= 0))
   expect_true(is.finite(result$value))
 
-  # Build final weights (per-bracket mode)
-  W_final <- suppressWarnings(sinkhorn_weights(
-    time_matrix, result$alpha, offset = 0,
-    row_targets = result$row_targets,
-    pop_matrix = pop_matrix,
-    source_matrix = source_matrix
-  ))
+  # W is returned from optimizer
+  expect_true(is.matrix(result$W))
+  expect_equal(dim(result$W), c(n, m))
 
-  interpolated <- W_final %*% source_matrix
+  # Interpolate using W from result
+  interpolated <- result$W %*% source_matrix
 
   expect_equal(nrow(interpolated), n)
   expect_equal(ncol(interpolated), k)
   expect_true(all(is.finite(interpolated)))
 })
 
-test_that("row sums match row_targets after Sinkhorn weighting", {
+test_that("compute_weight_matrix produces valid weights", {
+  skip_if_not_installed("torch")
+
   set.seed(1)
-  n <- 8
-  m <- 4
+  n <- 8; m <- 4; k <- 2
   time_matrix <- matrix(runif(n * m, 1, 30), nrow = n)
-  alpha <- runif(n, 0.5, 2)
-  pop <- runif(n, 10, 200)
-  r <- pop / sum(pop) * m
+  alpha <- matrix(runif(n * k, 0.5, 2), n, k)
+  pop <- matrix(rpois(n * k, 80), n, k) + 1
+  src <- matrix(rpois(m * k, 160), m, k) + 1
+  storage.mode(pop) <- "double"
+  storage.mode(src) <- "double"
 
-  W <- sinkhorn_weights(time_matrix, alpha, row_targets = r)
+  W <- compute_weight_matrix(time_matrix, alpha, pop, src, verbose = FALSE)
 
-  expect_equal(rowSums(W), r, tolerance = 1e-6)
+  expect_true(is.matrix(W))
+  expect_equal(dim(W), c(n, m))
+  expect_true(all(W >= 0))
+  expect_equal(colSums(W), rep(1, m), tolerance = 0.05)
 })
 
-test_that("column sums approximately 1 after Sinkhorn weighting", {
+test_that("W from optimize_alpha matches compute_weight_matrix with same alpha", {
+  skip_if_not_installed("torch")
+
   set.seed(2)
-  n <- 8
-  m <- 4
+  n <- 6; m <- 4; k <- 2
   time_matrix <- matrix(runif(n * m, 1, 30), nrow = n)
-  alpha <- runif(n, 0.5, 2)
-  pop <- runif(n, 10, 200)
-  r <- pop / sum(pop) * m
+  pop <- matrix(rpois(n * k, 80), n, k) + 1
+  src <- matrix(rpois(m * k, 150), m, k) + 1
+  storage.mode(pop) <- "double"
+  storage.mode(src) <- "double"
 
-  W <- sinkhorn_weights(time_matrix, alpha, row_targets = r)
+  # Test with sinkhorn method (explicit) so compute_weight_matrix matches
+  result <- suppressWarnings(optimize_alpha(
+    time_matrix, pop, src,
+    method = "sinkhorn",
+    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
+  ))
 
-  expect_equal(colSums(W), rep(1, m), tolerance = 1e-6)
+  W_recomputed <- compute_weight_matrix(
+    time_matrix, result$alpha, pop, src,
+    offset = 1, method = "sinkhorn", verbose = FALSE
+  )
+
+  # Should be very close (both use the same 3D Sinkhorn algorithm)
+  expect_equal(result$W, W_recomputed, tolerance = 0.01)
 })

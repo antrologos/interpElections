@@ -62,8 +62,8 @@ The console output shows the progress:
 [6/9] Downloading OSM road network...
 [7/9] Computing travel times...
 [8/9] Optimizing alpha...
-  PB-SGD (cpu, float32): batch=279, sk_iter=15, 800 steps
-  Completed 800 steps (52.3s), objective=502,361
+  PB-SGD (cpu, float32): batch=279, sk_iter=15, max 200 epochs
+  Completed 85 epochs (52.3s), objective=502,361 (converged)
 [9/9] Interpolating...
   Interpolated 42 variables into 279 census tracts
 Done.
@@ -102,7 +102,7 @@ interpElections result -- Brazilian election
     Calibration:   gender x 7 age brackets
 
   Optimizer: pb_sgd_sinkhorn_cpu (obj = 502361.44)
-  Alpha:     [0.010, 20.000] (mean 3.027)
+  Alpha:     279 x 14 matrix [0.010, 20.000] (mean 3.027)
 
   Contents:
     result$tracts_sf       sf with census tracts + interpolated columns
@@ -159,7 +159,7 @@ interpElections result -- Brazilian election
     Calibration:   gender x 7 age brackets
 
   Optimizer: pb_sgd_sinkhorn_cpu (obj = 248107.37)
-  Alpha:     [0.010, 15.682] (mean 4.089)
+  Alpha:     85 x 14 matrix [0.010, 15.682] (mean 4.089)
 ```
 
 ```{r igr-plot, eval = FALSE}
@@ -180,7 +180,7 @@ The result object has several S3 methods for inspection:
 # Detailed summary with per-variable statistics
 summary(result_vga)
 
-# Alpha decay parameters (one per tract)
+# Alpha decay parameters (n x k matrix: tracts x brackets)
 head(coef(result_vga))
 
 # Export as plain data frame (drops geometry)
@@ -268,10 +268,8 @@ time_matrix <- compute_travel_times(tracts_sf, electoral_sf)
 # 5. Optimize per-tract decay parameters
 optim_result <- optimize_alpha(time_matrix, pop_matrix, source_matrix)
 
-# 6. Build Sinkhorn-balanced weight matrix and interpolate
-W <- sinkhorn_weights(time_matrix, optim_result$alpha,
-  row_targets = pop_total / sum(pop_total) * ncol(time_matrix),
-  pop_matrix = pop_matrix, source_matrix = source_matrix)
+# 6. Use weight matrix from optimization and interpolate
+W <- optim_result$W
 interpolated <- W %*% electoral_data
 ```
 
@@ -320,15 +318,11 @@ optim_result <- optimize_alpha(
   verbose = FALSE
 )
 
-cat("Optimized alpha:", round(optim_result$alpha, 2), "\n")
+cat("Optimized alpha (5 x 2 matrix):\n")
+print(round(optim_result$alpha, 2))
 
-# Build balanced weights and interpolate
-pop_total <- rowSums(pop_matrix)
-row_targets <- pop_total / sum(pop_total) * ncol(tt)
-W <- sinkhorn_weights(tt + 1, optim_result$alpha, offset = 0,
-                       row_targets = row_targets,
-                       pop_matrix = pop_matrix,
-                       source_matrix = source_matrix)
+# Use weight matrix from optimization
+W <- optim_result$W
 
 # Interpolate a variable measured at sources
 revenue <- c(5000, 8000, 6500)
@@ -358,12 +352,8 @@ src <- readRDS(system.file("extdata/example_source_matrix.rds",
 result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 result
 
-# Build final weight matrix with full Sinkhorn convergence
-pop_total <- rowSums(pop)
-row_targets <- pop_total / sum(pop_total) * ncol(tt)
-W <- sinkhorn_weights(tt, result$alpha, offset = 1,
-                       row_targets = row_targets,
-                       pop_matrix = pop, source_matrix = src)
+# Weight matrix is returned from optimization
+W <- result$W
 
 # Verify conservation
 cat("Column sums (should be ~1):", round(colSums(W), 4), "\n")
