@@ -2,12 +2,13 @@
 # Internal: Per-Tract-Per-Bracket SGD via torch (GPU or CPU)
 # ============================================================
 #
-# Uses mini-batch log-domain 3D Sinkhorn inside torch autograd with
-# per-tract-per-bracket decay kernels: K^b[i,j] = t[i,j]^(-alpha[i,b]).
+# Column normalization uses full-data gradient steps (1 per epoch).
+# Sinkhorn uses mini-batch log-domain 3D IPF inside torch autograd.
+# Both paths use per-tract-per-bracket decay kernels:
+#   K^b[i,j] = t[i,j]^(-alpha[i,b]).
 # Softplus reparameterization: alpha = alpha_min + softplus(theta),
 # theta unconstrained — no clamping, no gradient death at boundaries.
-# Epoch structure: each epoch is one full shuffled pass through
-# all tracts; the loss reported at each epoch is the true
+# Epoch structure: the loss reported at each epoch is the true
 # objective evaluated on the full dataset.
 
 .optimize_torch <- function(time_matrix, pop_matrix, source_matrix,
@@ -110,7 +111,7 @@
   # --- Epoch structure ---
   # Each epoch = one full shuffled pass through all n tracts.
   # max_epochs is the parameter directly (no conversion from steps).
-  n_batches_per_epoch <- ceiling(n / b)
+  n_batches_per_epoch <- if (method == "colnorm") 1L else ceiling(n / b)
 
   # LR schedule: ReduceLROnPlateau — halve LR when epoch loss plateaus.
   min_lr <- lr_init * 1e-3
@@ -120,8 +121,9 @@
 
   # --- Memory safety check (GPU only) ---
   bytes_per_elem <- if (dtype == "float32") 4 else 8
-  # Dominant cost: log_K_3d (ka×b×m) + one log_KV copy per IPF step
-  estimated_mb   <- (2.0 * as.double(ka) * b * m) * bytes_per_elem / 1e6
+  # Dominant cost: log_K_3d (ka×n_eff×m) where n_eff = n (colnorm) or b (sinkhorn)
+  mem_n <- if (method == "colnorm") n else b
+  estimated_mb   <- (2.0 * as.double(ka) * mem_n * m) * bytes_per_elem / 1e6
 
   if (grepl("cuda", device, fixed = TRUE)) {
     vram_mb <- tryCatch({
@@ -146,10 +148,10 @@
   if (verbose) {
     if (method == "colnorm") {
       message(sprintf(paste0(
-        "  PB-SGD colnorm (%s, %s): batch=%d, barrier_mu=%.1f, ",
-        "loss=%s, alpha_min=%.1f, max %d epochs (%d batches/epoch)"),
-        device, dtype, b, barrier_mu, loss_fn, alpha_min,
-        max_epochs, n_batches_per_epoch))
+        "  PB-SGD colnorm (%s, %s): full-data gradient, barrier_mu=%.1f, ",
+        "loss=%s, alpha_min=%.1f, max %d epochs"),
+        device, dtype, barrier_mu, loss_fn, alpha_min,
+        max_epochs))
     } else {
       message(sprintf(paste0(
         "  PB-SGD sinkhorn (%s, %s): batch=%d, sk_iter=%d (tol=%.1e), ",
@@ -299,54 +301,81 @@
 
     for (epoch in seq_len(max_epochs)) {
 
-      # Shuffle all n tracts into sequential mini-batches
-      perm       <- sample.int(n)
-      batch_list <- split(perm, ceiling(seq_along(perm) / b))
-
-      # --- Mini-batch gradient steps ---
-      for (idx in batch_list) {
-        b_actual <- length(idx)
-
+      if (method == "colnorm") {
+        # --- Colnorm: single full-data gradient step ---
+        # Column normalization requires all n tracts for column sums,
+        # so the forward pass is O(ka*n*m) regardless of batch size.
+        # Using full-data loss gives exact gradients at the same cost.
         optimizer$zero_grad()
 
-        if (method == "colnorm") {
-          # Column-only normalization: W[b,i,j] = K[b,i,j] / colSum(K)[j]
-          # All n tracts participate in column sums (not just batch).
-          alpha_all <- alpha_fn(theta_torch)              # (n, ka)
-          log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
-            log_t_torch$unsqueeze(1L)                     # (ka, n, m)
+        alpha_all <- alpha_fn(theta_torch)              # (n, ka)
+        log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
+          log_t_torch$unsqueeze(1L)                     # (ka, n, m)
 
-          # Column normalization in log-space
-          log_col_sum_full <- torch::torch_logsumexp(
-            log_K_3d_full, dim = 2L)                      # (ka, m)
-          log_W_3d <- log_K_3d_full -
-            log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
+        # Column normalization in log-space
+        log_col_sum_full <- torch::torch_logsumexp(
+          log_K_3d_full, dim = 2L)                      # (ka, m)
+        log_W_3d <- log_K_3d_full -
+          log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
 
-          # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
-          log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
-          V_hat_all <- torch::torch_exp(
-            torch::torch_logsumexp(
-              log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
+        # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
+        log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
+        V_hat_all <- torch::torch_exp(
+          torch::torch_logsumexp(
+            log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
 
-          # Data loss on batch only, scaled to full-dataset units
-          V_hat_batch <- V_hat_all[idx, ]                 # (b_actual, ka)
-          P_batch     <- p_active_torch[idx, ]            # (b_actual, ka)
-          data_loss <- compute_data_loss(
-            V_hat_batch, P_batch, as.double(n) / b_actual)
+        # Full-data loss (exact, no scaling needed)
+        data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
 
-          # Log-barrier penalty on ALL tracts
-          if (barrier_mu > 0) {
-            V_hat_total <- V_hat_all$sum(dim = 2L)        # (n,)
-            barrier <- -barrier_mu *
-              torch::torch_log(
-                torch::torch_clamp(V_hat_total, min = 1e-30))$sum()
-            loss <- data_loss + barrier
-          } else {
-            loss <- data_loss
-          }
+        # Capture epoch loss before adding barrier
+        epoch_loss_val <- as.numeric(data_loss$item())
 
+        # Log-barrier penalty on ALL tracts
+        if (barrier_mu > 0) {
+          V_hat_total <- V_hat_all$sum(dim = 2L)        # (n,)
+          barrier <- -barrier_mu *
+            torch::torch_log(
+              torch::torch_clamp(V_hat_total, min = 1e-30))$sum()
+          loss <- data_loss + barrier
         } else {
-          # --- Sinkhorn IPF path ---
+          loss <- data_loss
+        }
+
+        loss$backward()
+
+        # Capture pre-clip gradient norm, then clip
+        last_grad_norm <- tryCatch(
+          as.numeric(theta_torch$grad$norm()$cpu()),
+          error = function(e) NA_real_
+        )
+        torch::nn_utils_clip_grad_norm_(
+          list(theta_torch), max_norm = 1.0)
+
+        optimizer$step()
+        step_counter <- step_counter + 1L
+
+        # Extract W and alpha candidates (no extra forward pass needed)
+        torch::with_no_grad({
+          log_T_cn <- log_W_3d$detach() + log_c_3d     # (ka, n, m)
+          log_c_agg_cn <- torch::torch_logsumexp(
+            log_V_b_torch, dim = 1L)                    # (m,)
+          log_T_agg_cn <- torch::torch_logsumexp(
+            log_T_cn, dim = 1L)                         # (n, m)
+          W_candidate <- as.matrix(torch::torch_exp(
+            log_T_agg_cn - log_c_agg_cn$unsqueeze(1L))$cpu())
+          alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
+        })
+
+      } else {
+        # --- Sinkhorn: mini-batch gradient steps ---
+        perm       <- sample.int(n)
+        batch_list <- split(perm, ceiling(seq_along(perm) / b))
+
+        for (idx in batch_list) {
+          b_actual <- length(idx)
+
+          optimizer$zero_grad()
+
           # Mini-batch 3D IPF targets
           r_total_batch <- r_total_norm[idx]
           batch_r_sum   <- sum(r_total_batch)
@@ -401,54 +430,27 @@
           P_batch <- p_active_torch[idx, ]               # (b_actual, ka)
           loss    <- compute_data_loss(
             V_hat_batch, P_batch, as.double(n) / b_actual)
-        }
 
-        loss$backward()
+          loss$backward()
 
-        # Capture pre-clip gradient norm, then clip
-        last_grad_norm <- tryCatch(
-          as.numeric(theta_torch$grad$norm()$cpu()),
-          error = function(e) NA_real_
-        )
-        torch::nn_utils_clip_grad_norm_(
-          list(theta_torch), max_norm = 1.0)
+          # Capture pre-clip gradient norm, then clip
+          last_grad_norm <- tryCatch(
+            as.numeric(theta_torch$grad$norm()$cpu()),
+            error = function(e) NA_real_
+          )
+          torch::nn_utils_clip_grad_norm_(
+            list(theta_torch), max_norm = 1.0)
 
-        optimizer$step()
-        step_counter <- step_counter + 1L
-      }  # end mini-batch loop
+          optimizer$step()
+          step_counter <- step_counter + 1L
+        }  # end sinkhorn mini-batch loop
 
-      # --- True epoch loss: full-dataset forward pass ---
-      torch::with_no_grad({
-        alpha_ep <- alpha_fn(theta_torch)              # (n, ka)
-        log_K_3d_ep <- -alpha_ep$t()$unsqueeze(3L) *
-          log_t_torch$unsqueeze(1L)                    # (ka, n, m)
+        # --- Sinkhorn epoch evaluation: full-dataset forward pass ---
+        torch::with_no_grad({
+          alpha_ep <- alpha_fn(theta_torch)              # (n, ka)
+          log_K_3d_ep <- -alpha_ep$t()$unsqueeze(3L) *
+            log_t_torch$unsqueeze(1L)                    # (ka, n, m)
 
-        if (method == "colnorm") {
-          # Column normalization
-          log_col_sum_ep <- torch::torch_logsumexp(
-            log_K_3d_ep, dim = 2L)                     # (ka, m)
-          log_W_3d_ep <- log_K_3d_ep -
-            log_col_sum_ep$unsqueeze(2L)               # (ka, n, m)
-
-          log_c_3d_ep <- log_V_b_torch$unsqueeze(2L)  # (ka, 1, m)
-          V_hat_ep <- torch::torch_exp(
-            torch::torch_logsumexp(
-              log_W_3d_ep + log_c_3d_ep, dim = 3L))$t()  # (n, ka)
-
-          epoch_loss_val <- as.numeric(
-            compute_data_loss(V_hat_ep, p_active_torch, 1.0)$item())
-
-          # Derive W: aggregate per-bracket column-normalized weights
-          log_T_ep <- log_W_3d_ep + log_c_3d_ep       # (ka, n, m)
-          log_c_agg_ep <- torch::torch_logsumexp(
-            log_V_b_torch, dim = 1L)                   # (m,)
-          log_T_agg_ep <- torch::torch_logsumexp(
-            log_T_ep, dim = 1L)                        # (n, m)
-          W_candidate <- as.matrix(torch::torch_exp(
-            log_T_agg_ep - log_c_agg_ep$unsqueeze(1L))$cpu())
-
-        } else {
-          # Full-dataset 3D Sinkhorn IPF
           log_u_ep <- torch::torch_zeros(
             n, device = device, dtype = torch_dtype)
           log_v_ep <- torch::torch_zeros(
@@ -501,10 +503,10 @@
             log_T_ep, dim = 1L)                        # (n, m)
           W_candidate <- as.matrix(torch::torch_exp(
             log_T_agg_ep - log_c_agg_ep$unsqueeze(1L))$cpu())
-        }
 
-        alpha_candidate <- as.matrix(alpha_ep$cpu())
-      })
+          alpha_candidate <- as.matrix(alpha_ep$cpu())
+        })
+      }
 
       epoch_losses[epoch] <- epoch_loss_val
 
@@ -587,12 +589,18 @@
       convergence     = if (converged) 0L else 1L,
       epochs          = epoch,
       steps           = step_counter,
-      message         = sprintf(paste0(
-        "PB-SGD on %s (%s), %d epochs (%d steps), ",
-        "batch=%d, %d brackets, ",
-        "sk_iter=%d (tol=%.1e)"),
-        device, dtype, epoch, step_counter,
-        b, ka, sk_iter, sk_tol),
+      message         = if (method == "colnorm") {
+        sprintf(paste0(
+          "PB-SGD colnorm on %s (%s), %d epochs (%d steps), ",
+          "%d brackets, full-data gradient"),
+          device, dtype, epoch, step_counter, ka)
+      } else {
+        sprintf(paste0(
+          "PB-SGD sinkhorn on %s (%s), %d epochs (%d steps), ",
+          "batch=%d, %d brackets, sk_iter=%d (tol=%.1e)"),
+          device, dtype, epoch, step_counter,
+          b, ka, sk_iter, sk_tol)
+      },
       history             = epoch_losses[seq_len(epoch)],
       grad_norm_final     = last_grad_norm,
       grad_history        = grad_history[seq_len(epoch)],

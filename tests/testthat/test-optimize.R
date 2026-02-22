@@ -344,6 +344,83 @@ test_that("compute_weight_matrix method='colnorm' produces valid weights", {
   expect_true(all(W >= -1e-10))
 })
 
+# --- Colnorm full-data gradient tests ---
+
+test_that("optimize_alpha colnorm uses 1 step per epoch (full-data gradient)", {
+  skip_if_not_installed("torch")
+  set.seed(410)
+  n <- 10; m <- 5; k <- 2
+  t_mat <- matrix(30, n, m)
+  for (i in seq_len(n)) t_mat[i, ((i - 1L) %% m) + 1L] <- 2
+  p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "colnorm",
+    batch_size = 2L,  # should be ignored for colnorm
+    use_gpu = FALSE, max_epochs = 15L, verbose = FALSE
+  ))
+
+  # Colnorm: 1 gradient step per epoch, so steps == epochs
+  expect_equal(result$steps, result$epochs)
+  expect_equal(result$n_batches_per_epoch, 1L)
+})
+
+test_that("optimize_alpha sinkhorn respects batch_size (multi-step epochs)", {
+  skip_if_not_installed("torch")
+  set.seed(411)
+  n <- 10; m <- 5; k <- 2
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  result <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "sinkhorn",
+    batch_size = 5L,
+    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
+  ))
+
+  # Sinkhorn with batch=5, n=10: ceil(10/5) = 2 batches/epoch
+  expect_equal(result$n_batches_per_epoch, ceiling(n / 5L))
+  # Steps should be >= epochs (multiple steps per epoch)
+  expect_true(result$steps >=
+                result$epochs)
+})
+
+test_that("optimize_alpha colnorm ignores batch_size parameter", {
+  skip_if_not_installed("torch")
+  set.seed(412)
+  n <- 8; m <- 4; k <- 1
+  t_mat <- matrix(runif(n * m, 1, 20), nrow = n)
+  p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
+  s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
+
+  # Two runs with different batch_size, both colnorm
+  set.seed(412)
+  r1 <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "colnorm",
+    batch_size = 2L,
+    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
+  ))
+
+  set.seed(412)
+  r2 <- suppressWarnings(optimize_alpha(
+    t_mat, p_mat, s_mat,
+    method = "colnorm",
+    batch_size = 999L,
+    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
+  ))
+
+  # With same seed, colnorm should produce identical results
+  # regardless of batch_size (since it is ignored)
+  expect_equal(r1$alpha, r2$alpha)
+  expect_equal(r1$value, r2$value)
+  expect_equal(r1$steps, r2$steps)
+})
+
 # --- Poisson deviance loss tests ---
 
 test_that("optimize_alpha loss_fn='poisson' runs and returns valid structure", {

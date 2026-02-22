@@ -20,7 +20,9 @@
 #'   Initial guess for alpha. A scalar is recycled to all n tracts and k
 #'   brackets. A vector of length n is recycled across brackets. Default: 1.
 #' @param batch_size Integer. Number of zones (rows) sampled per SGD step.
-#'   For cities with `n <= batch_size`, the full batch is used. Default: 500.
+#'   Only used when `method = "sinkhorn"`. For column normalization, the
+#'   full dataset is used in each gradient step (column sums require all
+#'   tracts). Default: 500.
 #' @param sk_iter Integer. Maximum number of log-domain Sinkhorn iterations
 #'   per SGD step. The Sinkhorn loop stops early if the dual variables
 #'   converge within `sk_tol`. Default: 100.
@@ -30,7 +32,8 @@
 #'   Sinkhorn does not converge within `sk_iter` iterations. Default: 1e-6.
 #' @param max_epochs Integer. Maximum number of epochs (full passes through
 #'   all tracts). The optimizer may stop earlier if convergence is detected.
-#'   Default: 200.
+#'   For colnorm, each epoch is a single gradient step (~0.1s for 5000 tracts
+#'   on GPU), so 2000 epochs is typically under 4 minutes. Default: 2000.
 #' @param lr_init Numeric. Initial ADAM learning rate. Reduced automatically
 #'   via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.
 #' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
@@ -44,7 +47,7 @@
 #'   the optimizer considers the solution converged. Default: 1e-4.
 #' @param patience Integer. Number of consecutive epochs with no improvement
 #'   (at minimum learning rate) before early stopping. The LR scheduler
-#'   uses `2 * patience` as its own patience. Default: 5.
+#'   uses `2 * patience` as its own patience. Default: 50.
 #' @param method Character. Normalization method: `"colnorm"` (column-only
 #'   normalization with log-barrier penalty) or `"sinkhorn"` (3D Sinkhorn
 #'   IPF with shared row constraint). Column normalization preserves source
@@ -65,9 +68,10 @@
 #'   retained for backward compatibility.
 #' @param alpha_min Numeric. Lower bound for alpha values. The
 #'   reparameterization becomes `alpha = alpha_min + softplus(theta)`,
-#'   ensuring all alpha values are at least `alpha_min`. Default: 0
-#'   (no lower bound, equivalent to legacy behavior). Set to 1 or 2
-#'   to enforce minimum inverse-distance or inverse-square decay.
+#'   ensuring all alpha values are at least `alpha_min`. Default: 1,
+#'   which restricts decay to linear or steeper (alpha >= 1 matches
+#'   physical travel-time behavior in urban settings). Set to 0 to
+#'   remove the lower bound, or to 2 for inverse-square minimum.
 #' @param offset Numeric. Value added to travel times before exponentiation.
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
@@ -93,11 +97,12 @@
 #'   \item{message}{Character. Additional information.}
 #'   \item{history}{Numeric vector. Full-dataset loss at each epoch.}
 #'   \item{grad_norm_final}{Numeric. Final gradient norm (theta-space).}
-#'   \item{grad_history}{Numeric vector. Gradient norm (theta-space) after
-#'     the last mini-batch of each epoch.}
+#'   \item{grad_history}{Numeric vector. Gradient norm (theta-space) at
+#'     each epoch.}
 #'   \item{lr_history}{Numeric vector. Learning rate at each epoch.}
-#'   \item{n_batches_per_epoch}{Integer. Number of mini-batches per epoch
-#'     (`ceiling(n / batch_size)`).}
+#'   \item{n_batches_per_epoch}{Integer. Number of gradient steps per
+#'     epoch. Always 1 for colnorm (full-data gradient);
+#'     `ceiling(n / batch_size)` for sinkhorn.}
 #'   \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
 #'   \item{sk_iter}{Integer. Maximum Sinkhorn iterations per step.}
 #'   \item{sk_tol}{Numeric. Sinkhorn convergence tolerance.}
@@ -110,14 +115,17 @@
 #'
 #' **Parameterization**: alpha\[i,b\] is reparameterized as
 #' `alpha = alpha_min + softplus(theta)` with `theta` unconstrained,
-#' where `softplus(x) = log(1 + exp(x))`. When `alpha_min = 0`
-#' (default), this is similar to the legacy `exp(theta)`. Alpha is
-#' always at least `alpha_min`.
+#' where `softplus(x) = log(1 + exp(x))`. With the default
+#' `alpha_min = 1`, alpha is always at least 1 (inverse-distance
+#' decay or steeper). Set `alpha_min = 0` for unconstrained
+#' optimization (similar to legacy `exp(theta)`).
 #'
-#' **Epoch structure**: Each epoch is one full shuffled pass through all
-#' n tracts, divided into mini-batches. The loss reported at each epoch
-#' is the true objective evaluated on the full dataset — not a noisy
-#' mini-batch estimate.
+#' **Epoch structure**: For column normalization, each epoch is one
+#' full-data gradient step with exact gradients (column sums require all
+#' tracts, so mini-batching provides no computational savings). For
+#' Sinkhorn, each epoch is one shuffled pass through all n tracts in
+#' mini-batches. The loss reported at each epoch is the true objective
+#' evaluated on the full dataset.
 #'
 #' Two execution paths:
 #' \itemize{
@@ -128,7 +136,8 @@
 #' }
 #'
 #' GPU memory usage is bounded by
-#' `2 * ka * min(batch_size, n) * m * bytes_per_elem`.
+#' `2 * ka * n_eff * m * bytes_per_elem` where `n_eff = n` for
+#' colnorm and `n_eff = min(batch_size, n)` for sinkhorn.
 #'
 #' @examples
 #' \dontrun{
@@ -153,17 +162,17 @@ optimize_alpha <- function(
     batch_size = 500L,
     sk_iter = 100L,
     sk_tol = 1e-6,
-    max_epochs = 200L,
+    max_epochs = 2000L,
     lr_init = 0.05,
     use_gpu = NULL,
     device = NULL,
     dtype = "float32",
     convergence_tol = 1e-4,
-    patience = 5L,
+    patience = 50L,
     method = c("colnorm", "sinkhorn"),
     barrier_mu = 10,
     loss_fn = c("poisson", "sse"),
-    alpha_min = 0,
+    alpha_min = 1,
     offset = 1,
     verbose = TRUE
 ) {
