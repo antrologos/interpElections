@@ -71,6 +71,7 @@ reference:
     desc: Model validation, residual analysis, and weight matrix diagnostics.
     contents:
       - diagnostics
+      - print.interpElections_diagnostics
       - plot_convergence
       - plot_alpha
       - plot_residuals
