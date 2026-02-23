@@ -29,6 +29,7 @@ census tract. Supports census years 2000, 2010, and 2022."></head><body>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ census tract. Supports census years 2000, 2010, and 2022."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Prepare Brazilian census population data by age bracket per census tract</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/brazil-population.R" class="external-link"><code>R/brazil-population.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/brazil-population.R" class="external-link"><code>R/brazil-population.R</code></a></small>
       <div class="d-none name"><code>br_prepare_population.Rd</code></div>
     </div>
 
@@ -85,18 +86,15 @@ the census year (see Details).</p>
 <code>pop_30_39</code>, <code>pop_40_49</code>, <code>pop_50_59</code>, <code>pop_60_69</code>.</p>
 <p>All years also produce: <code>pop_00_04</code>, <code>pop_05_09</code>, <code>pop_10_14</code>,
 <code>pop_15_17</code> (or <code>pop_15_19</code> for 2022), <code>pop_70mais</code>.</p>
-<p>Additionally, all years produce gender × age columns for the
-same voting-age brackets, split by gender: <code>pop_hom_alf_*</code>,
-<code>pop_hom_nalf_*</code>, <code>pop_mul_alf_*</code>, <code>pop_mul_nalf_*</code>.
-These are used by the "full" calibration mode in
-<code><a href="interpolate_election_br.html">interpolate_election_br()</a></code>, which sums literate + illiterate
-within each gender × age group.</p>
+<p>Additionally, all years produce gender × age columns used for
+calibration: <code>pop_hom_*</code> and <code>pop_mul_*</code> (7 age brackets each,
+14 columns total).</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p>Other Brazil helpers:
-<code><a href="br_prepare_electoral.html">br_prepare_electoral()</a></code>,
-<code><a href="br_prepare_tracts.html">br_prepare_tracts()</a></code></p></div>
+<code><a href="br_prepare_electoral.html">br_prepare_electoral</a>()</code>,
+<code><a href="br_prepare_tracts.html">br_prepare_tracts</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -118,7 +116,7 @@ within each gender × age group.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

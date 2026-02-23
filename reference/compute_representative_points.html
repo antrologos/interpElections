@@ -29,6 +29,7 @@ centroid, or population-density-weighted using WorldPop raster data."></head><bo
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ centroid, or population-density-weighted using WorldPop raster data."></head><bo
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Compute representative points for census tracts</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/representative-points.R" class="external-link"><code>R/representative-points.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/representative-points.R" class="external-link"><code>R/representative-points.R</code></a></small>
       <div class="d-none name"><code>compute_representative_points.Rd</code></div>
     </div>
 
@@ -58,7 +59,7 @@ centroid, or population-density-weighted using WorldPop raster data.</p>
 <span>  <span class="va">tracts_sf</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"point_on_surface"</span>, <span class="st">"centroid"</span>, <span class="st">"pop_weighted"</span><span class="op">)</span>,</span>
 <span>  pop_raster <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  pop_min_area <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  min_area_for_pop_weight <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  tract_id <span class="op">=</span> <span class="st">"id"</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -85,7 +86,7 @@ May fall outside concave polygons.</p></dd>
 <dt><code>"pop_weighted"</code></dt>
 <dd><p>Uses a population density raster (WorldPop
 Constrained 2020 by default) to find the most populated cell within
-each tract. Only applied to tracts with area &gt;= <code>pop_min_area</code>;
+each tract. Only applied to tracts with area &gt;= <code>min_area_for_pop_weight</code>;
 smaller tracts use <code>point_on_surface</code>. Requires the <code>terra</code> package.</p></dd>
 
 
@@ -99,7 +100,7 @@ If <code>NULL</code> (default), the WorldPop Brazil Constrained 2020 raster (~48
 is downloaded automatically and cached. Ignored for other methods.</p></dd>
 
 
-<dt id="arg-pop-min-area">pop_min_area<a class="anchor" aria-label="anchor" href="#arg-pop-min-area"></a></dt>
+<dt id="arg-min-area-for-pop-weight">min_area_for_pop_weight<a class="anchor" aria-label="anchor" href="#arg-min-area-for-pop-weight"></a></dt>
 <dd><p>Numeric. Minimum tract area in km² for applying the
 population-weighted method. Tracts smaller than this threshold use
 <code>point_on_surface</code> instead. Default: 1 (km²). Only used when
@@ -146,7 +147,7 @@ recording which method was used.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

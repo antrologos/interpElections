@@ -40,6 +40,7 @@
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul>
 </li>
       </ul>
@@ -64,7 +65,7 @@
       <h1>Working with Results</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/working-with-results.Rmd" class="external-link"><code>vignettes/working-with-results.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/working-with-results.Rmd" class="external-link"><code>vignettes/working-with-results.Rmd</code></a></small>
       <div class="d-none name"><code>working-with-results.Rmd</code></div>
     </div>
 
@@ -84,15 +85,15 @@ Horizonte (MG)</strong> (5,113 tracts, GPU).</p>
 <span><span class="va">result_nit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span></span>
 <span>  <span class="st">"Niteroi"</span>, year <span class="op">=</span> <span class="fl">2022</span>, cargo <span class="op">=</span> <span class="st">"presidente"</span>,</span>
 <span>  what <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"candidates"</span>, <span class="st">"parties"</span>, <span class="st">"turnout"</span>, <span class="st">"demographics"</span><span class="op">)</span>,</span>
-<span>  keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"weights"</span>, <span class="st">"sources_sf"</span>, <span class="st">"time_matrix"</span><span class="op">)</span>,</span>
-<span>  use_gpu <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  keep <span class="op">=</span> <span class="st">"electoral_sf"</span>,</span>
+<span>  optim <span class="op">=</span> <span class="fu"><a href="../reference/optim_control.html">optim_control</a></span><span class="op">(</span>use_gpu <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">result_bh</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span></span>
 <span>  <span class="st">"Belo Horizonte"</span>, year <span class="op">=</span> <span class="fl">2022</span>, cargo <span class="op">=</span> <span class="st">"presidente"</span>,</span>
 <span>  what <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"candidates"</span>, <span class="st">"turnout"</span><span class="op">)</span>,</span>
-<span>  keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"weights"</span>, <span class="st">"sources_sf"</span><span class="op">)</span>,</span>
-<span>  use_gpu <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  keep <span class="op">=</span> <span class="st">"electoral_sf"</span>,</span>
+<span>  optim <span class="op">=</span> <span class="fu"><a href="../reference/optim_control.html">optim_control</a></span><span class="op">(</span>use_gpu <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
@@ -113,7 +114,7 @@ Horizonte (MG)</strong> (5,113 tracts, GPU).</p>
     Demographics:  10 (GENERO_FEMININO, GENERO_MASCULINO, ...)
     Calibration:   gender x 7 age brackets
 
-  Optimizer: pb_sgd_sinkhorn_cuda (obj = 1265038.68)
+  Optimizer: pb_sgd_colnorm_cuda (obj = 1265038.68)
   Alpha:     [0.010, 17.623] (mean 2.507)</code></pre>
 <p>The <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> method adds per-variable statistics
 grouped by type:</p>
@@ -133,7 +134,7 @@ abbreviation, and ballot number:</p>
 </h3>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-nit-lula.png" alt="" width="100%"></p>
 <p>Variables can be referenced by:</p>
 <ul>
 <li>
@@ -159,14 +160,14 @@ abbreviation, and ballot number:</p>
 </h3>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"absolute"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-lula-abs.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-nit-lula-abs.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="faceted-comparison">Faceted comparison<a class="anchor" aria-label="anchor" href="#faceted-comparison"></a>
 </h3>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Lula"</span>, <span class="st">"Bolsonaro"</span><span class="op">)</span>, type <span class="op">=</span> <span class="st">"pct_tract"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-faceted.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-nit-faceted.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="plot-types">Plot types<a class="anchor" aria-label="anchor" href="#plot-types"></a>
@@ -244,7 +245,7 @@ package)</li>
 <span><span class="co"># Composable with ggplot2</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_dark</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-sources.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-nit-sources.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="interactive-maps">Interactive maps<a class="anchor" aria-label="anchor" href="#interactive-maps"></a>
@@ -258,7 +259,7 @@ package)</li>
 </h3>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_bh</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-bh-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-bh-lula.png" alt="" width="100%"></p>
 </div>
 </div>
 <div class="section level2">
@@ -269,7 +270,7 @@ parameters:</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">alpha</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">result_nit</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">alpha</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-alpha-hist.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/wr-nit-alpha-hist.png" alt="" width="80%"></p>
 <p>Map the alpha values spatially to see the urban/peripheral
 gradient:</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
@@ -278,7 +279,7 @@ gradient:</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsf.html" class="external-link">geom_sf</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>fill <span class="op">=</span> <span class="va">alpha</span><span class="op">)</span>, color <span class="op">=</span> <span class="st">"white"</span>, linewidth <span class="op">=</span> <span class="fl">0.05</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_brewer.html" class="external-link">scale_fill_distiller</a></span><span class="op">(</span>palette <span class="op">=</span> <span class="st">"RdYlBu"</span>, direction <span class="op">=</span> <span class="op">-</span><span class="fl">1</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_void</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/wr-nit-alpha-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/wr-nit-alpha-map.png" alt="" width="100%"></p>
 <p><strong>Interpretation</strong>: Low alpha (blue) = weight spread
 across many stations (dense urban areas). High alpha (red) = weight
 concentrated on the nearest station (periphery).</p>
@@ -287,18 +288,16 @@ concentrated on the nearest station (periphery).</p>
 <h2 id="residual-analysis">Residual Analysis<a class="anchor" aria-label="anchor" href="#residual-analysis"></a>
 </h2>
 <p>The <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code> method computes the calibration
-residuals (fitted minus observed) for each tract and age bracket.
-Requires <code>keep = "weights"</code> or
-<code>keep = "time_matrix"</code>.</p>
+residuals (fitted minus observed) for each tract and age bracket.</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">resid</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals</a></span><span class="op">(</span><span class="va">result_nit</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">resid</span><span class="op">)</span></span>
-<span><span class="co">#&gt; num [1:1169, 1:28] ...</span></span>
+<span><span class="co">#&gt; num [1:1169, 1:14] ...</span></span>
 <span></span>
 <span><span class="co"># Per-bracket summary</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">resid</span><span class="op">)</span>                        <span class="co"># mean residual per bracket</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">resid</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>                <span class="co"># RMSE per bracket</span></span></code></pre></div>
-<p><img src="figures/wr-nit-residuals.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/wr-nit-residuals.png" alt="" width="90%"></p>
 <p>Residuals should be centered near zero. Large residuals may indicate
 boundary effects (voters crossing municipality borders), data quality
 issues, or census/election year mismatches.</p>
@@ -410,8 +409,8 @@ municipality totals.</p>
 <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code> (alternative), reuse</td>
 </tr>
 <tr class="odd">
-<td><code>"sources_sf"</code></td>
-<td><code>result$sources_sf</code></td>
+<td><code>"electoral_sf"</code></td>
+<td><code>result$electoral_sf</code></td>
 <td><code>plot(..., show_sources = TRUE)</code></td>
 </tr>
 <tr class="even">
@@ -426,13 +425,14 @@ municipality totals.</p>
 </tr>
 </tbody>
 </table>
-<p>Default: <code>NULL</code> (lightweight, nothing kept).
-Recommended:</p>
+<p><code>weights</code> and <code>time_matrix</code> are always kept by
+default (needed for <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code> and
+<code><a href="../reference/reinterpolate.html">reinterpolate()</a></code>). Use <code>keep</code> for additional
+objects:</p>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span><span class="st">"Niteroi"</span>, year <span class="op">=</span> <span class="fl">2022</span>,</span>
-<span>  keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"weights"</span>, <span class="st">"sources_sf"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p>This enables residual analysis and source point overlays without
-excessive memory use.</p>
+<span>  keep <span class="op">=</span> <span class="st">"electoral_sf"</span><span class="op">)</span></span></code></pre></div>
+<p>This also includes source point geometries for overlay plots.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
@@ -445,7 +445,7 @@ excessive memory use.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>

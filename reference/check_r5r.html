@@ -29,6 +29,7 @@ available on the system."></head><body>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ available on the system."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Check r5r and Java 21 setup</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/check-r5r.R" class="external-link"><code>R/check-r5r.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/r5r-setup.R" class="external-link"><code>R/r5r-setup.R</code></a></small>
       <div class="d-none name"><code>check_r5r.Rd</code></div>
     </div>
 
@@ -90,15 +91,9 @@ configure JVM heap size.</p></div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">check_r5r</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [ok] r5r package installed (v2.3.0)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [!!] Java 17 found, but r5r requires exactly 21</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [--] Java max heap: not configured (JVM default, typically 256m)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>      Set with: interpElections::set_java_memory("4g")</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>      System RAM: 15.6 GB</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> Some checks failed.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> Run interpElections::setup_java() to download and install Java 21.</span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="fu">check_r5r</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
@@ -111,7 +106,7 @@ configure JVM heap size.</p></div>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

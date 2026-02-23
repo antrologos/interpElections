@@ -29,6 +29,7 @@ and removes unpopulated tracts."></head><body>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ and removes unpopulated tracts."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Prepare census tract shapefiles with population data for a Brazilian municipality</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/brazil-shapefiles.R" class="external-link"><code>R/brazil-shapefiles.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/brazil-shapefiles.R" class="external-link"><code>R/brazil-shapefiles.R</code></a></small>
       <div class="d-none name"><code>br_prepare_tracts.Rd</code></div>
     </div>
 
@@ -57,7 +58,6 @@ and removes unpopulated tracts.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">br_prepare_tracts</span><span class="op">(</span></span>
 <span>  <span class="va">code_muni</span>,</span>
 <span>  <span class="va">pop_data</span>,</span>
-<span>  remove_unpopulated <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  clip_sf <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  year <span class="op">=</span> <span class="fl">2010</span>,</span>
 <span>  crs <span class="op">=</span> <span class="st">"EPSG:5880"</span>,</span>
@@ -76,11 +76,6 @@ and removes unpopulated tracts.</p>
 <dt id="arg-pop-data">pop_data<a class="anchor" aria-label="anchor" href="#arg-pop-data"></a></dt>
 <dd><p>Data frame. Output of <code><a href="br_prepare_population.html">br_prepare_population()</a></code>. Must
 contain <code>code_tract</code> and population bracket columns.</p></dd>
-
-
-<dt id="arg-remove-unpopulated">remove_unpopulated<a class="anchor" aria-label="anchor" href="#arg-remove-unpopulated"></a></dt>
-<dd><p>Logical. Remove tracts where <code>pop_total == 0</code>.
-Default: TRUE.</p></dd>
 
 
 <dt id="arg-clip-sf">clip_sf<a class="anchor" aria-label="anchor" href="#arg-clip-sf"></a></dt>
@@ -117,8 +112,8 @@ adjusted based on the fraction of area retained.</p></dd>
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="br_prepare_population.html">br_prepare_population()</a></code> to generate <code>pop_data</code>.</p>
 <p>Other Brazil helpers:
-<code><a href="br_prepare_electoral.html">br_prepare_electoral()</a></code>,
-<code><a href="br_prepare_population.html">br_prepare_population()</a></code></p></div>
+<code><a href="br_prepare_electoral.html">br_prepare_electoral</a>()</code>,
+<code><a href="br_prepare_population.html">br_prepare_population</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -139,7 +134,7 @@ adjusted based on the fraction of area retained.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

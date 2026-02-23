@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Spatial Interpolation of Electoral Data via Inverse Distance Weighting">
-<meta name="description" content="Interpolates voting counts and electoral demographics from polling locations into census tracts using inverse distance weighting with Sinkhorn-balanced weights and per-zone optimized decay parameters. Travel-time matrices are computed via the r5r routing engine. Optimization uses per-bracket mini-batch stochastic gradient descent (PB-SGD) with log-domain Sinkhorn projections on CPU or GPU via torch. Each demographic bracket receives its own Sinkhorn balancing, and mini-batching enables efficient scaling to large cities. Includes end-to-end helpers for Brazilian electoral data that auto-download census, electoral, and road network data.">
-<meta property="og:description" content="Interpolates voting counts and electoral demographics from polling locations into census tracts using inverse distance weighting with Sinkhorn-balanced weights and per-zone optimized decay parameters. Travel-time matrices are computed via the r5r routing engine. Optimization uses per-bracket mini-batch stochastic gradient descent (PB-SGD) with log-domain Sinkhorn projections on CPU or GPU via torch. Each demographic bracket receives its own Sinkhorn balancing, and mini-batching enables efficient scaling to large cities. Includes end-to-end helpers for Brazilian electoral data that auto-download census, electoral, and road network data.">
+<meta name="description" content="Interpolates voting counts and electoral demographics from polling locations into census tracts using inverse distance weighting with column-normalized weights and per-zone optimized decay parameters. Travel-time matrices are computed via the r5r routing engine. Optimization uses per-bracket stochastic gradient descent with log-barrier penalty on CPU or GPU via torch. Includes end-to-end helpers for Brazilian electoral data that auto-download census, electoral, and road network data.">
+<meta property="og:description" content="Interpolates voting counts and electoral demographics from polling locations into census tracts using inverse distance weighting with column-normalized weights and per-zone optimized decay parameters. Travel-time matrices are computed via the r5r routing engine. Optimization uses per-bracket stochastic gradient descent with log-barrier penalty on CPU or GPU via torch. Includes end-to-end helpers for Brazilian electoral data that auto-download census, electoral, and road network data.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -42,6 +42,7 @@
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul>
 </li>
       </ul>
@@ -62,32 +63,40 @@
 </h1></div>
 <!-- badges: start -->
 
-<p>Spatial interpolation of electoral data via <strong>Sinkhorn-balanced inverse distance weighting</strong>. Disaggregates point-level data (e.g., polling station vote counts) into polygon-level estimates (e.g., census tracts) using travel-time-based IDW with per-zone decay parameters calibrated against demographic totals. Sinkhorn balancing enforces population conservation and source conservation simultaneously.</p>
+<p>Spatial interpolation of electoral data via <strong>column-normalized inverse distance weighting</strong>. Disaggregates point-level data (e.g., polling station vote counts) into polygon-level estimates (e.g., census tracts) using travel-time-based IDW with per-zone decay parameters calibrated against demographic totals. Column normalization ensures source conservation (each source distributes exactly 100% of its data).</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"antrologos/interpElections"</span><span class="op">)</span></span></code></pre></div>
-<p>Optional: <code><a href="reference/setup_torch.html">setup_torch()</a></code> for GPU optimization, <code><a href="reference/setup_java.html">setup_java()</a></code> for r5r travel-time routing, <code><a href="reference/setup_osmium.html">setup_osmium()</a></code> for OSM data clipping.</p>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"antrologos/interpElections"</span><span class="op">)</span></span></code></pre></div>
+<p>Optional: <code><a href="reference/setup_torch.html">setup_torch()</a></code> for GPU optimization, <code><a href="reference/setup_java.html">setup_java()</a></code> for r5r travel-time routing.</p>
 </div>
 <div class="section level2">
-<h2 id="quick-example-brazilian-election">Quick example: Brazilian election<a class="anchor" aria-label="anchor" href="#quick-example-brazilian-election"></a>
+<h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://antrologos.github.io/interpElections/">interpElections</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span><span class="st">"Varginha"</span>, year <span class="op">=</span> <span class="fl">2022</span>,</span>
-<span>  cargo <span class="op">=</span> <span class="st">"presidente"</span>, what <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"candidates"</span>, <span class="st">"turnout"</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span><span class="fl">3550308</span>, <span class="fl">2022</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></code></pre></div>
 <p>Three lines: downloads census data, electoral results, and road networks; computes travel times; optimizes per-tract decay; interpolates all variables into census tracts.</p>
 </div>
 <div class="section level2">
-<h2 id="quick-example-custom-data">Quick example: Custom data<a class="anchor" aria-label="anchor" href="#quick-example-custom-data"></a>
+<h2 id="advanced-usage">Advanced usage<a class="anchor" aria-label="anchor" href="#advanced-usage"></a>
 </h2>
+<p>Control objects group tuning parameters for optimization and routing:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span><span class="fl">3550308</span>, <span class="fl">2022</span>,</span>
+<span>  optim <span class="op">=</span> <span class="fu"><a href="reference/optim_control.html">optim_control</a></span><span class="op">(</span>use_gpu <span class="op">=</span> <span class="cn">TRUE</span>, max_epochs <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span>,</span>
+<span>  routing <span class="op">=</span> <span class="fu"><a href="reference/routing_control.html">routing_control</a></span><span class="op">(</span>mode <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"WALK"</span>, <span class="st">"TRANSIT"</span><span class="op">)</span>,</span>
+<span>                            gtfs_zip_path <span class="op">=</span> <span class="st">"sptrans.zip"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="custom-data">Custom data<a class="anchor" aria-label="anchor" href="#custom-data"></a>
+</h2>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/interpolate_election.html">interpolate_election</a></span><span class="op">(</span></span>
 <span>  tracts_sf     <span class="op">=</span> <span class="va">my_zones</span>,</span>
 <span>  electoral_sf  <span class="op">=</span> <span class="va">my_sources</span>,</span>
@@ -102,8 +111,8 @@
 <h2 id="how-it-works">How it works<a class="anchor" aria-label="anchor" href="#how-it-works"></a>
 </h2>
 <p>For each tract <em>i</em> and source <em>j</em>, the IDW kernel is:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
-<p><strong>Sinkhorn balancing</strong> iteratively scales rows and columns so that row sums are proportional to population and column sums equal 1 (each source distributes exactly 100% of its data). The optimal alpha is found by minimizing the squared error between interpolated and census demographics via <strong>torch ADAM</strong> with log-domain Sinkhorn differentiation.</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p>Weights are <strong>column-normalized</strong> so that column sums equal 1 (each source distributes exactly 100% of its data). The optimal alpha is found by minimizing the Poisson deviance between interpolated and census demographics via <strong>torch ADAM</strong> with a log-barrier penalty.</p>
 </div>
 <div class="section level2">
 <h2 id="vignettes">Vignettes<a class="anchor" aria-label="anchor" href="#vignettes"></a>
@@ -113,20 +122,20 @@
 <col width="50%">
 <col width="50%">
 </colgroup>
-<thead><tr class="header">
+<thead><tr>
 <th>Vignette</th>
 <th>Description</th>
 </tr></thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><a href="https://antrologos.github.io/interpElections/articles/get-started.html">Get Started</a></td>
 <td>Brazilian examples (Varginha + Igrejinha), general case, core functions</td>
 </tr>
-<tr class="even">
+<tr>
 <td><a href="https://antrologos.github.io/interpElections/articles/methodology.html">Methodology</a></td>
 <td>Full pipeline walkthrough with equations, visualizations, and real data</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><a href="https://antrologos.github.io/interpElections/articles/working-with-results.html">Working with Results</a></td>
 <td>S3 methods, plotting, validation, areal aggregation</td>
 </tr>
@@ -141,51 +150,39 @@
 <col width="50%">
 <col width="50%">
 </colgroup>
-<thead><tr class="header">
+<thead><tr>
 <th>Category</th>
 <th>Functions</th>
 </tr></thead>
 <tbody>
-<tr class="odd">
-<td><strong>Core Engine</strong></td>
+<tr>
+<td><strong>Interpolation</strong></td>
 <td>
-<code><a href="reference/sinkhorn_balance.html">sinkhorn_balance()</a></code>, <code><a href="reference/sinkhorn_weights.html">sinkhorn_weights()</a></code>, <code><a href="reference/sinkhorn_objective.html">sinkhorn_objective()</a></code>, <code><a href="reference/optimize_alpha.html">optimize_alpha()</a></code>
+<code><a href="reference/interpolate_election_br.html">interpolate_election_br()</a></code>, <code><a href="reference/interpolate_election.html">interpolate_election()</a></code>, <code><a href="reference/reinterpolate.html">reinterpolate()</a></code>, <code><a href="reference/optimize_alpha.html">optimize_alpha()</a></code>, <code><a href="reference/compute_weight_matrix.html">compute_weight_matrix()</a></code>, <code><a href="reference/compute_travel_times.html">compute_travel_times()</a></code>
 </td>
 </tr>
-<tr class="even">
-<td><strong>Wrappers</strong></td>
+<tr>
+<td><strong>Control</strong></td>
 <td>
-<code><a href="reference/interpolate_election.html">interpolate_election()</a></code>, <code><a href="reference/interpolate_election_br.html">interpolate_election_br()</a></code>
+<code><a href="reference/optim_control.html">optim_control()</a></code>, <code><a href="reference/routing_control.html">routing_control()</a></code>
 </td>
 </tr>
-<tr class="odd">
+<tr>
 <td><strong>Results</strong></td>
 <td>
-<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>, <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code>, <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code>, <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code>, <code><a href="reference/plot_interactive.html">plot_interactive()</a></code>
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>, <code>autoplot()</code>, <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code>, <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code>, <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code>, <code><a href="reference/plot_interactive.html">plot_interactive()</a></code>
 </td>
 </tr>
-<tr class="even">
-<td><strong>Brazilian Data</strong></td>
-<td>
-<code><a href="reference/br_prepare_population.html">br_prepare_population()</a></code>, <code><a href="reference/br_prepare_tracts.html">br_prepare_tracts()</a></code>, <code><a href="reference/br_prepare_electoral.html">br_prepare_electoral()</a></code>, <code><a href="reference/compute_travel_times.html">compute_travel_times()</a></code>
-</td>
-</tr>
-<tr class="odd">
-<td><strong>Areal Aggregation</strong></td>
+<tr>
+<td><strong>Spatial</strong></td>
 <td>
 <code><a href="reference/areal_weights.html">areal_weights()</a></code>, <code><a href="reference/areal_interpolate.html">areal_interpolate()</a></code>
 </td>
 </tr>
-<tr class="even">
+<tr>
 <td><strong>Setup</strong></td>
 <td>
-<code><a href="reference/setup_torch.html">setup_torch()</a></code>, <code><a href="reference/check_torch.html">check_torch()</a></code>, <code><a href="reference/use_gpu.html">use_gpu()</a></code>, <code><a href="reference/setup_java.html">setup_java()</a></code>, <code><a href="reference/check_r5r.html">check_r5r()</a></code>, <code><a href="reference/setup_osmium.html">setup_osmium()</a></code>
-</td>
-</tr>
-<tr class="odd">
-<td><strong>Cache</strong></td>
-<td>
-<code><a href="reference/get_interpElections_cache_dir.html">get_interpElections_cache_dir()</a></code>, <code><a href="reference/interpElections_cache.html">interpElections_cache()</a></code>, <code><a href="reference/interpElections_cache_clean.html">interpElections_cache_clean()</a></code>
+<code><a href="reference/setup_torch.html">setup_torch()</a></code>, <code><a href="reference/use_gpu.html">use_gpu()</a></code>, <code><a href="reference/setup_java.html">setup_java()</a></code>, <code><a href="reference/interpElections_cache.html">interpElections_cache()</a></code>
 </td>
 </tr>
 </tbody>
@@ -194,16 +191,20 @@
 <div class="section level2">
 <h2 id="gpu-acceleration">GPU acceleration<a class="anchor" aria-label="anchor" href="#gpu-acceleration"></a>
 </h2>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/setup_torch.html">setup_torch</a></span><span class="op">(</span><span class="op">)</span>     <span class="co"># one-time installation</span></span>
-<span><span class="fu"><a href="reference/use_gpu.html">use_gpu</a></span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span>     <span class="co"># enable globally</span></span></code></pre></div>
+<span><span class="fu"><a href="reference/use_gpu.html">use_gpu</a></span><span class="op">(</span><span class="cn">TRUE</span><span class="op">)</span>     <span class="co"># enable globally</span></span>
+<span></span>
+<span><span class="co"># Or per-call via control objects:</span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span><span class="fl">3550308</span>, <span class="fl">2022</span>,</span>
+<span>  optim <span class="op">=</span> <span class="fu"><a href="reference/optim_control.html">optim_control</a></span><span class="op">(</span>use_gpu <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>GPU (CUDA/MPS) is recommended for municipalities with &gt;1,000 census tracts. CPU works for all problem sizes.</p>
 </div>
 <div class="section level2">
 <h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
 </h2>
 <blockquote>
-<p>Barbosa, R. &amp; Gelape, L. (2025). <em>interpElections: Spatial Interpolation of Electoral Data via Sinkhorn-Balanced Inverse Distance Weighting</em>. R package version 0.1.0. <a href="https://github.com/antrologos/interpElections" class="external-link uri">https://github.com/antrologos/interpElections</a></p>
+<p>Barbosa, R. &amp; Gelape, L. (2025). <em>interpElections: Spatial Interpolation of Electoral Data via Inverse Distance Weighting</em>. R package version 0.1.0. <a href="https://github.com/antrologos/interpElections" class="external-link uri">https://github.com/antrologos/interpElections</a></p>
 </blockquote>
 </div>
 <div class="section level2">
@@ -263,7 +264,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>

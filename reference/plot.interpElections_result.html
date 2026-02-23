@@ -29,6 +29,7 @@ candidate name, or party abbreviation."></head><body>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ candidate name, or party abbreviation."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Plot an interpolated variable as a choropleth map</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/plot-methods.R" class="external-link"><code>R/plot-methods.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/plot-methods.R" class="external-link"><code>R/plot-methods.R</code></a></small>
       <div class="d-none name"><code>plot.interpElections_result.Rd</code></div>
     </div>
 
@@ -139,8 +140,8 @@ Use <code>""</code> to suppress.</p></dd>
 
 <dt id="arg-show-sources">show_sources<a class="anchor" aria-label="anchor" href="#arg-show-sources"></a></dt>
 <dd><p>Overlay source points (polling stations)
-on the map. Requires <code>sources_sf</code> in the result
-(use <code>keep = "sources_sf"</code> when interpolating). Default: FALSE.</p></dd>
+on the map. Requires <code>electoral_sf</code> in the result
+(use <code>keep = "electoral_sf"</code> when interpolating). Default: FALSE.</p></dd>
 
 
 <dt id="arg-border-color">border_color<a class="anchor" aria-label="anchor" href="#arg-border-color"></a></dt>
@@ -214,7 +215,7 @@ with ggplot2 <code>+</code> syntax.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

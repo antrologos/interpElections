@@ -29,6 +29,7 @@ voting-location level. Returns a data frame ready for interpolation."></head><bo
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
     <li><a class="dropdown-item" href="../articles/working-with-results.html">Working with Results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics &amp; Validation</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -42,7 +43,7 @@ voting-location level. Returns a data frame ready for interpolation."></head><bo
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Prepare Brazilian electoral data at the polling-location level</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/brazil-electoral.R" class="external-link"><code>R/brazil-electoral.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/brazil-electoral.R" class="external-link"><code>R/brazil-electoral.R</code></a></small>
       <div class="d-none name"><code>br_prepare_electoral.Rd</code></div>
     </div>
 
@@ -184,7 +185,7 @@ obtained from TSE and Danny Hidalgo's geocoding project.</p></dd>
 
 <dt id="arg-cache">cache<a class="anchor" aria-label="anchor" href="#arg-cache"></a></dt>
 <dd><p>Logical. If TRUE (default), downloaded files are stored
-persistently. See <code><a href="get_interpElections_cache_dir.html">get_interpElections_cache_dir()</a></code>.</p></dd>
+persistently. See <code><a href="interpElections_cache.html">interpElections_cache()</a></code>.</p></dd>
 
 
 <dt id="arg-force">force<a class="anchor" aria-label="anchor" href="#arg-force"></a></dt>
@@ -204,10 +205,9 @@ polling section). Contains the following column groups:</p>
 <li><p><code>id</code>: Sequential integer ID.</p></li>
 <li><p><code>votantes_18_20</code>, ..., <code>votantes_65_69</code>: Registered voters per
 age bracket at this location (used as calibration data).</p></li>
-<li><p><code>vot_hom_alf_*</code>, <code>vot_hom_nalf_*</code>, <code>vot_mul_alf_*</code>,
-<code>vot_mul_nalf_*</code>: Cross-tabulated voters by gender and age
-bracket (used for "full" calibration mode). Literate and
-illiterate counts are summed within each gender × age group.</p></li>
+<li><p><code>vot_hom_*</code>, <code>vot_mul_*</code>: Registered voters by gender and
+age bracket (7 brackets each, 14 columns total). Used as
+calibration data for the interpolation.</p></li>
 </ul><p><strong>Conditional on <code>what</code>:</strong></p><ul><li><p><code>"candidates"</code>: <code>CAND_&lt;number&gt;</code> columns + <code>QT_COMPARECIMENTO</code>.</p></li>
 <li><p><code>"parties"</code>: <code>PARTY_&lt;abbrev&gt;</code> columns + <code>QT_COMPARECIMENTO</code>.</p></li>
 <li><p><code>"turnout"</code>: <code>QT_COMPARECIMENTO</code>, <code>QT_APTOS</code>, <code>QT_ABSTENCOES</code>.</p></li>
@@ -255,8 +255,8 @@ When reading local parquet files, the <code>arrow</code> package is also require
 <code><a href="br_download_votes.html">br_download_votes()</a></code>, <code><a href="br_download_turnout.html">br_download_turnout()</a></code>,
 <code><a href="interpElections_cache.html">interpElections_cache()</a></code></p>
 <p>Other Brazil helpers:
-<code><a href="br_prepare_population.html">br_prepare_population()</a></code>,
-<code><a href="br_prepare_tracts.html">br_prepare_tracts()</a></code></p></div>
+<code><a href="br_prepare_population.html">br_prepare_population</a>()</code>,
+<code><a href="br_prepare_tracts.html">br_prepare_tracts</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -326,7 +326,7 @@ When reading local parquet files, the <code>arrow</code> package is also require
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>
