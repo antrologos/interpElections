@@ -12,12 +12,13 @@ compute_travel_times(
   point_id = "id",
   point_method = "point_on_surface",
   pop_raster = NULL,
-  pop_min_area = 1,
+  min_area_for_pop_weight = 1,
   mode = "WALK",
   max_trip_duration = 300L,
   fill_missing = max_trip_duration,
   n_threads = 4L,
   departure_datetime = NULL,
+  gtfs_zip_path = NULL,
   verbose = TRUE
 )
 }
@@ -45,7 +46,7 @@ for details.}
 or \code{NULL}. Population density raster for \code{point_method = "pop_weighted"}.
 If \code{NULL}, WorldPop data is auto-downloaded. Ignored for other methods.}
 
-\item{pop_min_area}{Numeric. Minimum tract area in km² for applying the
+\item{min_area_for_pop_weight}{Numeric. Minimum tract area in km² for applying the
 population-weighted method. Default: 1.}
 
 \item{mode}{Character. Routing mode. Default: \code{"WALK"}.}
@@ -61,6 +62,10 @@ origin-destination pairs. Default: same as \code{max_trip_duration}.}
 \item{departure_datetime}{POSIXct or NULL. Departure time for
 transit-based routing. Required when \code{mode} includes transit
 components. Default: NULL (ignored for WALK/BICYCLE modes).}
+
+\item{gtfs_zip_path}{Character or NULL. Path to a GTFS \code{.zip} file for
+transit routing. When provided, the file is copied into \code{network_path}
+so that r5r can auto-detect it. Default: NULL.}
 
 \item{verbose}{Logical. Default: TRUE.}
 }

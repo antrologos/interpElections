@@ -39,7 +39,7 @@ cat(sprintf("  Before: %.1f MB\n",
 # Strip heavy matrices
 br_result$weights <- NULL
 br_result$time_matrix <- NULL
-br_result$sources_sf <- NULL
+br_result$electoral_sf <- NULL
 br_result$pop_data <- NULL
 
 # Trim interpolated matrix to 10 candidates

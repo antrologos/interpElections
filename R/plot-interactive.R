@@ -37,8 +37,8 @@
 #'
 #' @examples
 #' \dontrun{
-#' result <- interpolate_election_br(3304557, 2020, 2022,
-#'                                    keep = "sources_sf")
+#' result <- interpolate_election_br(3304557, 2022,
+#'                                    keep = "electoral_sf")
 #'
 #' # Interactive map by candidate name
 #' plot_interactive(result, variable = "Lula", type = "pct_tract")
@@ -137,7 +137,8 @@ plot_interactive <- function(
   ))
 
   # Municipality contour overlay (lines only, non-interactive)
-  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(plot_sf))
+  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(plot_sf),
+                           muni_boundary = result$muni_boundary)
   if (!is.null(muni_sf)) {
     muni_lines <- sf::st_cast(sf::st_geometry(muni_sf), "MULTILINESTRING")
     muni_lines_sf <- sf::st_sf(geometry = muni_lines)
@@ -186,7 +187,8 @@ plot_interactive <- function(
   brk <- .compute_breaks(combined, breaks, n_breaks)
 
   # Municipality contour (shared across panels)
-  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(result$tracts_sf))
+  muni_sf <- .get_muni_sf(result$code_muni, sf::st_crs(result$tracts_sf),
+                           muni_boundary = result$muni_boundary)
 
   maps <- lapply(seq_along(cols), function(i) {
     col <- cols[i]
@@ -387,11 +389,53 @@ plot_interactive <- function(
     '</style>'
   )
 
+  # --- Election context header (same for all tracts) ---
+  ctx_parts <- character(0)
+  if (!is.null(result$nome_municipio) && !is.null(result$uf)) {
+    ctx_parts <- c(ctx_parts,
+      sprintf('<b>%s</b> (%s)', result$nome_municipio, result$uf))
+  }
+  if (!is.null(result$code_muni)) {
+    codes_str <- paste0("IBGE: ", result$code_muni)
+    if (!is.null(result$code_muni_tse))
+      codes_str <- paste0(codes_str, " &middot; TSE: ", result$code_muni_tse)
+    ctx_parts <- c(ctx_parts,
+      sprintf('<span style="font-size:10px;color:#888">%s</span>', codes_str))
+  }
+  election_bits <- character(0)
+  if (!is.null(result$year))
+    election_bits <- c(election_bits, as.character(result$year))
+  if (!is.null(result$turno))
+    election_bits <- c(election_bits,
+      paste0(result$turno, "\u00BA turno"))
+  cargo_label <- NULL
+  if (!is.null(result$cargo)) {
+    cargo_label <- paste(
+      vapply(result$cargo, .br_cargo_label, character(1)),
+      collapse = ", ")
+  } else if (!is.null(result$dictionary)) {
+    dict_cargos <- unique(stats::na.omit(result$dictionary$cargo))
+    if (length(dict_cargos) > 0)
+      cargo_label <- paste(dict_cargos, collapse = ", ")
+  }
+  if (!is.null(cargo_label))
+    election_bits <- c(election_bits, cargo_label)
+  if (length(election_bits) > 0)
+    ctx_parts <- c(ctx_parts,
+      sprintf('<span style="font-size:10px;color:#888">%s</span>',
+              paste(election_bits, collapse = " &middot; ")))
+  ctx_html <- if (length(ctx_parts) > 0) {
+    paste0('<div style="margin-bottom:6px;padding-bottom:4px;',
+           'border-bottom:1px solid #ddd">',
+           paste(ctx_parts, collapse = '<br/>'), '</div>')
+  } else ""
+
   # --- Build per-tract HTML ---
   tract_id_col <- result$tract_id
   popups <- vapply(seq_len(n), function(i) {
     html <- css
     html <- paste0(html, '<div class="ip-popup">')
+    html <- paste0(html, ctx_html)
 
     # Header: tract ID + neighborhood
     tract_id_val <- if (!is.null(tract_id_col) && tract_id_col %in% names(plot_sf)) {
@@ -634,6 +678,15 @@ plot_interactive <- function(
   if (is.null(height)) height <- max(90, k * 18) + legend_h
   bar_h <- floor((height - legend_h) / k) - 2
 
+  # Reverse so oldest bracket is drawn at top (y=0), youngest at bottom
+  male_vals   <- rev(male_vals)
+  female_vals <- rev(female_vals)
+  age_labels  <- rev(age_labels)
+  if (has_fitted) {
+    fitted_male   <- rev(fitted_male)
+    fitted_female <- rev(fitted_female)
+  }
+
   # Scale to max across census AND fitted
   all_vals <- c(male_vals, female_vals)
   if (has_fitted) all_vals <- c(all_vals, fitted_male, fitted_female)
@@ -723,6 +776,11 @@ plot_interactive <- function(
   legend_h <- if (has_fitted) 16 else 0
   if (is.null(height)) height <- max(90, k * 18) + legend_h
   bar_h <- floor((height - legend_h) / k) - 2
+
+  # Reverse so oldest bracket is drawn at top (y=0), youngest at bottom
+  age_vals   <- rev(age_vals)
+  age_labels <- rev(age_labels)
+  if (has_fitted) fitted_vals <- rev(fitted_vals)
 
   all_vals <- age_vals
   if (has_fitted) all_vals <- c(all_vals, fitted_vals)

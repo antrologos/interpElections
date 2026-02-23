@@ -31,14 +31,14 @@ use pre-computed results from **Niterói (RJ)** (1,169 tracts, GPU) and
 result_nit <- interpolate_election_br(
   "Niteroi", year = 2022, cargo = "presidente",
   what = c("candidates", "parties", "turnout", "demographics"),
-  keep = c("weights", "sources_sf", "time_matrix"),
+  keep = "electoral_sf",
   use_gpu = TRUE
 )
 
 result_bh <- interpolate_election_br(
   "Belo Horizonte", year = 2022, cargo = "presidente",
   what = c("candidates", "turnout"),
-  keep = c("weights", "sources_sf"),
+  keep = "electoral_sf",
   use_gpu = TRUE
 )
 ```
@@ -84,7 +84,7 @@ interpElections result -- Brazilian election
     Demographics:  10 (GENERO_FEMININO, GENERO_MASCULINO, ...)
     Calibration:   gender x 7 age brackets
 
-  Optimizer: pb_sgd_sinkhorn_cuda (obj = 1265038.68)
+  Optimizer: pb_sgd_colnorm_cuda (obj = 1265038.68)
   Alpha:     [0.010, 17.623] (mean 2.507)
 ```
 
@@ -242,8 +242,7 @@ nearest station (periphery).
 ## Residual Analysis
 
 The `residuals()` method computes the calibration residuals (fitted minus
-observed) for each tract and age bracket. Requires `keep = "weights"` or
-`keep = "time_matrix"`.
+observed) for each tract and age bracket.
 
 ```{r residuals, eval = FALSE}
 resid <- residuals(result_nit)
@@ -352,16 +351,16 @@ Control which intermediate objects are retained in the result:
 |---|---|---|
 | `"weights"` | `result$weights` | `residuals()`, manual reweighting |
 | `"time_matrix"` | `result$time_matrix` | `residuals()` (alternative), reuse |
-| `"sources_sf"` | `result$sources_sf` | `plot(..., show_sources = TRUE)` |
+| `"electoral_sf"` | `result$electoral_sf` | `plot(..., show_sources = TRUE)` |
 | `"pop_raster"` | `result$pop_raster` | Inspect population density raster |
 | `"rep_points"` | `result$rep_points` | Inspect representative points |
 
-Default: `NULL` (lightweight, nothing kept). Recommended:
+`weights` and `time_matrix` are always kept by default (needed for
+`residuals()` and `reinterpolate()`). Use `keep` for additional objects:
 
 ```{r keep-example, eval = FALSE}
 result <- interpolate_election_br("Niteroi", year = 2022,
-  keep = c("weights", "sources_sf"))
+  keep = "electoral_sf")
 ```
 
-This enables residual analysis and source point overlays without
-excessive memory use.
+This also includes source point geometries for overlay plots.

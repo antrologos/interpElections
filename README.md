@@ -6,12 +6,12 @@
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-Spatial interpolation of electoral data via **Sinkhorn-balanced inverse
+Spatial interpolation of electoral data via **column-normalized inverse
 distance weighting**. Disaggregates point-level data (e.g., polling
 station vote counts) into polygon-level estimates (e.g., census tracts)
 using travel-time-based IDW with per-zone decay parameters calibrated
-against demographic totals. Sinkhorn balancing enforces population
-conservation and source conservation simultaneously.
+against demographic totals. Column normalization ensures source
+conservation (each source distributes exactly 100% of its data).
 
 ## Installation
 
@@ -59,11 +59,10 @@ For each tract *i* and source *j*, the IDW kernel is:
 
 $$W_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
 
-**Sinkhorn balancing** iteratively scales rows and columns so that row
-sums are proportional to population and column sums equal 1 (each
+Weights are **column-normalized** so that column sums equal 1 (each
 source distributes exactly 100% of its data). The optimal alpha is found
-by minimizing the squared error between interpolated and census
-demographics via **torch ADAM** with log-domain Sinkhorn differentiation.
+by minimizing the Poisson deviance between interpolated and census
+demographics via **torch ADAM** with a log-barrier penalty.
 
 ## Vignettes
 
@@ -77,7 +76,7 @@ demographics via **torch ADAM** with log-domain Sinkhorn differentiation.
 
 | Category | Functions |
 |---|---|
-| **Core Engine** | `sinkhorn_balance()`, `sinkhorn_weights()`, `sinkhorn_objective()`, `optimize_alpha()` |
+| **Core Engine** | `compute_weight_matrix()`, `optimize_alpha()` |
 | **Wrappers** | `interpolate_election()`, `interpolate_election_br()` |
 | **Results** | `summary()`, `plot()`, `coef()`, `residuals()`, `as.data.frame()`, `plot_interactive()` |
 | **Brazilian Data** | `br_prepare_population()`, `br_prepare_tracts()`, `br_prepare_electoral()`, `compute_travel_times()` |
@@ -98,8 +97,8 @@ tracts. CPU works for all problem sizes.
 ## Citation
 
 > Barbosa, R. & Gelape, L. (2025). *interpElections: Spatial
-> Interpolation of Electoral Data via Sinkhorn-Balanced Inverse Distance
-> Weighting*. R package version 0.1.0.
+> Interpolation of Electoral Data via Inverse Distance Weighting*.
+> R package version 0.1.0.
 > https://github.com/antrologos/interpElections
 
 ## License

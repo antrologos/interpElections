@@ -20,7 +20,7 @@
 #' @param pop_raster A [terra::SpatRaster] object, a file path to a GeoTIFF,
 #'   or `NULL`. Population density raster for `point_method = "pop_weighted"`.
 #'   If `NULL`, WorldPop data is auto-downloaded. Ignored for other methods.
-#' @param pop_min_area Numeric. Minimum tract area in km² for applying the
+#' @param min_area_for_pop_weight Numeric. Minimum tract area in km² for applying the
 #'   population-weighted method. Default: 1.
 #' @param mode Character. Routing mode. Default: `"WALK"`.
 #' @param max_trip_duration Integer. Maximum trip duration in minutes.
@@ -31,6 +31,9 @@
 #' @param departure_datetime POSIXct or NULL. Departure time for
 #'   transit-based routing. Required when `mode` includes transit
 #'   components. Default: NULL (ignored for WALK/BICYCLE modes).
+#' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
+#'   transit routing. When provided, the file is copied into `network_path`
+#'   so that r5r can auto-detect it. Default: NULL.
 #' @param verbose Logical. Default: TRUE.
 #'
 #' @return A numeric matrix \[n_tracts x n_points\]. Travel times in minutes.
@@ -63,12 +66,13 @@ compute_travel_times <- function(
     point_id = "id",
     point_method = "point_on_surface",
     pop_raster = NULL,
-    pop_min_area = 1,
+    min_area_for_pop_weight = 1,
     mode = "WALK",
     max_trip_duration = 300L,
     fill_missing = max_trip_duration,
     n_threads = 4L,
     departure_datetime = NULL,
+    gtfs_zip_path = NULL,
     verbose = TRUE
 ) {
   if (!requireNamespace("r5r", quietly = TRUE)) {
@@ -140,7 +144,7 @@ compute_travel_times <- function(
     tracts_sf = tracts_sf,
     method = point_method,
     pop_raster = pop_raster,
-    pop_min_area = pop_min_area,
+    min_area_for_pop_weight = min_area_for_pop_weight,
     tract_id = tract_id,
     verbose = verbose
   )
@@ -158,6 +162,17 @@ compute_travel_times <- function(
     lon = sf::st_coordinates(points_sf)[, 1],
     lat = sf::st_coordinates(points_sf)[, 2]
   )
+
+  # Copy GTFS zip into network directory if provided
+  if (!is.null(gtfs_zip_path)) {
+    if (!file.exists(gtfs_zip_path)) {
+      stop(sprintf("GTFS file not found: %s", gtfs_zip_path), call. = FALSE)
+    }
+    file.copy(gtfs_zip_path,
+              file.path(network_path, basename(gtfs_zip_path)),
+              overwrite = TRUE)
+    if (verbose) message("  Copied GTFS file to network directory")
+  }
 
   # Build r5r network
   if (verbose) message("  Building r5r network...")

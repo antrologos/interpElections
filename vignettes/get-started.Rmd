@@ -22,9 +22,9 @@ library(interpElections)
 
 interpElections interpolates data from source points (polling stations, schools,
 hospitals) into target polygons (census tracts, districts, neighborhoods) using
-travel-time-based inverse distance weighting with Sinkhorn-balanced weights. The
+travel-time-based inverse distance weighting with column-normalized weights. The
 decay parameter for each zone is calibrated against known demographic totals,
-ensuring that both source totals and population proportions are conserved.
+ensuring that source totals are conserved.
 
 **Before you start**, install the optional dependencies:
 
@@ -45,7 +45,7 @@ result_vga <- interpolate_election_br(
   "Varginha", year = 2022,
   cargo = "presidente",
   what = c("candidates", "turnout"),
-  keep = c("weights", "sources_sf")
+  keep = "electoral_sf"
 )
 ```
 
@@ -62,7 +62,7 @@ The console output shows the progress:
 [6/9] Downloading OSM road network...
 [7/9] Computing travel times...
 [8/9] Optimizing alpha...
-  PB-SGD (cpu, float32): batch=279, sk_iter=15, max 200 epochs
+  PB-SGD colnorm (cpu, float32): full-data gradient, max 200 epochs
   Completed 85 epochs (52.3s), objective=502,361 (converged)
 [9/9] Interpolating...
   Interpolated 42 variables into 279 census tracts
@@ -101,7 +101,7 @@ interpElections result -- Brazilian election
     Turnout:       1 (QT_COMPARECIMENTO)
     Calibration:   gender x 7 age brackets
 
-  Optimizer: pb_sgd_sinkhorn_cpu (obj = 502361.44)
+  Optimizer: pb_sgd_colnorm_cpu (obj = 502361.44)
   Alpha:     279 x 14 matrix [0.010, 20.000] (mean 3.027)
 
   Contents:
@@ -158,7 +158,7 @@ interpElections result -- Brazilian election
     Turnout:       1 (QT_COMPARECIMENTO)
     Calibration:   gender x 7 age brackets
 
-  Optimizer: pb_sgd_sinkhorn_cpu (obj = 248107.37)
+  Optimizer: pb_sgd_colnorm_cpu (obj = 248107.37)
   Alpha:     85 x 14 matrix [0.010, 15.682] (mean 4.089)
 ```
 

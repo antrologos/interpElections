@@ -2,7 +2,7 @@
 % Please edit documentation in R/weight-matrix.R
 \name{compute_weight_matrix}
 \alias{compute_weight_matrix}
-\title{Compute the Sinkhorn-balanced weight matrix}
+\title{Compute the weight matrix}
 \usage{
 compute_weight_matrix(
   time_matrix,
@@ -10,9 +10,6 @@ compute_weight_matrix(
   pop_matrix,
   source_matrix,
   offset = 1,
-  method = c("colnorm", "sinkhorn"),
-  sk_iter = 100L,
-  sk_tol = 1e-06,
   use_gpu = NULL,
   verbose = FALSE
 )
@@ -35,43 +32,28 @@ points per demographic bracket.}
 exponentiation: \eqn{K^b_{ij} = (t_{ij} + \text{offset})^{-\alpha_{ib}}}.
 Default: 1.}
 
-\item{method}{Character. Normalization method: \code{"colnorm"} (column-only
-normalization, default) or \code{"sinkhorn"} (3D Sinkhorn IPF). Should match
-the method used during optimization.}
-
-\item{sk_iter}{Integer. Maximum Sinkhorn iterations. Only used when
-\code{method = "sinkhorn"}. Default: 100L.}
-
-\item{sk_tol}{Numeric. Sinkhorn convergence tolerance. Default: 1e-6.}
-
 \item{use_gpu}{Logical or NULL. If TRUE, use GPU; if FALSE, use CPU;
 if NULL (default), respect the global setting from \code{\link[=use_gpu]{use_gpu()}}.}
 
 \item{verbose}{Logical. Print progress? Default: FALSE.}
 }
 \value{
-Numeric matrix [n x m]. Sinkhorn-balanced weight matrix where
+Numeric matrix [n x m]. Column-normalized weight matrix where
 each column sums to approximately 1. Use as \verb{W \\\%*\\\% data} to
 interpolate any source-level variable into zones.
 }
 \description{
 Builds a weight matrix \eqn{W} from per-tract-per-bracket decay parameters
-using the same 3D Sinkhorn IPF as \code{\link[=optimize_alpha]{optimize_alpha()}}. Uses torch for
-computation (CPU or GPU).
+using column normalization. Uses torch for computation (CPU or GPU).
 }
 \details{
-This function performs the same 3D Sinkhorn computation used internally
+This function performs the same column normalization used internally
 by \code{\link[=optimize_alpha]{optimize_alpha()}} during epoch evaluation. It is useful when you
 have pre-computed alpha values and need to build the weight matrix
 without running optimization.
 
-The 3D Sinkhorn enforces two properties:
-\itemize{
-\item \strong{Property 1 (voter conservation)}: Each source-bracket
+Column normalization ensures voter conservation: each source-bracket
 pair distributes its full count across zones.
-\item \strong{Property 2 (population proportions)}: Each zone's total
-inflow is proportional to its population.
-}
 }
 \examples{
 \dontrun{

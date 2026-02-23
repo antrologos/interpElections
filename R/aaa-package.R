@@ -1,6 +1,6 @@
 #' @description
 #' Spatial interpolation of electoral data via inverse distance weighting
-#' with Sinkhorn-balanced weights and per-census-tract optimized decay
+#' with column-normalized weights and per-census-tract optimized decay
 #' parameters. Designed for disaggregating voting results from polling
 #' locations into census tracts using travel-time-based IDW. Optimization
 #' uses torch autograd (ADAM) on CPU or GPU.
@@ -8,7 +8,7 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @importFrom stats optim
+#' @importFrom stats optim residuals
 NULL
 
 # Avoid R CMD check NOTE about .data pronoun used in dplyr pipelines
@@ -20,7 +20,7 @@ utils::globalVariables(c(".plot_value", "value", ".facet_var"))
 # Avoid R CMD check NOTE about data.table NSE symbols and bundled data
 utils::globalVariables(c(
   ":=", ".SD",
-  "muni_crosswalk",
+  "muni_crosswalk", "br_election_dates",
   "pop_00_04", "pop_05_09", "pop_10_14", "pop_15_17",
   "pop_18_20", "pop_21_24", "pop_25_29", "pop_30_39",
   "pop_40_49", "pop_50_59", "pop_60_69", "pop_70mais",

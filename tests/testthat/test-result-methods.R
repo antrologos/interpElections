@@ -39,7 +39,7 @@
   for (col in src_cols) sources[[col]] <- rpois(m, 160)
   for (col in interp_names) sources[[col]] <- rpois(m, 50)
 
-  # Mock time matrix + weights (per-bracket Sinkhorn-balanced)
+  # Mock time matrix + weights (column-normalized)
   tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
   alpha <- runif(n, 0.5, 3)
   pop_mat_calib <- as.matrix(tracts_df[, pop_cols, drop = FALSE])
@@ -61,8 +61,7 @@
     tracts_sf = tracts_sf,
     sources = sources,
     optimization = list(
-      method = "pb_sgd_sinkhorn_cpu",
-      method_type = "sinkhorn",
+      method = "pb_sgd_colnorm_cpu",
       value = 123.45,
       convergence = 0L
     ),
@@ -75,11 +74,13 @@
     calib_cols = list(tracts = pop_cols, sources = src_cols),
     weights = if (keep_weights) W else NULL,
     time_matrix = if (keep_time) tt else NULL,
-    sources_sf = NULL,
+    electoral_sf = NULL,
     code_muni = if (brazilian) "3550308" else NULL,
     nome_municipio = if (brazilian) "SAO PAULO" else NULL,
     code_muni_tse = if (brazilian) "71072" else NULL,
     uf = if (brazilian) "SP" else NULL,
+    turno = if (brazilian) 1L else NULL,
+    cargo = if (brazilian) 13L else NULL,
     year = if (brazilian) 2020L else NULL,
     census_year = if (brazilian) 2022L else NULL,
     what = if (brazilian) "candidates" else NULL,
@@ -134,14 +135,15 @@
   result <- list(
     interpolated = interp_mat, alpha = alpha, tracts_sf = tracts_sf,
     sources = sources,
-    optimization = list(method = "pb_sgd_sinkhorn_cpu", value = 50, convergence = 0L),
+    optimization = list(method = "pb_sgd_colnorm_cpu", value = 50, convergence = 0L),
     offset = 1, call = quote(interpolate_election_br()),
     tract_id = "id", point_id = "id",
     interp_cols = interp_names,
     calib_cols = list(tracts = "votantes_18_20", sources = "votantes_18_20"),
-    weights = NULL, time_matrix = NULL, sources_sf = NULL,
+    weights = NULL, time_matrix = NULL, electoral_sf = NULL,
     code_muni = "3550308",
     nome_municipio = "SAO PAULO", code_muni_tse = "71072", uf = "SP",
+    turno = 1L, cargo = 13L,
     year = 2020L, census_year = 2022L,
     what = "candidates", pop_data = data.frame(x = 1),
     dictionary = dict
@@ -192,7 +194,7 @@ test_that("summary shows optimization info", {
   out <- capture.output(summary(obj))
   full <- paste(out, collapse = "\n")
 
-  expect_match(full, "pb_sgd_sinkhorn_cpu")
+  expect_match(full, "pb_sgd_colnorm_cpu")
   expect_match(full, "123.4500")
   expect_match(full, "Convergence: 0")
 })

@@ -22,27 +22,6 @@ test_that("compute_weight_matrix: produces n×m matrix with colSums ≈ 1", {
   expect_equal(colSums(W), rep(1, m), tolerance = 0.05)
 })
 
-test_that("compute_weight_matrix: approximately satisfies Property 2 (population proportions)", {
-  skip_if_not_installed("torch")
-
-  set.seed(33)
-  n <- 6; m <- 4; k <- 2
-  tt  <- matrix(runif(n * m, 1, 30), nrow = n)
-  pop <- matrix(rpois(n * k, 80), nrow = n, ncol = k) + 1
-  src <- matrix(rpois(m * k, 150), nrow = m, ncol = k) + 1
-  storage.mode(pop) <- "double"
-  storage.mode(src) <- "double"
-  alpha_mat <- matrix(1, nrow = n, ncol = k)
-
-  W <- compute_weight_matrix(tt, alpha_mat, pop, src,
-                              method = "sinkhorn", verbose = FALSE)
-
-  c_agg   <- rowSums(src)
-  V_total <- sum(src)
-  T_i     <- rowSums(sweep(W, 2L, c_agg, `*`))
-  r_norm  <- rowSums(pop) / sum(pop)
-  expect_equal(T_i / V_total, r_norm, tolerance = 0.05)
-})
 
 test_that("compute_weight_matrix: preserves dimnames", {
   skip_if_not_installed("torch")

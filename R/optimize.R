@@ -1,10 +1,11 @@
 #' Find optimal decay parameters (alpha) for spatial interpolation
 #'
 #' Optimizes the per-tract-per-bracket decay parameters that minimize the
-#' error between interpolated values and known population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
-#' and log-domain 3D Sinkhorn inside torch autograd. Each demographic bracket
-#' gets its own per-tract kernel; gradients flow through all unrolled
-#' iterations. Works on both CPU and GPU (CUDA/MPS).
+#' error between interpolated values and known population counts. Uses
+#' per-bracket SGD with column normalization and log-barrier penalty inside
+#' torch autograd. Each demographic bracket gets its own per-tract kernel;
+#' gradients flow through all computations. Works on both CPU and GPU
+#' (CUDA/MPS).
 #'
 #' @param time_matrix Numeric matrix \[n x m\]. Raw travel times.
 #'   Rows = target zones, columns = source points.
@@ -13,26 +14,15 @@
 #' @param source_matrix Numeric matrix \[m x k\]. Known counts at source
 #'   points (e.g., registered voters by age group).
 #' @param row_targets Numeric vector of length n, or NULL. Target row sums
-#'   for Sinkhorn balancing. Each element specifies how much weight a zone
-#'   should attract, proportional to its share of total population. If NULL
+#'   for balancing. Each element specifies how much weight a zone should
+#'   attract, proportional to its share of total population. If NULL
 #'   (default), auto-computed as `rowSums(pop_matrix) / sum(pop_matrix) * m`.
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all n tracts and k
 #'   brackets. A vector of length n is recycled across brackets. Default: 1.
-#' @param batch_size Integer. Number of zones (rows) sampled per SGD step.
-#'   Only used when `method = "sinkhorn"`. For column normalization, the
-#'   full dataset is used in each gradient step (column sums require all
-#'   tracts). Default: 500.
-#' @param sk_iter Integer. Maximum number of log-domain Sinkhorn iterations
-#'   per SGD step. The Sinkhorn loop stops early if the dual variables
-#'   converge within `sk_tol`. Default: 100.
-#' @param sk_tol Numeric. Convergence tolerance for Sinkhorn iterations.
-#'   Iteration stops when the maximum absolute change in the log-domain
-#'   row dual variable falls below `sk_tol`. A warning is issued if
-#'   Sinkhorn does not converge within `sk_iter` iterations. Default: 1e-6.
 #' @param max_epochs Integer. Maximum number of epochs (full passes through
 #'   all tracts). The optimizer may stop earlier if convergence is detected.
-#'   For colnorm, each epoch is a single gradient step (~0.1s for 5000 tracts
+#'   Each epoch is a single gradient step (~0.1s for 5000 tracts
 #'   on GPU), so 2000 epochs is typically under 4 minutes. Default: 2000.
 #' @param lr_init Numeric. Initial ADAM learning rate. Reduced automatically
 #'   via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.
@@ -48,24 +38,10 @@
 #' @param patience Integer. Number of consecutive epochs with no improvement
 #'   (at minimum learning rate) before early stopping. The LR scheduler
 #'   uses `2 * patience` as its own patience. Default: 50.
-#' @param method Character. Normalization method: `"colnorm"` (column-only
-#'   normalization with log-barrier penalty) or `"sinkhorn"` (3D Sinkhorn
-#'   IPF with shared row constraint). Column normalization preserves source
-#'   conservation (column sums = 1) without constraining row sums, giving
-#'   alpha more freedom to control spatial weight patterns. Default:
-#'   `"colnorm"`.
 #' @param barrier_mu Numeric. Strength of the log-barrier penalty that
-#'   prevents any census tract from receiving zero predicted voters. Only
-#'   used when `method = "colnorm"`. The penalty term is
-#'   `-barrier_mu * sum(log(V_hat_total))`. Set to 0 to disable.
-#'   Default: 10.
-#' @param loss_fn Character. Loss function for optimization: `"poisson"`
-#'   (Poisson deviance, default) or `"sse"` (sum of squared errors).
-#'   Poisson deviance `2 * sum(V_hat - P + P * log(P / V_hat))` treats
-#'   proportional errors equally across all tracts regardless of population
-#'   size, preventing large tracts from dominating the loss. This
-#'   encourages higher, more spatially meaningful alpha values. SSE is
-#'   retained for backward compatibility.
+#'   prevents any census tract from receiving zero predicted voters. The
+#'   penalty term is `-barrier_mu * sum(log(V_hat_total))`. Set to 0 to
+#'   disable. Default: 10.
 #' @param alpha_min Numeric. Lower bound for alpha values. The
 #'   reparameterization becomes `alpha = alpha_min + softplus(theta)`,
 #'   ensuring all alpha values are at least `alpha_min`. Default: 1,
@@ -83,12 +59,12 @@
 #'     demographic bracket. Inactive brackets (zero population or voters)
 #'     are filled with 1.}
 #'   \item{value}{Numeric. Objective function value at optimum (Poisson
-#'     deviance or SSE depending on `loss_fn`).}
-#'   \item{W}{Numeric matrix \[n x m\]. Sinkhorn-balanced weight matrix
-#'     from the best-epoch transport plan. Use directly for interpolation
+#'     deviance).}
+#'   \item{W}{Numeric matrix \[n x m\]. Column-normalized weight matrix
+#'     from the best-epoch. Use directly for interpolation
 #'     via `W \%*\% data`. Column sums are approximately 1.}
 #'   \item{method}{Character. Method used (e.g.,
-#'     `"pb_sgd_sinkhorn_cpu"`, `"pb_sgd_sinkhorn_cuda"`).}
+#'     `"pb_sgd_colnorm_cpu"`, `"pb_sgd_colnorm_cuda"`).}
 #'   \item{convergence}{Integer. 0 = early-stopped (improvement plateau
 #'     detected); 1 = stopped at max_epochs.}
 #'   \item{epochs}{Integer. Number of epochs completed.}
@@ -100,13 +76,6 @@
 #'   \item{grad_history}{Numeric vector. Gradient norm (theta-space) at
 #'     each epoch.}
 #'   \item{lr_history}{Numeric vector. Learning rate at each epoch.}
-#'   \item{n_batches_per_epoch}{Integer. Number of gradient steps per
-#'     epoch. Always 1 for colnorm (full-data gradient);
-#'     `ceiling(n / batch_size)` for sinkhorn.}
-#'   \item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
-#'   \item{sk_iter}{Integer. Maximum Sinkhorn iterations per step.}
-#'   \item{sk_tol}{Numeric. Sinkhorn convergence tolerance.}
-#'   \item{batch_size}{Integer. Mini-batch size used.}
 #' }
 #'
 #' @details
@@ -120,12 +89,9 @@
 #' decay or steeper). Set `alpha_min = 0` for unconstrained
 #' optimization (similar to legacy `exp(theta)`).
 #'
-#' **Epoch structure**: For column normalization, each epoch is one
-#' full-data gradient step with exact gradients (column sums require all
-#' tracts, so mini-batching provides no computational savings). For
-#' Sinkhorn, each epoch is one shuffled pass through all n tracts in
-#' mini-batches. The loss reported at each epoch is the true objective
-#' evaluated on the full dataset.
+#' **Epoch structure**: Each epoch is one full-data gradient step with
+#' exact gradients (column sums require all tracts). The loss reported at
+#' each epoch is the true objective evaluated on the full dataset.
 #'
 #' Two execution paths:
 #' \itemize{
@@ -136,8 +102,7 @@
 #' }
 #'
 #' GPU memory usage is bounded by
-#' `2 * ka * n_eff * m * bytes_per_elem` where `n_eff = n` for
-#' colnorm and `n_eff = min(batch_size, n)` for sinkhorn.
+#' `2 * ka * n * m * bytes_per_elem`.
 #'
 #' @examples
 #' \dontrun{
@@ -159,9 +124,6 @@ optimize_alpha <- function(
     source_matrix,
     row_targets = NULL,
     alpha_init = NULL,
-    batch_size = 500L,
-    sk_iter = 100L,
-    sk_tol = 1e-6,
     max_epochs = 2000L,
     lr_init = 0.05,
     use_gpu = NULL,
@@ -169,9 +131,7 @@ optimize_alpha <- function(
     dtype = "float32",
     convergence_tol = 1e-4,
     patience = 50L,
-    method = c("colnorm", "sinkhorn"),
     barrier_mu = 10,
-    loss_fn = c("poisson", "sse"),
     alpha_min = 1,
     offset = 1,
     verbose = TRUE
@@ -215,7 +175,7 @@ optimize_alpha <- function(
   # When alpha_min > 0, ensure initialization is above alpha_min with
   # enough margin for the softplus gradient to be non-negligible.
   if (is.null(alpha_init)) {
-    alpha_init <- alpha_min + 1  # scalar → recycled inside .optimize_torch
+    alpha_init <- alpha_min + 1  # scalar -> recycled inside .optimize_torch
   } else {
     if (!is.numeric(alpha_init))
       stop("alpha_init must be numeric", call. = FALSE)
@@ -235,21 +195,9 @@ optimize_alpha <- function(
   }
 
   # Coerce and validate integer params
-  batch_size <- as.integer(batch_size)
-  sk_iter    <- as.integer(sk_iter)
   max_epochs <- as.integer(max_epochs)
-  if (is.na(sk_iter) || sk_iter < 1L) {
-    stop("sk_iter must be a positive integer (>= 1)", call. = FALSE)
-  }
-  if (!is.numeric(sk_tol) || length(sk_tol) != 1 ||
-      !is.finite(sk_tol) || sk_tol <= 0) {
-    stop("sk_tol must be a single positive number", call. = FALSE)
-  }
   if (is.na(max_epochs) || max_epochs < 1L) {
     stop("max_epochs must be a positive integer (>= 1)", call. = FALSE)
-  }
-  if (is.na(batch_size) || batch_size < 1L) {
-    stop("batch_size must be a positive integer (>= 1)", call. = FALSE)
   }
 
   # Validate lr_init
@@ -258,15 +206,13 @@ optimize_alpha <- function(
     stop("lr_init must be a single positive number", call. = FALSE)
   }
 
-  # Validate method and barrier_mu
-  method <- match.arg(method)
+  # Validate barrier_mu
   if (!is.numeric(barrier_mu) || length(barrier_mu) != 1 ||
       !is.finite(barrier_mu) || barrier_mu < 0) {
     stop("barrier_mu must be a single non-negative number", call. = FALSE)
   }
 
-  # Validate loss_fn and alpha_min
-  loss_fn <- match.arg(loss_fn)
+  # Validate alpha_min
   if (!is.numeric(alpha_min) || length(alpha_min) != 1 ||
       !is.finite(alpha_min) || alpha_min < 0) {
     stop("alpha_min must be a single non-negative finite number", call. = FALSE)
@@ -300,25 +246,20 @@ optimize_alpha <- function(
     pop_matrix     = pop_matrix,
     source_matrix  = source_matrix,
     alpha_init     = alpha_init,
-    batch_size     = batch_size,
-    sk_iter        = sk_iter,
-    sk_tol         = sk_tol,
     max_epochs     = max_epochs,
     lr_init        = lr_init,
     device         = resolved_device,
     dtype          = resolved_dtype,
     convergence_tol = convergence_tol,
     patience       = as.integer(patience),
-    method         = method,
     barrier_mu     = barrier_mu,
-    loss_fn        = loss_fn,
     alpha_min      = alpha_min,
     verbose        = verbose
   )
 
   elapsed <- Sys.time() - start_time
 
-  # Expand active-bracket alpha (n × ka) to full alpha (n × k).
+  # Expand active-bracket alpha (n x ka) to full alpha (n x k).
   # Inactive brackets (zero pop or zero voters) get default alpha = 1.
   alpha_full <- matrix(1, n, k)
   alpha_full[, raw$active_brackets] <- raw$alpha
@@ -350,14 +291,8 @@ optimize_alpha <- function(
     grad_norm_final     = raw$grad_norm_final %||% NULL,
     grad_history        = raw$grad_history %||% NULL,
     lr_history          = raw$lr_history %||% NULL,
-    n_batches_per_epoch = raw$n_batches_per_epoch %||% NULL,
     row_targets         = row_targets,
-    sk_iter             = sk_iter,
-    sk_tol              = sk_tol,
-    batch_size          = min(batch_size, nrow(t_adj)),
-    method_type         = method,
     barrier_mu          = barrier_mu,
-    loss_fn             = loss_fn,
     alpha_min           = alpha_min
   )
   class(result) <- "interpElections_optim"
@@ -380,7 +315,7 @@ optimize_alpha <- function(
 print.interpElections_optim <- function(x, ...) {
   cat("interpElections optimization result\n")
   cat(sprintf("  Method:      %s\n", x$method))
-  cat(sprintf("  Loss fn:     %s\n", x$loss_fn %||% "sse"))
+  cat("  Loss fn:     poisson\n")
   cat(sprintf("  Objective:   %.4f\n", x$value))
   cat(sprintf("  Convergence: %d\n", x$convergence))
   if (is.matrix(x$alpha)) {
@@ -391,10 +326,7 @@ print.interpElections_optim <- function(x, ...) {
   }
   cat(sprintf("  Alpha range: [%.3f, %.3f]\n",
               min(x$alpha), max(x$alpha)))
-  cat(sprintf("  Epochs:      %d (batch=%d, sk_iter=%d, sk_tol=%s)\n",
-              x$epochs %||% NA,
-              x$batch_size %||% NA, x$sk_iter %||% NA,
-              format(x$sk_tol %||% NA, scientific = TRUE)))
+  cat(sprintf("  Epochs:      %d\n", x$epochs %||% NA))
   cat(sprintf("  Elapsed:     %.1f secs\n",
               as.numeric(x$elapsed, units = "secs")))
   invisible(x)

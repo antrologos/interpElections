@@ -2,453 +2,154 @@
 % Please edit documentation in R/brazil-wrapper.R
 \name{interpolate_election_br}
 \alias{interpolate_election_br}
-\title{One-step interpolation for Brazilian elections}
+\title{Interpolate Brazilian election data into census tracts}
 \usage{
 interpolate_election_br(
-  code_muni,
-  uf = NULL,
+  municipality,
   year,
-  comparecimento_path = NULL,
-  votacao_path = NULL,
-  network_path = NULL,
-  time_matrix = NULL,
   cargo = NULL,
   turno = 1L,
   what = "candidates",
   candidates = NULL,
   parties = NULL,
-  interp_sources = NULL,
+  uf = NULL,
   census_year = NULL,
-  clip_sf = NULL,
-  remove_unpopulated = TRUE,
-  osm_buffer_km = 10,
-  osm_provider = "openstreetmap_fr",
-  point_method = "point_on_surface",
-  pop_raster = NULL,
-  pop_min_area = 1,
-  keep = NULL,
-  alpha = NULL,
-  offset = 1,
-  calib_type = "full",
+  clip_tracts_sf = NULL,
+  min_tract_pop = 1,
+  time_matrix = NULL,
+  max_epochs = 2000L,
+  alpha_min = 1,
+  mode = "WALK",
+  gtfs_zip_path = NULL,
+  max_trip_duration = 300L,
+  point_method = "pop_weighted",
+  min_area_for_pop_weight = 1,
   use_gpu = NULL,
-  cache = TRUE,
   force = FALSE,
+  keep = NULL,
   verbose = TRUE,
   ...
 )
 }
 \arguments{
-\item{code_muni}{Numeric or character. Either a 7-digit IBGE municipality
-code (e.g., \code{3550308} for Sao Paulo) or a municipality \strong{name} (e.g.,
-\code{"Sao Paulo"}, \code{"SAO PAULO"}, \code{"São Paulo"}). Name matching is
-case-insensitive, accent-insensitive, and whitespace-trimmed. If the
-name exists in multiple states, use the \code{uf} parameter to disambiguate.
-The TSE code and state abbreviation are resolved automatically from the
-bundled \link{muni_crosswalk} table.}
+\item{municipality}{Numeric or character. Either a 7-digit IBGE
+municipality code (e.g., \code{3550308} for Sao Paulo) or a municipality
+\strong{name} (e.g., \code{"Sao Paulo"}, \code{"São Paulo"}). Name matching is
+case/accent-insensitive. Use \code{uf} to disambiguate if the name exists
+in multiple states.}
 
-\item{uf}{Character or NULL. Two-letter state abbreviation (e.g., \code{"SP"},
-\code{"RJ"}) for disambiguation when \code{code_muni} is a municipality name that
-exists in multiple states. Case-insensitive. Ignored (with a message)
-when \code{code_muni} is a numeric IBGE code. Default: \code{NULL}.}
+\item{year}{Integer. Election year (even integer).}
 
-\item{year}{Integer. Election year. Brazil holds two types of elections:
-\itemize{
-\item \strong{Municipal} (even years divisible by 4): 2000, 2004, 2008, 2012,
-2016, 2020, 2024. Offices: prefeito, vereador.
-\item \strong{General/federal} (even years \emph{not} divisible by 4): 2002, 2006,
-2010, 2014, 2018, 2022. Offices: presidente, governador, senador,
-deputado federal, deputado estadual.
-}}
+\item{cargo}{Integer, character, or NULL. Electoral office(s). Accepts
+aliases like \code{"presidente"}, \code{"vereador"} or TSE codes. NULL =
+all offices for that year. See Details.}
 
-\item{comparecimento_path}{Character or NULL. Path to attendance/turnout
-parquet file. If NULL (the default), turnout is computed from the vote
-data itself.}
+\item{turno}{Integer. Election round: 1 (default) or 2 (runoff).}
 
-\item{votacao_path}{Character or NULL. Path to candidate votes parquet
-file. If NULL (the default), vote data is auto-downloaded from the
-TSE open data portal.}
+\item{what}{Character vector. What to interpolate: \code{"candidates"}
+(default), \code{"parties"}, \code{"turnout"}, \code{"demographics"}.
+Multiple values can be combined.}
 
-\item{network_path}{Character or NULL. Path to a directory containing an
-OSM \code{.pbf} file for r5r routing. If NULL and \code{time_matrix} is also
-NULL, OSM data is auto-downloaded via \code{\link[=download_r5r_data]{download_r5r_data()}}.}
+\item{candidates}{Character or numeric vector, or NULL. Filter
+candidates by ballot number or name substring. Default: all.}
 
-\item{time_matrix}{Numeric matrix or NULL. Pre-computed travel time
-matrix [n x m]. If provided, skips all travel time computation
-(no r5r, no OSM download). Useful for re-running with different
-parameters on the same municipality.}
+\item{parties}{Character vector or NULL. Filter parties by TSE
+abbreviation (e.g., \code{c("PT", "PL")}). Default: all.}
 
-\item{cargo}{Integer, character, or NULL. Which electoral office(s) to
-include. Accepts one or more human-readable aliases (case-insensitive)
-or TSE numeric codes:\tabular{lll}{
-   Alias \tab TSE code \tab Election type \cr
-   \code{"presidente"} \tab 1 \tab General \cr
-   \code{"governador"} \tab 3 \tab General \cr
-   \code{"senador"} \tab 5 \tab General \cr
-   \code{"deputado_federal"} \tab 6 \tab General \cr
-   \code{"deputado_estadual"} \tab 7 \tab General \cr
-   \code{"deputado_distrital"} \tab 8 \tab General (DF only) \cr
-   \code{"prefeito"} \tab 11 \tab Municipal \cr
-   \code{"vereador"} \tab 13 \tab Municipal \cr
-}
+\item{uf}{Two-letter state abbreviation for disambiguation when
+\code{municipality} is a name. Default: NULL.}
 
+\item{census_year}{Integer or NULL. Census year (2000, 2010, 2022).
+NULL = auto-selected from election year.}
 
-When \code{NULL} (the default), \strong{all offices available} for the election
-year are included. When multiple cargos are selected, output columns
-are prefixed with the office name (e.g., \code{PRESIDENTE_CAND_13},
-\code{GOVERNADOR_CAND_22}).}
+\item{clip_tracts_sf}{\code{sf} polygon or NULL. Clip tracts to this
+geometry before interpolation.}
 
-\item{turno}{Integer. Election round: \code{1} (first round, the default) or
-\code{2} (runoff). The first round always exists. The second round
-(turno 2) is only held for presidente, governador, and prefeito
-(in cities with >200k voters), and only when no candidate wins an
-outright majority. If turno 2 did not occur, the result will contain
-zero vote rows for those offices.}
+\item{min_tract_pop}{Minimum total population in a tract to include
+it. Tracts below this are dropped. Default: 1.}
 
-\item{what}{Character vector. Controls \strong{what information} is
-interpolated into census tracts. One or more of:
-\itemize{
-\item \code{"candidates"} \strong{(default)}: Vote counts per candidate. Creates
-one column per candidate, named \verb{CAND_<number>} (e.g., \code{CAND_13},
-\code{CAND_22}). Also includes \code{QT_COMPARECIMENTO} (total turnout).
-\item \code{"parties"}: Vote counts aggregated by party. Creates one column
-per party, named \verb{PARTY_<abbreviation>} (e.g., \code{PARTY_PT},
-\code{PARTY_PL}). Also includes \code{QT_COMPARECIMENTO}.
-\item \code{"turnout"}: Turnout and abstention. Creates \code{QT_COMPARECIMENTO}
-(voters who showed up), \code{QT_APTOS} (eligible voters), and
-\code{QT_ABSTENCOES} (abstentions), when available.
-\item \code{"demographics"}: Voter profile demographics. Creates \verb{GENERO_*}
-columns (e.g., \code{GENERO_FEMININO}, \code{GENERO_MASCULINO}) and
-\verb{EDUC_*} columns (e.g., \code{EDUC_SUP_COMP}, \code{EDUC_FUND_INCOMP}).
-}
+\item{time_matrix}{Pre-computed travel time matrix [n x m], or NULL.
+If provided, skips routing (no r5r, no OSM download).}
 
-Multiple values can be combined:
-\code{what = c("candidates", "parties", "turnout", "demographics")}.}
+\item{max_epochs}{Maximum optimizer epochs. Default: 2000.
+See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
-\item{candidates}{Character or numeric vector, or NULL. Filter specific
-candidates (only used when \code{"candidates" \%in\% what}):
-\itemize{
-\item \strong{By number} (numeric): Matches the candidate's ballot number
-exactly. Example: \code{candidates = c(13, 22)} keeps only candidates
-13 (Lula) and 22 (Bolsonaro) in 2022.
-\item \strong{By name} (character): Performs accent-normalized,
-case-insensitive substring matching against the candidate's
-registered name. Example: \code{candidates = "LULA"} matches
-"LUIZ INACIO LULA DA SILVA".
-\item \code{NULL} \strong{(default)}: All candidates are included (including
-special codes 95 = votos em branco, 96 = votos nulos).
-}}
+\item{alpha_min}{Lower bound for decay parameters. Default: 1.
+See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
-\item{parties}{Character vector or NULL. Filter specific parties
-(only used when \code{"parties" \%in\% what}). Uses official TSE party
-abbreviations, matched case-insensitively:
-\itemize{
-\item Example: \code{parties = c("PT", "PL")} keeps only PT and PL.
-\item \code{NULL} \strong{(default)}: All parties are included.
-}}
+\item{mode}{Routing mode: \code{"WALK"} (default), \code{"BICYCLE"}, \code{"CAR"},
+or transit combos like \code{"WALK;TRANSIT"}. See r5r docs.}
 
-\item{interp_sources}{Character vector or NULL. Column names from the
-electoral data to interpolate. Default \code{NULL} auto-selects based on
-\code{what}. Override this only if you need fine-grained control over
-which columns are interpolated.}
+\item{gtfs_zip_path}{Path to a GTFS .zip file for transit routing,
+or NULL. When provided and \code{departure_datetime} is not set, the
+departure is auto-set to election day at 10 AM.}
 
-\item{census_year}{Integer or NULL. Census year for population data
-(2000, 2010, or 2022). If \code{NULL} (the default), auto-selected based
-on the election year:
-\itemize{
-\item Elections 2000-2004 use Census 2000
-\item Elections 2008-2016 use Census 2010
-\item Elections 2020+ use Census 2022
-}}
+\item{max_trip_duration}{Maximum trip duration in minutes. Also used
+as fill value for unreachable pairs. Default: 300 (5h walking).}
 
-\item{clip_sf}{\code{sf} polygon or NULL. Optional geometry to clip tracts
-(e.g., an urban area boundary). Tracts outside this polygon are
-removed before interpolation.}
+\item{point_method}{Method for tract representative points:
+\code{"pop_weighted"} (default, uses WorldPop raster),
+\code{"point_on_surface"}, or \code{"centroid"}.
+See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
 
-\item{remove_unpopulated}{Logical. Remove zero-population tracts.
-Default: TRUE.}
-
-\item{osm_buffer_km}{Numeric. Buffer in km for OSM bounding box
-expansion. Default: 10.}
-
-\item{osm_provider}{Character. OSM extract provider for \code{osmextract}.
-Default: \code{"openstreetmap_fr"} (has state-level extracts for Brazil).
-Alternatives: \code{"geofabrik"}, \code{"bbbike"}. Only used when OSM data is
-auto-downloaded (no \code{network_path} or \code{time_matrix} provided).}
-
-\item{point_method}{Character. Method for computing representative points
-for census tracts. One of \code{"point_on_surface"} (default, guaranteed
-inside polygon), \code{"centroid"}, or \code{"pop_weighted"} (uses WorldPop
-raster for large tracts). See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
-
-\item{pop_raster}{A \link[terra:SpatRaster-class]{terra::SpatRaster}, file path, or \code{NULL}. Population
-density raster for \code{point_method = "pop_weighted"}. If \code{NULL}, WorldPop
-Brazil Constrained 2020 (~48 MB) is auto-downloaded.}
-
-\item{pop_min_area}{Numeric. Minimum tract area (km²) for applying the
-population-weighted method. Smaller tracts use \code{point_on_surface}.
+\item{min_area_for_pop_weight}{Minimum tract area in km2 for the
+pop_weighted method. Smaller tracts fall back to point_on_surface.
 Default: 1.}
 
-\item{keep}{Character vector or NULL. Names of heavy intermediate
-objects to include in the result. Default NULL (lightweight).
-Options: \code{"weights"}, \code{"time_matrix"}, \code{"sources_sf"},
-\code{"pop_raster"}, \code{"rep_points"}, \code{"neighborhoods"}.
-The first five are passed to \code{\link[=interpolate_election]{interpolate_election()}}; see its docs.
-\code{"neighborhoods"} downloads IBGE 2010 neighborhood boundaries via
-\code{\link[geobr:read_neighborhood]{geobr::read_neighborhood()}} and stores them in \verb{$neighborhoods}.}
+\item{use_gpu}{TRUE/FALSE or NULL. If NULL (default), reads the
+global option set via \code{\link[=use_gpu]{use_gpu()}}.}
 
-\item{alpha}{Numeric vector or NULL. Pre-computed decay parameters
-(one per tract). If provided, the optimization step is skipped
-entirely. Useful for re-interpolating with a previously optimized
-alpha.}
+\item{force}{Re-download all cached data. Default: FALSE.}
 
-\item{offset}{Numeric. Travel time offset. Default: 1.}
+\item{keep}{Character vector of extra objects to include in the
+result. \code{weights} and \code{time_matrix} are always kept.
+Options: \code{"electoral_sf"}, \code{"pop_raster"}, \code{"rep_points"}.}
 
-\item{calib_type}{Character. Calibration column type:
-\itemize{
-\item \code{"full"} \strong{(default)}: gender (male/female) × 7 age brackets.
-Provides stronger spatial signal for the optimizer.
-\item \code{"age_only"}: 7 age-bracket-only columns (ignores gender).
-}}
+\item{verbose}{Print progress messages. Default: TRUE.}
 
-\item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
-
-\item{cache}{Logical. If TRUE (default), downloaded files (TSE data,
-OSM networks, census tracts) are stored persistently across R sessions.
-See \code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}. Subsequent calls reuse cached files,
-making re-runs much faster.}
-
-\item{force}{Logical. Re-download even if cached file exists.
-Default: FALSE.}
-
-\item{verbose}{Logical. Default: TRUE.}
-
-\item{...}{Additional arguments forwarded to \code{\link[=interpolate_election]{interpolate_election()}},
-\code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=compute_travel_times]{compute_travel_times()}}, and/or
-\code{\link[=download_r5r_data]{download_r5r_data()}}.}
+\item{...}{Advanced tuning. See \link{interpElections-passthrough}.
+Common: \code{network_path}, \code{cache} (default TRUE),
+\code{osm_buffer_km} (default 10), \code{offset} (default 1).}
 }
 \value{
-A list of class \code{"interpElections_result"} with components:
-\describe{
-\item{interpolated}{Numeric matrix [n x p]. Rows = census tracts,
-columns = interpolated variables.}
-\item{alpha}{Numeric vector of length n. Optimized decay parameters.}
-\item{tracts_sf}{\code{sf} object with interpolated columns joined in,
-ready for mapping with \code{plot()} or \code{ggplot2}.}
-\item{sources}{Data frame of prepared electoral data (one row
-per voting location), without geometry.}
-\item{optimization}{\code{interpElections_optim} or NULL (if alpha was
-pre-supplied).}
-\item{offset}{Numeric. Offset value used.}
-\item{call}{The matched call.}
-\item{tract_id}{Character. Name of census tract ID column.}
-\item{point_id}{Character. Name of source point ID column.}
-\item{interp_cols}{Character vector. Names of interpolated columns.}
-\item{calib_cols}{List with \verb{$tracts} and \verb{$sources} calibration columns.}
-\item{weights}{Numeric matrix or NULL. Present only when
-\code{keep} includes \code{"weights"}.}
-\item{time_matrix}{Numeric matrix or NULL. Present only when
-\code{keep} includes \code{"time_matrix"}.}
-\item{sources_sf}{\code{sf} point object or NULL. Present only when
-\code{keep} includes \code{"sources_sf"}.}
-\item{neighborhoods}{\code{sf} polygon object or NULL. IBGE 2010 neighborhood
-boundaries for the municipality. Present only when \code{keep} includes
-\code{"neighborhoods"}.}
-\item{code_muni}{IBGE municipality code.}
-\item{year}{Election year.}
-\item{census_year}{Census year.}
-\item{what}{Character vector of data types interpolated.}
-\item{pop_data}{Data frame of census population by tract.}
-}
+An \code{interpElections_result} list. Key fields:
+\verb{$tracts_sf} (sf with interpolated columns),
+\verb{$interpolated} (matrix [n x p]),
+\verb{$alpha} (decay parameters),
+\verb{$optimization} (optimizer details).
 }
 \description{
-High-level wrapper that auto-downloads census data, electoral data,
-tract geometries, and OSM road networks, then runs the full optimization
-and interpolation pipeline. The user only needs to provide an IBGE
-municipality code (or name) and an election year.
+Downloads census data, electoral results, tract geometries, and road
+networks automatically. Only requires a municipality identifier and
+an election year. Internally calls \code{\link[=interpolate_election]{interpolate_election()}} after
+preparing all inputs.
 }
-\details{
-Internally calls \code{\link[=interpolate_election]{interpolate_election()}} after preparing all inputs.
+\section{Quick start}{
+
+\preformatted{
+result <- interpolate_election_br(3550308, 2022)
+plot(result)
 }
-\section{Election types}{
-
-
-Brazil holds elections every two years, alternating between municipal
-and general (federal/state) elections:
-\itemize{
-\item \strong{Municipal elections} (2000, 2004, 2008, 2012, 2016, 2020, 2024):
-elect prefeito (mayor) and vereador (city councilor).
-\item \strong{General elections} (2002, 2006, 2010, 2014, 2018, 2022): elect
-presidente, governador, senador, deputado federal, and deputado
-estadual.
 }
 
-Presidential vote data is published by the TSE in a separate national
-file (~250 MB). This function handles the download automatically
-when \code{cargo} includes \code{"presidente"} or when \code{cargo = NULL} in a
-general election year.
+\section{Re-interpolation}{
+
+Use \code{\link[=reinterpolate]{reinterpolate()}} to re-run with different candidates/parties
+without recomputing travel times:
+\preformatted{
+result <- interpolate_election_br(3550308, 2022)
+result2 <- reinterpolate(result, what = "parties")
+}
 }
 
-\section{Output columns}{
+\section{Advanced tuning via \code{...}}{
 
-
-The \code{tracts_sf} output contains the original census tract geometry plus
-interpolated columns. Column names follow these patterns:
-
-\describe{
-\item{\verb{CAND_<number>}}{Interpolated vote count for candidate with
-ballot number \verb{<number>}. Special numbers: 95 = blank votes
-(em branco), 96 = null votes (nulo).}
-\item{\verb{PARTY_<abbrev>}}{Interpolated total votes for party
-\verb{<abbrev>} (e.g., \code{PARTY_PT}, \code{PARTY_PL}).}
-\item{\verb{GENERO_<category>}}{Interpolated voter count by gender
-(e.g., \code{GENERO_FEMININO}, \code{GENERO_MASCULINO}).}
-\item{\verb{EDUC_<level>}}{Interpolated voter count by education level
-(e.g., \code{EDUC_SUP_COMP}, \code{EDUC_FUND_INCOMP}).}
-\item{\code{QT_COMPARECIMENTO}}{Total voters who showed up.}
-\item{\code{QT_APTOS}}{Total eligible voters (when available).}
-\item{\code{QT_ABSTENCOES}}{Total abstentions (when available).}
+See \code{\link{interpElections-passthrough}} for all options.
 }
 
-When multiple \code{cargo} values are selected, candidate and party columns
-are prefixed: \code{PRESIDENTE_CAND_13}, \code{GOVERNADOR_PARTY_PT}, etc.
-}
-
-\examples{
-\dontrun{
-# ── Minimal usage ───────────────────────────────────────────────
-# Just an IBGE code + year. Everything else is auto-downloaded.
-result <- interpolate_election_br(
-  code_muni = 3550308,   # Sao Paulo
-  year = 2020
-)
-
-# The result includes an sf object ready for mapping
-plot(result$tracts_sf["CAND_13"])
-
-
-# ── Choosing a specific cargo ───────────────────────────────────
-# Municipal election: only city councilors (vereador)
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2020,
-  cargo = "vereador"
-)
-
-# General election: only the presidential race
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente"
-)
-
-# Multiple offices at once (columns are prefixed)
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = c("presidente", "governador")
-)
-# -> columns: PRESIDENTE_CAND_13, GOVERNADOR_CAND_30, ...
-
-
-# ── Turno (election round) ─────────────────────────────────────
-# First round (default)
-r1 <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente", turno = 1
-)
-
-# Runoff (second round) -- only 2 candidates
-r2 <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente", turno = 2
-)
-
-
-# ── Choosing what to interpolate ───────────────────────────────
-# Party vote totals instead of individual candidates
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "governador",
-  what = "parties"
-)
-# -> columns: PARTY_PT, PARTY_PL, PARTY_MDB, ...
-
-# Voter demographics (gender + education)
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  what = "demographics"
-)
-# -> columns: GENERO_FEMININO, EDUC_SUP_COMP, ...
-
-# Turnout and abstention
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2020,
-  cargo = "prefeito",
-  what = "turnout"
-)
-# -> columns: QT_COMPARECIMENTO, QT_APTOS, QT_ABSTENCOES
-
-# Everything at once
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "governador",
-  what = c("candidates", "parties", "turnout", "demographics")
-)
-
-
-# ── Filtering candidates ───────────────────────────────────────
-# By ballot number
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente",
-  candidates = c(13, 22)
-)
-# -> only CAND_13 (Lula) and CAND_22 (Bolsonaro)
-
-# By name (accent-insensitive substring search)
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente",
-  candidates = "LULA"
-)
-# -> matches "LUIZ INACIO LULA DA SILVA"
-
-
-# ── Filtering parties ──────────────────────────────────────────
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "presidente",
-  what = "parties",
-  parties = c("PT", "PL")
-)
-# -> only PARTY_PT and PARTY_PL
-
-
-# ── Re-using a previous result ─────────────────────────────────
-# Keep the time_matrix for reuse (opt-in via keep)
-result <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "governador",
-  keep = "time_matrix"
-)
-
-# Then reuse the alpha and travel time matrix
-result2 <- interpolate_election_br(
-  code_muni = 3170701, year = 2022,
-  cargo = "governador",
-  what = "parties",
-  time_matrix = result$time_matrix,
-  alpha = result$alpha
-)
-
-
-# ── Pre-computed travel times (skip r5r) ───────────────────────
-result <- interpolate_election_br(
-  code_muni = 3550308, year = 2020,
-  time_matrix = my_tt_matrix
-)
-}
-
-}
 \seealso{
 \code{\link[=interpolate_election]{interpolate_election()}} for the general-purpose wrapper,
+\code{\link[=reinterpolate]{reinterpolate()}} for quick re-runs,
 \code{\link[=br_prepare_population]{br_prepare_population()}}, \code{\link[=br_prepare_electoral]{br_prepare_electoral()}},
 \code{\link[=br_prepare_tracts]{br_prepare_tracts()}}.
 

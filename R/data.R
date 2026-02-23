@@ -23,3 +23,21 @@
 #'
 #' @keywords datasets
 "muni_crosswalk"
+
+#' Brazilian election dates
+#'
+#' Election dates for turno 1 (first round) and turno 2 (runoff) for all
+#' Brazilian elections from 2000 to 2024. Used internally for auto-deriving
+#' departure datetime when GTFS transit routing is enabled.
+#'
+#' @format A data frame with 26 rows and 3 columns:
+#' \describe{
+#'   \item{year}{Integer. Election year.}
+#'   \item{turno}{Integer. 1 = first round, 2 = runoff.}
+#'   \item{date}{Date. Election date.}
+#' }
+#'
+#' @source TSE (Tribunal Superior Eleitoral)
+#'
+#' @keywords datasets
+"br_election_dates"

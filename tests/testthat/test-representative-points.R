@@ -171,7 +171,7 @@ test_that("pop_weighted uses area threshold correctly", {
   pts <- compute_representative_points(
     tracts, method = "pop_weighted",
     pop_raster = r,
-    pop_min_area = 1,  # 1 km2 threshold
+    min_area_for_pop_weight = 1,  # 1 km2 threshold
     tract_id = "id",
     verbose = FALSE
   )
@@ -212,7 +212,7 @@ test_that("pop_weighted attaches pop_raster attribute", {
   pts <- compute_representative_points(
     tracts, method = "pop_weighted",
     pop_raster = r,
-    pop_min_area = 0,  # force raster for all
+    min_area_for_pop_weight = 0,  # force raster for all
     tract_id = "id",
     verbose = FALSE
   )

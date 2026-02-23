@@ -10,9 +10,6 @@ optimize_alpha(
   source_matrix,
   row_targets = NULL,
   alpha_init = NULL,
-  batch_size = 500L,
-  sk_iter = 100L,
-  sk_tol = 1e-06,
   max_epochs = 2000L,
   lr_init = 0.05,
   use_gpu = NULL,
@@ -20,9 +17,7 @@ optimize_alpha(
   dtype = "float32",
   convergence_tol = 1e-04,
   patience = 50L,
-  method = c("colnorm", "sinkhorn"),
   barrier_mu = 10,
-  loss_fn = c("poisson", "sse"),
   alpha_min = 1,
   offset = 1,
   verbose = TRUE
@@ -39,31 +34,17 @@ with k demographic groups as columns.}
 points (e.g., registered voters by age group).}
 
 \item{row_targets}{Numeric vector of length n, or NULL. Target row sums
-for Sinkhorn balancing. Each element specifies how much weight a zone
-should attract, proportional to its share of total population. If NULL
+for balancing. Each element specifies how much weight a zone should
+attract, proportional to its share of total population. If NULL
 (default), auto-computed as \code{rowSums(pop_matrix) / sum(pop_matrix) * m}.}
 
 \item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
 Initial guess for alpha. A scalar is recycled to all n tracts and k
 brackets. A vector of length n is recycled across brackets. Default: 1.}
 
-\item{batch_size}{Integer. Number of zones (rows) sampled per SGD step.
-Only used when \code{method = "sinkhorn"}. For column normalization, the
-full dataset is used in each gradient step (column sums require all
-tracts). Default: 500.}
-
-\item{sk_iter}{Integer. Maximum number of log-domain Sinkhorn iterations
-per SGD step. The Sinkhorn loop stops early if the dual variables
-converge within \code{sk_tol}. Default: 100.}
-
-\item{sk_tol}{Numeric. Convergence tolerance for Sinkhorn iterations.
-Iteration stops when the maximum absolute change in the log-domain
-row dual variable falls below \code{sk_tol}. A warning is issued if
-Sinkhorn does not converge within \code{sk_iter} iterations. Default: 1e-6.}
-
 \item{max_epochs}{Integer. Maximum number of epochs (full passes through
 all tracts). The optimizer may stop earlier if convergence is detected.
-For colnorm, each epoch is a single gradient step (~0.1s for 5000 tracts
+Each epoch is a single gradient step (~0.1s for 5000 tracts
 on GPU), so 2000 epochs is typically under 4 minutes. Default: 2000.}
 
 \item{lr_init}{Numeric. Initial ADAM learning rate. Reduced automatically
@@ -86,26 +67,10 @@ the optimizer considers the solution converged. Default: 1e-4.}
 (at minimum learning rate) before early stopping. The LR scheduler
 uses \code{2 * patience} as its own patience. Default: 50.}
 
-\item{method}{Character. Normalization method: \code{"colnorm"} (column-only
-normalization with log-barrier penalty) or \code{"sinkhorn"} (3D Sinkhorn
-IPF with shared row constraint). Column normalization preserves source
-conservation (column sums = 1) without constraining row sums, giving
-alpha more freedom to control spatial weight patterns. Default:
-\code{"colnorm"}.}
-
 \item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
-prevents any census tract from receiving zero predicted voters. Only
-used when \code{method = "colnorm"}. The penalty term is
-\code{-barrier_mu * sum(log(V_hat_total))}. Set to 0 to disable.
-Default: 10.}
-
-\item{loss_fn}{Character. Loss function for optimization: \code{"poisson"}
-(Poisson deviance, default) or \code{"sse"} (sum of squared errors).
-Poisson deviance \code{2 * sum(V_hat - P + P * log(P / V_hat))} treats
-proportional errors equally across all tracts regardless of population
-size, preventing large tracts from dominating the loss. This
-encourages higher, more spatially meaningful alpha values. SSE is
-retained for backward compatibility.}
+prevents any census tract from receiving zero predicted voters. The
+penalty term is \code{-barrier_mu * sum(log(V_hat_total))}. Set to 0 to
+disable. Default: 10.}
 
 \item{alpha_min}{Numeric. Lower bound for alpha values. The
 reparameterization becomes \code{alpha = alpha_min + softplus(theta)},
@@ -127,12 +92,12 @@ decay parameters. Each row is a census tract, each column is a
 demographic bracket. Inactive brackets (zero population or voters)
 are filled with 1.}
 \item{value}{Numeric. Objective function value at optimum (Poisson
-deviance or SSE depending on \code{loss_fn}).}
-\item{W}{Numeric matrix [n x m]. Sinkhorn-balanced weight matrix
-from the best-epoch transport plan. Use directly for interpolation
+deviance).}
+\item{W}{Numeric matrix [n x m]. Column-normalized weight matrix
+from the best-epoch. Use directly for interpolation
 via \verb{W \\\%*\\\% data}. Column sums are approximately 1.}
 \item{method}{Character. Method used (e.g.,
-\code{"pb_sgd_sinkhorn_cpu"}, \code{"pb_sgd_sinkhorn_cuda"}).}
+\code{"pb_sgd_colnorm_cpu"}, \code{"pb_sgd_colnorm_cuda"}).}
 \item{convergence}{Integer. 0 = early-stopped (improvement plateau
 detected); 1 = stopped at max_epochs.}
 \item{epochs}{Integer. Number of epochs completed.}
@@ -144,21 +109,15 @@ detected); 1 = stopped at max_epochs.}
 \item{grad_history}{Numeric vector. Gradient norm (theta-space) at
 each epoch.}
 \item{lr_history}{Numeric vector. Learning rate at each epoch.}
-\item{n_batches_per_epoch}{Integer. Number of gradient steps per
-epoch. Always 1 for colnorm (full-data gradient);
-\code{ceiling(n / batch_size)} for sinkhorn.}
-\item{row_targets}{Numeric vector. Row targets used for Sinkhorn.}
-\item{sk_iter}{Integer. Maximum Sinkhorn iterations per step.}
-\item{sk_tol}{Numeric. Sinkhorn convergence tolerance.}
-\item{batch_size}{Integer. Mini-batch size used.}
 }
 }
 \description{
 Optimizes the per-tract-per-bracket decay parameters that minimize the
-error between interpolated values and known population counts. Uses Per-Bracket SGD (PB-SGD) with mini-batch sampling
-and log-domain 3D Sinkhorn inside torch autograd. Each demographic bracket
-gets its own per-tract kernel; gradients flow through all unrolled
-iterations. Works on both CPU and GPU (CUDA/MPS).
+error between interpolated values and known population counts. Uses
+per-bracket SGD with column normalization and log-barrier penalty inside
+torch autograd. Each demographic bracket gets its own per-tract kernel;
+gradients flow through all computations. Works on both CPU and GPU
+(CUDA/MPS).
 }
 \details{
 The optimization requires the \code{torch} R package. Install it with
@@ -171,12 +130,9 @@ where \code{softplus(x) = log(1 + exp(x))}. With the default
 decay or steeper). Set \code{alpha_min = 0} for unconstrained
 optimization (similar to legacy \code{exp(theta)}).
 
-\strong{Epoch structure}: For column normalization, each epoch is one
-full-data gradient step with exact gradients (column sums require all
-tracts, so mini-batching provides no computational savings). For
-Sinkhorn, each epoch is one shuffled pass through all n tracts in
-mini-batches. The loss reported at each epoch is the true objective
-evaluated on the full dataset.
+\strong{Epoch structure}: Each epoch is one full-data gradient step with
+exact gradients (column sums require all tracts). The loss reported at
+each epoch is the true objective evaluated on the full dataset.
 
 Two execution paths:
 \itemize{
@@ -187,8 +143,7 @@ problems (> 2000 tracts).
 }
 
 GPU memory usage is bounded by
-\code{2 * ka * n_eff * m * bytes_per_elem} where \code{n_eff = n} for
-colnorm and \code{n_eff = min(batch_size, n)} for sinkhorn.
+\code{2 * ka * n * m * bytes_per_elem}.
 }
 \examples{
 \dontrun{

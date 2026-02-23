@@ -63,8 +63,8 @@ quantity type.}
 Use \code{""} to suppress.}
 
 \item{show_sources}{Overlay source points (polling stations)
-on the map. Requires \code{sources_sf} in the result
-(use \code{keep = "sources_sf"} when interpolating). Default: FALSE.}
+on the map. Requires \code{electoral_sf} in the result
+(use \code{keep = "electoral_sf"} when interpolating). Default: FALSE.}
 
 \item{border_color}{Tract border color. Default: \code{"white"}.}
 

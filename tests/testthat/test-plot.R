@@ -45,6 +45,14 @@
     stringsAsFactors = FALSE
   )
 
+  # Municipality boundary (covers all mock tracts: x 0-3, y 0-2)
+  muni_poly <- sf::st_polygon(list(matrix(c(
+    0, 0, 3, 0, 3, 2, 0, 2, 0, 0
+  ), ncol = 2, byrow = TRUE)))
+  muni_boundary <- sf::st_sf(
+    geometry = sf::st_sfc(muni_poly, crs = 4326)
+  )
+
   result <- list(
     interpolated = interp_mat, alpha = alpha, tracts_sf = tracts_sf,
     sources = sources,
@@ -53,12 +61,15 @@
     tract_id = "zone_id", point_id = "point_id",
     interp_cols = interp_names,
     calib_cols = list(tracts = "votantes_18_20", sources = "votantes_18_20"),
-    weights = NULL, time_matrix = NULL, sources_sf = NULL,
+    weights = NULL, time_matrix = NULL, electoral_sf = NULL,
     code_muni = "3550308",
     nome_municipio = "SAO PAULO", code_muni_tse = "71072", uf = "SP",
+    turno = 1L, cargo = 13L,
     year = 2020L, census_year = 2022L,
     what = "candidates", pop_data = data.frame(x = 1),
-    dictionary = dict
+    dictionary = dict,
+    muni_boundary = muni_boundary,
+    neighborhoods = NULL
   )
   class(result) <- "interpElections_result"
   result
@@ -350,13 +361,13 @@ test_that("plot errors when tracts_sf is NULL", {
   expect_error(plot(obj), "No tracts_sf")
 })
 
-test_that("plot warns when show_sources but no sources_sf", {
+test_that("plot warns when show_sources but no electoral_sf", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_plot_result()
-  obj$sources_sf <- NULL
+  obj$electoral_sf <- NULL
 
-  expect_warning(plot(obj, show_sources = TRUE), "sources_sf")
+  expect_warning(plot(obj, show_sources = TRUE), "electoral_sf")
 })
 
 test_that("plot auto-generates title-cased title with party and number", {
@@ -464,6 +475,8 @@ test_that(".auto_subtitle returns NULL for generic result", {
   obj <- .mock_plot_result()
   obj$nome_municipio <- NULL
   obj$year <- NULL
+  obj$turno <- NULL
+  obj$cargo <- NULL
   expect_null(.auto_subtitle(obj))
 })
 
@@ -934,12 +947,12 @@ test_that(".bin_colors works with viridis palette", {
 
 # --- Municipality contour tests ---
 
-test_that(".muni_border_layer returns NULL without geobr or code_muni", {
+test_that(".muni_border_layer returns NULL with NULL code_muni and no muni_boundary", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_plot_result()
-  # NULL code_muni returns NULL
-  expect_null(.muni_border_layer(NULL, obj$tracts_sf))
+  layer <- .muni_border_layer(NULL, obj$tracts_sf)
+  expect_null(layer)
 })
 
 test_that("plot works without municipality contour (no geobr download)", {
@@ -1018,4 +1031,96 @@ test_that(".map_theme returns a ggplot theme", {
   skip_if_not_installed("ggplot2")
   th <- .map_theme()
   expect_s3_class(th, "theme")
+})
+
+
+# --- Age pyramid orientation tests ---
+
+test_that(".build_pyramid_svg draws oldest bracket at top", {
+  male <- c(10, 20, 30)
+  female <- c(12, 22, 28)
+  labels <- c("18-19", "20-24", "25-29")
+  svg <- .build_pyramid_svg(male, female, labels)
+  # Oldest label (25-29) should appear before youngest (18-19) in SVG string
+  pos_old <- regexpr("25-29", svg)
+  pos_young <- regexpr("18-19", svg)
+  expect_true(pos_old[1] < pos_young[1])
+})
+
+test_that(".build_pyramid_svg with fitted data preserves reversal", {
+  male <- c(10, 20, 30)
+  female <- c(12, 22, 28)
+  labels <- c("18-19", "20-24", "25-29")
+  fm <- c(11, 21, 31)
+  ff <- c(13, 23, 29)
+  svg <- .build_pyramid_svg(male, female, labels,
+                             fitted_male = fm, fitted_female = ff)
+  pos_old <- regexpr("25-29", svg)
+  pos_young <- regexpr("18-19", svg)
+  expect_true(pos_old[1] < pos_young[1])
+})
+
+test_that(".build_age_bars_svg draws oldest bracket at top", {
+  vals <- c(10, 20, 30)
+  labels <- c("18-19", "20-24", "25-29")
+  svg <- .build_age_bars_svg(vals, labels)
+  pos_old <- regexpr("25-29", svg)
+  pos_young <- regexpr("18-19", svg)
+  expect_true(pos_old[1] < pos_young[1])
+})
+
+
+# --- Popup metadata tests ---
+
+test_that(".build_detail_popup includes municipality and election metadata", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Test"]] <- .compute_quantity(obj, "CAND_13", "pct_tract")
+  popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
+  expect_true(grepl("SAO PAULO", popup[1]))
+  expect_true(grepl("3550308", popup[1]))   # IBGE code
+  expect_true(grepl("71072", popup[1]))     # TSE code
+  expect_true(grepl("2020", popup[1]))      # year
+  expect_true(grepl("turno", popup[1]))     # turno label
+  expect_true(grepl("VEREADOR", popup[1]))  # cargo from dictionary
+})
+
+test_that(".build_detail_popup works without Brazilian metadata", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  obj$nome_municipio <- NULL
+  obj$uf <- NULL
+  obj$code_muni <- NULL
+  obj$turno <- NULL
+  obj$cargo <- NULL
+  obj$dictionary <- NULL
+  plot_sf <- obj$tracts_sf
+  plot_sf[["Test"]] <- .compute_quantity(obj, "CAND_13", "absolute")
+  popup <- .build_detail_popup(obj, "CAND_13", "Test", plot_sf)
+  expect_true(is.character(popup))
+  expect_equal(length(popup), nrow(plot_sf))
+})
+
+
+# --- Municipality contour fallback tests ---
+
+test_that(".get_muni_sf returns NULL when code_muni is NULL and no muni_boundary", {
+  skip_if_not_installed("sf")
+  obj <- .mock_plot_result()
+  result <- .get_muni_sf(NULL, sf::st_crs(obj$tracts_sf))
+  expect_null(result)
+})
+
+test_that(".muni_border_layer with muni_boundary can be added to a ggplot", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_plot_result()
+  layer <- .muni_border_layer(NULL, obj$tracts_sf,
+                               muni_boundary = obj$muni_boundary)
+  expect_true(!is.null(layer))
+  # Verify the layer can be added to a ggplot
+  p <- ggplot2::ggplot(obj$tracts_sf) +
+    ggplot2::geom_sf() + layer
+  expect_s3_class(p, "gg")
 })

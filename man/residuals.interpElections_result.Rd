@@ -18,8 +18,6 @@ where k is the number of calibration brackets. Returns \code{NULL}
 }
 \description{
 Returns the matrix of calibration residuals (fitted minus observed)
-for each census tract and calibration bracket. Requires the weight matrix
-or travel time matrix to be present in the result (use
-\code{keep = "weights"} or \code{keep = "time_matrix"} when running the
-interpolation).
+for each census tract and calibration bracket. Both the weight matrix
+and travel time matrix are kept by default.
 }

@@ -7,8 +7,6 @@
 #' @param code_muni Numeric or character. IBGE municipality code.
 #' @param pop_data Data frame. Output of [br_prepare_population()]. Must
 #'   contain `code_tract` and population bracket columns.
-#' @param remove_unpopulated Logical. Remove tracts where `pop_total == 0`.
-#'   Default: TRUE.
 #' @param clip_sf Optional `sf` polygon object. If provided, census tracts
 #'   are clipped to this geometry (e.g., to remove non-urban areas like
 #'   parks, forests, and water bodies). Population is proportionally
@@ -38,7 +36,6 @@
 br_prepare_tracts <- function(
     code_muni,
     pop_data,
-    remove_unpopulated = TRUE,
     clip_sf = NULL,
     year = 2010,
     crs = "EPSG:5880",
@@ -155,17 +152,6 @@ br_prepare_tracts <- function(
     result$pop_total <- rowSums(
       sf::st_drop_geometry(result)[, pop_cols, drop = FALSE]
     )
-  }
-
-  # Remove unpopulated tracts
-  if (remove_unpopulated) {
-    n_before <- nrow(result)
-    result <- dplyr::filter(result, .data$pop_total > 0)
-    n_after <- nrow(result)
-    if (n_before > n_after && verbose) {
-      message(sprintf("  Removed %d unpopulated tracts (%d remaining)",
-                       n_before - n_after, n_after))
-    }
   }
 
   sf::st_sf(result)

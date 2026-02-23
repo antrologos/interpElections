@@ -7,7 +7,6 @@
 br_prepare_tracts(
   code_muni,
   pop_data,
-  remove_unpopulated = TRUE,
   clip_sf = NULL,
   year = 2010,
   crs = "EPSG:5880",
@@ -19,9 +18,6 @@ br_prepare_tracts(
 
 \item{pop_data}{Data frame. Output of \code{\link[=br_prepare_population]{br_prepare_population()}}. Must
 contain \code{code_tract} and population bracket columns.}
-
-\item{remove_unpopulated}{Logical. Remove tracts where \code{pop_total == 0}.
-Default: TRUE.}
 
 \item{clip_sf}{Optional \code{sf} polygon object. If provided, census tracts
 are clipped to this geometry (e.g., to remove non-urban areas like

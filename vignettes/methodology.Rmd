@@ -195,7 +195,7 @@ The full interpolation pipeline has six steps:
    stations (`compute_travel_times()`)
 5. **Optimization**: find per-tract decay parameters $\alpha$ that
    minimize demographic mismatch (`optimize_alpha()`)
-6. **Interpolation**: use the Sinkhorn-balanced weight matrix from
+6. **Interpolation**: use the column-normalized weight matrix from
    optimization (or rebuild with `compute_weight_matrix()`) and apply it to any station-level variable
    ($\hat{X} = W \times V$)
 
@@ -253,10 +253,10 @@ $2/5$ proxy to approximate the 18--19 voting-age share.
 
 These 7 matched brackets are the key insight: they are observed at
 **both** levels (census tracts and polling stations), enabling
-calibration. The default **full calibration** mode
-(`calib_type = "full"`) crosses gender × 7 age groups, providing
-a stronger spatial signal because the optimizer must simultaneously
-match the spatial distribution of each gender--age subgroup.
+calibration. The calibration crosses gender × 7 age groups (14
+brackets), providing a strong spatial signal because the optimizer
+must simultaneously match the spatial distribution of each
+gender--age subgroup.
 
 ```{r fig-pop-pyramid, echo = FALSE, out.width = "90%"}
 knitr::include_graphics("figures/pop-pyramid.png")
@@ -397,7 +397,7 @@ The `pop_weighted` method downloads the WorldPop Brazil Constrained 2020
 raster (~48 MB, cached) and finds the raster cell with the highest
 population density within each tract.
 
-The `pop_min_area` parameter (default: 1 km²) controls the threshold:
+The `min_area_for_pop_weight` parameter (default: 1 km²) controls the threshold:
 tracts smaller than this use `point_on_surface` regardless of the chosen
 method, since small urban tracts are dense enough that any interior
 point is a reasonable proxy.
@@ -599,10 +599,11 @@ for each tract independently.
 
 ## 11. Why Single-Sided Standardization Fails
 
-Before introducing the Sinkhorn algorithm, let us understand why simpler
-approaches do not work. We need to normalize the raw weight matrix so
-that the weights sum to meaningful quantities. There are two natural
-choices --- and both fail on their own.
+Before describing the column normalization approach used by the package,
+let us understand why simpler row-based approaches do not work. We need
+to normalize the raw weight matrix so that the weights sum to meaningful
+quantities. There are two natural choices --- and only column
+normalization provides the guarantee we need.
 
 ### 11.1 Column-only standardization
 
@@ -667,259 +668,71 @@ Now the rows are correct, but the column sums are wrong. Some stations
 municipal total is no longer conserved: if we multiply these weights by
 vote counts, we get more (or fewer) total votes than actually existed.
 
-### The dilemma
+### The choice: column normalization
 
-- Column-only: preserves totals but distributes them incorrectly
-- Row-only: distributes correctly but does not preserve totals
-- **We need both constraints simultaneously.**
+- Column-only: preserves totals (**source conservation**) --- every vote
+  is distributed exactly once. The spatial *distribution* across tracts
+  is governed by the optimized alpha parameters, which are calibrated
+  against census demographics.
+- Row-only: distributes correctly but does not preserve totals.
+
+**Column normalization is the right choice** because source conservation
+is the non-negotiable constraint: we must not create or destroy votes.
+The alpha optimization (Section 13) takes care of making the row-side
+distribution match census demographics as closely as possible.
 
 
-## 12. Sinkhorn Balancing: Double Conservation
+## 12. Column Normalization: Source Conservation
 
-### 12.1 The idea: balancing a table
+### 12.1 The idea: preserving station totals
 
-Imagine you have a table of estimated phone calls between 5 cities. Each
-cell contains your best guess of how many calls go from city $i$ to city
-$j$. You also know the total calls **from** each city (the row totals)
-and the total calls **to** each city (the column totals) from telephone
-billing records.
+The core constraint is **source conservation**: each polling station
+must distribute exactly 100% of its data. If a station recorded 500
+votes, the interpolation must assign exactly 500 votes across all
+tracts --- no more, no less.
 
-Your initial estimates don't match these known totals. But you want to
-adjust the table so that:
+Column normalization enforces this directly: divide each column of the
+raw weight matrix by its sum so that each station's weights sum to 1.
 
-1. Each row sums to the known row total
-2. Each column sums to the known column total
-3. The relative **pattern** within each row and column is preserved
-   (if city A calls city B twice as much as city C, this ratio is
-   maintained)
+$$W_{ij} = \frac{K_{ij}}{\sum_i K_{ij}}$$
 
-This is exactly what Iterative Proportional Fitting (IPF) does. It
-alternates between scaling rows to match row totals and scaling columns
-to match column totals. After a few rounds, both sets of totals are
-satisfied simultaneously.
+where $K_{ij} = (t_{ij} + 1)^{-\alpha_i}$ is the IDW kernel from
+Section 10.
 
-In our context:
+### 12.2 Worked example
 
-- The table is the weight matrix $W$ (tracts × stations)
-- Row totals are population-proportional targets
-  ($r_i = \text{pop}_i / \sum \text{pop} \times m$)
-- Column totals are all 1 (each station distributes 100%)
-- The initial pattern comes from the IDW kernel (travel-time-based
-  weights)
+```{r colnorm-example, eval = TRUE}
+# Using the toy example from Section 11
+# W_raw is already defined: 5 tracts, 3 stations
+W_col <- t(t(W_raw) / colSums(W_raw))
 
-### 12.2 Historical context: from demography to optimal transport
+cat("Column sums (should be 1 — source conservation):\n")
+round(colSums(W_col), 4)
 
-The idea of alternating row and column normalization has been discovered
-independently in several fields, each giving it a different name:
+cat("\nRow sums (governed by alpha — not explicitly constrained):\n")
+round(rowSums(W_col), 4)
 
-- **Iterative Proportional Fitting (IPF)**: Deming & Stephan (1940)
-  introduced it for adjusting census contingency tables to match known
-  marginal totals --- directly related to our application.
-- **RAS method**: economists use it to update input-output tables when
-  only row and column totals are available for a new period.
-- **Matrix balancing**: transportation planners apply it for trip
-  distribution --- fitting an origin-destination matrix to known trip
-  generation and attraction totals.
-- **Sinkhorn-Knopp algorithm**: Richard Sinkhorn (1964) proved the key
-  convergence result: any matrix with all positive entries can be made
-  doubly stochastic by this procedure. The result was later extended to
-  rectangular matrices with arbitrary prescribed marginals.
-- **Optimal transport**: in the machine learning literature, the
-  Sinkhorn algorithm is the standard method for computing entropy-
-  regularized optimal transport (Cuturi, 2013).
-
-All describe the same procedure: alternate row and column normalization
-until both marginal constraints are satisfied. The convergence is
-guaranteed when `sum(row_targets) = sum(col_targets)`, and the balanced
-matrix is unique.
-
-### 12.3 Step-by-step worked example
-
-Let us trace the algorithm by hand on a small example. We have a 3×3
-raw weight matrix and want to achieve specific row and column sums:
-
-```{r sinkhorn-step-by-step, eval = TRUE}
-# Small 3x3 example for hand-tracing
-W_ex <- matrix(c(
-  0.8, 0.1, 0.05,  # tract 1: near station 1
-  0.3, 0.6, 0.1,   # tract 2: near station 2
-  0.05, 0.2, 0.9   # tract 3: near station 3
-), nrow = 3, byrow = TRUE)
-
-row_targets_ex <- c(1.5, 0.9, 0.6)  # population-proportional
-col_targets_ex <- c(1, 1, 1)        # source conservation
-
-cat("=== Initial matrix ===\n")
-print(round(W_ex, 3))
-cat("Row sums:", round(rowSums(W_ex), 3), "\n")
-cat("Targets: ", row_targets_ex, "\n")
-
-# --- Iteration 1: Row scaling ---
-cat("\n=== Iteration 1: Scale rows ===\n")
-row_factors <- row_targets_ex / rowSums(W_ex)
-cat("Row scale factors:", round(row_factors, 3), "\n")
-W_ex <- W_ex * row_factors  # multiply each row
-cat("After row scaling:\n")
-print(round(W_ex, 3))
-cat("Row sums now:", round(rowSums(W_ex), 3), "(match targets)\n")
-cat("Col sums now:", round(colSums(W_ex), 3), "(not yet 1)\n")
-
-# --- Iteration 1: Column scaling ---
-cat("\n=== Iteration 1: Scale columns ===\n")
-col_factors <- col_targets_ex / colSums(W_ex)
-cat("Col scale factors:", round(col_factors, 3), "\n")
-W_ex <- t(t(W_ex) * col_factors)
-cat("After column scaling:\n")
-print(round(W_ex, 3))
-cat("Row sums now:", round(rowSums(W_ex), 3), "(shifted slightly)\n")
-cat("Col sums now:", round(colSums(W_ex), 3), "(match targets)\n")
-
-# --- Iteration 2 ---
-cat("\n=== Iteration 2: Scale rows again ===\n")
-row_factors <- row_targets_ex / rowSums(W_ex)
-W_ex <- W_ex * row_factors
-col_factors <- col_targets_ex / colSums(W_ex)
-W_ex <- t(t(W_ex) * col_factors)
-cat("After iteration 2:\n")
-print(round(W_ex, 3))
-cat("Row sums:", round(rowSums(W_ex), 4), "\n")
-cat("Col sums:", round(colSums(W_ex), 4), "\n")
-cat("Max error:", round(max(
-  abs(rowSums(W_ex) - row_targets_ex),
-  abs(colSums(W_ex) - col_targets_ex)
-), 6), "\n")
+cat("\nWeight matrix:\n")
+print(round(W_col, 4))
 ```
 
-After just 2 iterations, both row and column sums are very close to
-their targets. The relative pattern within each row is preserved: tract
-1 still gets most of its weight from station 1, tract 3 from station 3.
-But the absolute values have been adjusted so that the population and
-source constraints are satisfied.
-
-### 12.4 Convergence
-
-The algorithm converges rapidly — typically to machine precision within
-15--50 iterations:
-
-```{r sinkhorn-convergence, eval = TRUE, fig.height = 4.5}
-# Convergence demo with the 5-tract toy example
-m <- ncol(tt_toy)
-row_targets <- pop_toy / sum(pop_toy) * m
-col_targets <- rep(1, m)
-
-W <- W_raw  # from section 11
-max_err_history <- numeric(50)
-for (k in 1:50) {
-  rs <- rowSums(W); rs[rs == 0] <- 1
-  W <- W * (row_targets / rs)
-  cs <- colSums(W); cs[cs == 0] <- 1
-  W <- t(t(W) * (col_targets / cs))
-  max_err_history[k] <- max(
-    abs(rowSums(W) - row_targets),
-    abs(colSums(W) - col_targets)
-  )
-}
-
-conv_df <- data.frame(iteration = 1:50, max_error = max_err_history)
-ggplot(conv_df, aes(x = iteration, y = max_error)) +
-  geom_line(color = "#4575b4", linewidth = 0.8) +
-  geom_point(color = "#4575b4", size = 1) +
-  scale_y_log10() +
-  labs(title = "Sinkhorn Convergence",
-       subtitle = "Marginal error converges to machine precision in ~15 iterations",
-       x = "Iteration", y = "Max marginal error (log scale)") +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"))
-```
-
-### 12.5 Wrapping it up
-
-The row-and-column scaling loop above is all there is to Sinkhorn
-balancing. Let's wrap it into a small helper so we can reuse it in the
-examples that follow:
-
-```{r sinkhorn-balance-toy, eval = TRUE}
-sinkhorn_balance <- function(W, row_targets, col_targets,
-                              max_iter = 1000L, tol = 1e-10) {
-  for (iter in seq_len(max_iter)) {
-    rs <- rowSums(W); rs[rs == 0] <- 1
-    W <- W * (row_targets / rs)
-    cs <- colSums(W); cs[cs == 0] <- 1
-    W <- t(t(W) * (col_targets / cs))
-    if (max(abs(rowSums(W) - row_targets),
-            abs(colSums(W) - col_targets)) < tol) break
-  }
-  W
-}
-```
-
-Let's verify it on our toy example:
-
-```{r sinkhorn-verify, eval = TRUE}
-W_balanced <- sinkhorn_balance(W_raw,
-  row_targets = row_targets,
-  col_targets = col_targets
-)
-
-cat("Row sums (should match targets):\n")
-cbind(target = round(row_targets, 4),
-      actual = round(rowSums(W_balanced), 4))
-
-cat("\nColumn sums (should be 1):\n")
-round(colSums(W_balanced), 4)
-```
-
-The algorithm pseudocode:
-
-```
-W <- W_raw
-for iter in 1..max_iter:
-  W <- W * (row_targets / rowSums(W))        # scale rows
-  W <- t(t(W) * (col_targets / colSums(W)))  # scale columns
-  if max marginal error < tol: break
-```
-
-### 12.6 Before and after: what Sinkhorn changes
-
-```{r sinkhorn-comparison, eval = TRUE, fig.height = 4.5}
-W_std_long <- expand.grid(tract = 1:5, station = 1:3)
-W_std_long$weight <- as.vector(W_col)
-W_std_long$method <- "Column standardized"
-
-W_bal_long <- expand.grid(tract = 1:5, station = 1:3)
-W_bal_long$weight <- as.vector(W_balanced)
-W_bal_long$method <- "Sinkhorn balanced"
-
-both <- rbind(W_std_long, W_bal_long)
-both$method <- factor(both$method,
-  levels = c("Column standardized", "Sinkhorn balanced"))
-
-ggplot(both, aes(x = station, y = tract, fill = weight)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = round(weight, 3)), size = 3) +
-  facet_wrap(~method) +
-  scale_fill_viridis_c(option = "viridis", direction = -1) +
-  labs(title = "Weight Matrix: Before and After Sinkhorn",
-       x = "Station", y = "Tract") +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"))
-```
-
-Sinkhorn redistributes weight: over-weighted tracts (near many stations)
-get less, under-weighted tracts get more. The geographic "shape" of each
-row is preserved, but the "scale" changes to match population.
+Each station distributes exactly 100% of its data. The distribution
+across tracts is determined by the IDW kernel: tracts closer to a
+station receive more weight. The **alpha optimization** (Section 13)
+adjusts the decay parameters so that the resulting tract-level estimates
+match census demographics as closely as possible.
 
 **Key properties**:
 
-- The balanced matrix is **unique** for given row/column targets
-- **Non-negative**: if input is non-negative, output is non-negative
-- **Convergence guaranteed** when `sum(row_targets) = sum(col_targets)`
+- **Source conservation**: column sums are exactly 1
+- **Non-negative**: all weights are non-negative
+- **Deterministic**: no iterative procedure, just a single division
 - Unreachable tracts (all-zero rows) remain zero and are flagged
 
 
-## 12.7 Per-Bracket Sinkhorn: Matching Each Age Group Separately
+### 12.3 Per-Bracket Column Normalization
 
-### The problem: age groups have different geographies
+#### The problem: age groups have different geographies
 
 Think about the spatial distribution of voters by age. Young adults
 (18--24) cluster near universities, cheap rental apartments, and transit
@@ -928,70 +741,43 @@ neighborhoods, retirement communities, and areas with healthcare
 facilities. These spatial patterns differ substantially --- yet a single
 weight matrix must allocate *all* age groups simultaneously.
 
-With **aggregate** Sinkhorn (Sections 12.1--12.6), the weight matrix has
-one set of row targets: total population per tract, summed across all
-age brackets. The optimizer must find one set of weights that
-simultaneously matches multiple different demographic distributions. This is an inherent compromise: weights that
-correctly distribute 18--20 year-olds may systematically misallocate
-60--69 year-olds, and vice versa.
+With **aggregate** column normalization, the weight matrix has one set of
+weights for all age brackets. The optimizer must find one set of weights
+that simultaneously matches multiple different demographic distributions.
+This is an inherent compromise: weights that correctly distribute 18--20
+year-olds may systematically misallocate 60--69 year-olds, and vice
+versa.
 
-Consider a concrete scenario. Tract A is near a university with many
-young voters at station 1. Tract B is in a retirement neighborhood with
-elderly voters at station 3. Both tracts might have similar total
-populations, but their age profiles point to different stations. An
-aggregate weight matrix that averages over all age groups cannot capture
-this distinction.
+#### The per-bracket extension
 
-### The per-bracket extension
-
-**Per-bracket Sinkhorn** solves this by running a separate transport
-problem for each demographic bracket $k = 1, \ldots, K$. Instead of
-one weight matrix $W$, we build $K$ bracket-specific matrices
-$W^{(1)}, \ldots, W^{(K)}$, each with its own row and column
-constraints:
+**Per-bracket column normalization** addresses this by building a
+separate column-normalized weight matrix for each demographic bracket
+$k = 1, \ldots, K$. Instead of one weight matrix $W$, we build $K$
+bracket-specific matrices $W^{(1)}, \ldots, W^{(K)}$, each
+column-normalized independently:
 
 **For each bracket $k$:**
 
-1. **Row targets**: $r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}$
-   --- the census population of bracket $k$ in tract $i$, rescaled so
-   that the total row mass matches the total column mass for bracket $k$.
-2. **Column targets**: $c_j^{(k)} = S_{jk}$ --- the number of voters
-   of bracket $k$ at station $j$.
-3. **Sinkhorn balance**: apply the standard algorithm from Section 12
-   with targets $(r^{(k)}, c^{(k)})$ on the same IDW kernel $K$ to
-   produce $W^{(k)}$.
+1. **Compute the IDW kernel**: $K^{(k)}_{ij} = (t_{ij} + 1)^{-\alpha_{i}}$
+   (same kernel for all brackets, since alpha is shared)
+2. **Column-normalize**: $W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_i K^{(k)}_{ij}$
 
-The rescaling in step 1 ensures that $\sum_i r_i^{(k)} = \sum_j c_j^{(k)}$,
-which is the condition for Sinkhorn convergence.
+**Aggregate:**
 
-**Aggregate and finalize:**
+$$W_{\text{total}} = \frac{1}{K} \sum_{k=1}^{K} W^{(k)}$$
 
-$$W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}$$
+followed by a final column normalization to enforce source conservation
+(each station distributes exactly 100% of its data).
 
-followed by a final aggregate Sinkhorn pass with column targets
-$c_j = 1$ and row targets $r_i = \text{pop}_i / \sum \text{pop} \times M$
-to enforce overall source conservation (each station distributes exactly
-100% of its data).
+#### Why this works
 
-### Why this works better
-
-Each bracket's transport problem is simpler: it only needs to match one
-demographic column. The young-voter transport will naturally assign more
-weight to nearby stations with many young voters. The elderly-voter
-transport does the same for elderly voters. These bracket-specific
-solutions will generally differ because the spatial distribution of
-each age group is different.
-
-The aggregation step combines these bracket-specific patterns. A tract
-near a university gets more weight from the young-bracket transport on
-nearby youth-heavy stations, while still receiving appropriate weight
-from the elderly-bracket transport on nearby elderly-heavy stations.
-The final Sinkhorn pass ensures overall column sums remain 1.
-
-### Worked example
-
-We extend the toy example from Section 11 with two brackets whose
-spatial distributions differ sharply:
+Each bracket's column-normalized weights distribute that bracket's
+station-level data across tracts proportionally to the IDW kernel. The
+alpha optimization (Section 13) adjusts the decay parameters so that
+the resulting interpolated demographics match the census demographics
+across all brackets simultaneously. The per-bracket structure allows the
+loss function to separately account for each age group's spatial
+pattern.
 
 ```{r per-bracket-demo, eval = TRUE}
 # Bracket 1 ("young"): concentrated near station 1
@@ -1002,70 +788,38 @@ pop_old   <- c(40, 200, 100, 170, 230) # old pop per tract
 src_young <- c(150, 70, 40)  # young voters per station
 src_old   <- c(100, 330, 310) # old voters per station
 
-pop_mat_toy <- cbind(young = pop_young, old = pop_old)
-src_mat_toy <- cbind(young = src_young, old = src_old)
+# Per-bracket column normalization: each bracket uses the same
+# column-normalized kernel
+W_col <- t(t(W_raw) / colSums(W_raw))
 
-# Per-bracket weights: each bracket gets its own Sinkhorn transport
-W_total <- matrix(0, 5, 3)
-for (k in 1:2) {
-  rb <- pop_mat_toy[, k]
-  cb <- src_mat_toy[, k]
-  rb_scaled <- rb / sum(rb) * sum(cb)   # rescale so sum(r) == sum(c)
-  W_k <- sinkhorn_balance(W_raw, rb_scaled, cb)
-  W_total <- W_total + W_k
-}
-
-# Final aggregate Sinkhorn to enforce column-sum = 1
-pop_total_toy <- rowSums(pop_mat_toy)
-m_toy <- ncol(W_total)
-rt <- pop_total_toy / sum(pop_total_toy) * m_toy
-W_pb <- sinkhorn_balance(W_total, rt, rep(1, m_toy))
-
-# Compare: aggregate-only vs per-bracket
-W_agg <- sinkhorn_balance(W_raw, rt, rep(1, m_toy))
-
-# Interpolate BOTH brackets
-young_hat_agg <- as.numeric(W_agg %*% src_young)
-young_hat_pb  <- as.numeric(W_pb %*% src_young)
-old_hat_agg   <- as.numeric(W_agg %*% src_old)
-old_hat_pb    <- as.numeric(W_pb %*% src_old)
+# Interpolate both brackets
+young_hat <- as.numeric(W_col %*% src_young)
+old_hat   <- as.numeric(W_col %*% src_old)
 
 cat("=== Young bracket ===\n")
-cat("Census truth:             ", pop_young, "\n")
-cat("Aggregate Sinkhorn:       ", round(young_hat_agg), "\n")
-cat("Per-bracket Sinkhorn:     ", round(young_hat_pb), "\n")
-cat("Aggregate SSE:   ", round(sum((young_hat_agg - pop_young)^2)), "\n")
-cat("Per-bracket SSE: ", round(sum((young_hat_pb - pop_young)^2)), "\n")
+cat("Census truth:     ", pop_young, "\n")
+cat("Column-normalized:", round(young_hat), "\n")
+cat("SSE:             ", round(sum((young_hat - pop_young)^2)), "\n")
 
 cat("\n=== Old bracket ===\n")
-cat("Census truth:             ", pop_old, "\n")
-cat("Aggregate Sinkhorn:       ", round(old_hat_agg), "\n")
-cat("Per-bracket Sinkhorn:     ", round(old_hat_pb), "\n")
-cat("Aggregate SSE:   ", round(sum((old_hat_agg - pop_old)^2)), "\n")
-cat("Per-bracket SSE: ", round(sum((old_hat_pb - pop_old)^2)), "\n")
-
-cat("\n=== Total SSE across both brackets ===\n")
-total_agg <- sum((young_hat_agg - pop_young)^2) +
-  sum((old_hat_agg - pop_old)^2)
-total_pb <- sum((young_hat_pb - pop_young)^2) +
-  sum((old_hat_pb - pop_old)^2)
-cat("Aggregate:", round(total_agg), "\n")
-cat("Per-bracket:", round(total_pb), "\n")
+cat("Census truth:     ", pop_old, "\n")
+cat("Column-normalized:", round(old_hat), "\n")
+cat("SSE:             ", round(sum((old_hat - pop_old)^2)), "\n")
 ```
 
-The per-bracket approach recovers both demographic distributions more
-accurately because each bracket's transport is tailored to its own
-spatial pattern, rather than being forced into a one-size-fits-all
-compromise.
+The alpha optimization reduces this SSE by finding per-tract decay
+parameters that best match both demographic distributions.
 
 ```{r per-bracket-comparison-plot, eval = TRUE, fig.height = 5}
-# Visual comparison: aggregate vs per-bracket recovery
+# Visual comparison: census truth vs column-normalized estimate
+pop_mat_toy <- cbind(young = pop_young, old = pop_old)
 comparison_df <- data.frame(
   tract = rep(1:5, 4),
-  value = c(pop_young, pop_old, young_hat_pb, old_hat_pb),
+  value = c(pop_young, pop_old, young_hat, old_hat),
   bracket = rep(c("Young", "Old", "Young", "Old"), each = 5),
   source = rep(c("Census truth", "Census truth",
-                  "Per-bracket estimate", "Per-bracket estimate"),
+                  "Column-normalized estimate",
+                  "Column-normalized estimate"),
                each = 5)
 )
 
@@ -1074,30 +828,25 @@ ggplot(comparison_df,
   geom_col(position = "dodge", width = 0.7) +
   facet_wrap(~bracket, scales = "free_y") +
   scale_fill_manual(values = c("Census truth" = "#4575b4",
-                                "Per-bracket estimate" = "#fdae61")) +
-  labs(title = "Per-Bracket Sinkhorn: Recovery of Age-Group Profiles",
+                                "Column-normalized estimate" = "#fdae61")) +
+  labs(title = "Per-Bracket Column Normalization: Recovery of Age-Group Profiles",
        x = "Tract", y = "Population", fill = "") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
         legend.position = "bottom")
 ```
 
-### Connection to the optimizer
+#### Connection to the optimizer
 
-During PB-SGD optimization (Section 14), the per-bracket Sinkhorn is
-performed in **log-domain on 3D tensors** of shape
-`[ka × batch × m]`, where `ka` is the number of active demographic
-brackets and `batch` is the number of sampled tracts per SGD step.
-This vectorizes all $K$ separate transport problems into a single
-batched matrix computation on GPU or CPU, making it nearly as fast as a
-single aggregate Sinkhorn pass. Section 14.3 derives the log-domain
-Sinkhorn updates, and Section 14.4 presents the complete 3D-tensor
-pseudocode.
+During optimization (Section 14), the per-bracket column normalization
+is performed on 3D tensors of shape `[ka x n x m]`, where `ka` is the
+number of active demographic brackets. This vectorizes all $K$ separate
+normalization operations into a single batched computation on GPU or
+CPU.
 
 After optimization, the weight matrix $W$ is returned directly from
 `optimize_alpha()` as `result$W`. It can also be recomputed from
-pre-existing alpha values using `compute_weight_matrix()`, which runs
-the same 3D Sinkhorn IPF on torch (CPU or GPU):
+pre-existing alpha values using `compute_weight_matrix()`:
 
 ```{r per-bracket-final, eval = FALSE}
 # W is already in the optimization result
@@ -1110,8 +859,7 @@ W <- compute_weight_matrix(time_matrix, alpha,
 ```
 
 When `pop_matrix` and `source_matrix` are provided, the function
-automatically uses per-bracket mode. Without them, it falls back to
-single-Sinkhorn mode for backward compatibility.
+automatically uses per-bracket mode.
 
 
 # Part V: Calibration and Optimization
@@ -1121,8 +869,8 @@ single-Sinkhorn mode for backward compatibility.
 ### 13.1 The key insight
 
 We have all the ingredients: travel times, an IDW kernel parametrized by
-$\alpha$, and Sinkhorn balancing to enforce constraints. Now we need to
-find the right $\alpha$.
+$\alpha$, and column normalization to enforce source conservation. Now
+we need to find the right $\alpha$.
 
 Here is the calibration logic: **if the weights are correct, then
 interpolating voter age profiles from stations should recover the census
@@ -1150,8 +898,8 @@ In words:
 1. **Initialize**: set $\alpha_i = 1$ for all tracts (moderate decay)
 2. **Build the IDW kernel**: compute raw weights from travel times and
    current $\alpha$
-3. **Sinkhorn balance**: enforce row and column constraints
-4. **Interpolate demographics**: multiply balanced weights by
+3. **Column-normalize**: enforce source conservation (column sums = 1)
+4. **Interpolate demographics**: multiply normalized weights by
    station-level age profiles
 5. **Compare with census**: compute the squared error between
    interpolated and census age profiles
@@ -1160,7 +908,7 @@ In words:
 7. **Repeat** until the error stops decreasing
 
 Each iteration of this loop evaluates the complete forward pass:
-$\alpha \to \text{kernel} \to \text{Sinkhorn} \to \text{interpolation}
+$\alpha \to \text{kernel} \to \text{column-normalize} \to \text{interpolation}
 \to \text{error}$.
 
 ### 13.3 The formal objective
@@ -1170,14 +918,15 @@ $$f(\alpha) = \sum_i \sum_k \left( \hat{V}_{ik} - P_{ik} \right)^2$$
 where:
 
 - $\hat{V} = W(\alpha) \times S$ --- interpolated voter demographics
-  per tract, with $W$ built via per-bracket Sinkhorn (Section 12.7)
+  per tract, with $W$ built via per-bracket column normalization
+  (Section 12.3)
 - $P$ --- census demographics per tract
 - $k$ = demographic bracket index ($K = 7$ for age-only calibration,
   $K = 14$ for full gender × age calibration)
 
-The weight matrix $W(\alpha)$ is the sum of per-bracket transport
-matrices $W^{(k)}$, each balanced to match bracket $k$'s row/column
-targets, followed by a final aggregate Sinkhorn pass.
+The weight matrix $W(\alpha)$ is the aggregation of per-bracket
+column-normalized matrices $W^{(k)}$, followed by a final column
+normalization pass.
 
 ```{r objective-landscape, eval = TRUE, fig.height = 4.5, warning = FALSE}
 # Simplified case: all tracts share the same alpha
@@ -1187,11 +936,10 @@ src_matrix_toy <- matrix(c(250, 400, 350), ncol = 1)
 
 alpha_range <- seq(0.1, 8, by = 0.1)
 sse_values <- sapply(alpha_range, function(a) {
-  # Compute Sinkhorn-balanced weights and SSE manually
+  # Compute column-normalized weights and SSE
   K <- tt_adj ^ (-a)
   K[!is.finite(K)] <- 0
-  r <- pop_toy / sum(pop_toy) * 3
-  W <- sinkhorn_balance(K, row_targets = r, col_targets = rep(1, 3))
+  W <- t(t(K) / colSums(K))  # column-normalize
   v_hat <- W %*% src_matrix_toy
   sum((v_hat - pop_matrix_toy)^2)
 })
@@ -1213,55 +961,25 @@ ggplot(data.frame(alpha = alpha_range, sse = sse_values),
 The landscape has a clear minimum. In practice, each tract has its own
 alpha, creating a high-dimensional optimization problem.
 
-### 13.4 Sinkhorn iterations during optimization (`sk_iter`)
-
-The objective function $f(\alpha)$ depends on Sinkhorn-balanced weights.
-In principle, exact Sinkhorn convergence would require hundreds of
-iterations per evaluation. But during SGD optimization, we only need
-gradients that point in approximately the right direction --- not exact
-ones. This opens a key tradeoff:
-
-- **Too few iterations** (e.g., `sk_iter = 3`): the per-bracket
-  transport is poorly approximated. Row and column targets are far from
-  satisfied. Gradients are noisy and may point in wrong directions,
-  causing the optimizer to diverge or get stuck.
-- **Too many iterations** (e.g., `sk_iter = 50`): the transport is
-  nearly exact, but memory grows as $O(k_a \times b \times m \times
-  \texttt{sk\_iter})$ because torch must store intermediate tensors for
-  backpropagation through all unrolled iterations. On GPU, this can
-  exceed available VRAM for large cities.
-- **The sweet spot** (`sk_iter = 15`): experiments across municipalities
-  of varying sizes (Varginha, Niteroi, Belo Horizonte, São Paulo) showed
-  that 15 iterations achieve near-optimal spatial variation in the
-  resulting alpha vectors while keeping memory usage well within GPU
-  limits. Beyond 15, the marginal improvement in gradient quality is
-  negligible.
-
-The default `sk_iter = 15` balances gradient accuracy against memory
-cost. The **final** weight matrix is returned directly from
-`optimize_alpha()` (or can be recomputed via `compute_weight_matrix()`
-with full convergence), so the final interpolation uses the same
-converged Sinkhorn transport regardless of `sk_iter` during training.
-
-
-## 14. Optimization: Per-Bracket SGD with Log-Domain Sinkhorn
+## 14. Optimization: Per-Bracket Gradient Descent with Column Normalization
 
 ### 14.1 Why automatic differentiation?
 
-The objective function involves $K$ iterations of Sinkhorn scaling. Each
-iteration multiplies, divides, sums — all standard operations. But
-writing the analytical gradient of the loss function through $K$
-unrolled Sinkhorn iterations by hand is tedious and error-prone.
+The objective function involves column normalization of the IDW kernel,
+followed by matrix multiplication and a squared-error loss. Writing the
+analytical gradient by hand is straightforward for simple column
+normalization, but becomes tedious when combined with the per-bracket
+structure and exponential reparameterization.
 
 Torch's **automatic differentiation** handles this: we define the
-forward pass (kernel → Sinkhorn → interpolation → loss), and torch
-computes the gradient of the loss with respect to $\alpha$ automatically
-by recording every operation and applying the chain rule backward.
+forward pass (kernel -> column-normalize -> interpolation -> loss), and
+torch computes the gradient of the loss with respect to $\alpha$
+automatically by recording every operation and applying the chain rule
+backward.
 
-### 14.2 Why log-domain Sinkhorn?
+### 14.2 Log-domain computation for numerical stability
 
-The standard Sinkhorn algorithm multiplies weights directly. But when
-$\alpha$ is large and travel times vary widely, some weights become
+When $\alpha$ is large and travel times vary widely, some weights become
 astronomically small:
 
 ```{r underflow-demo, eval = TRUE}
@@ -1273,53 +991,24 @@ raw <- (tt_demo + 1)^(-alpha_high)
 cat("Raw weights at alpha = 8:\n")
 cat(formatC(raw, format = "e", digits = 2), "\n")
 cat("\nIn float32, values below ~1.2e-38 become exactly 0\n")
-cat("Zero weights cause division by zero in Sinkhorn scaling\n")
+cat("Zero weights cause division by zero in column normalization\n")
 ```
 
 In 32-bit floating point (standard for GPU computation), numbers smaller
 than about $1.2 \times 10^{-38}$ underflow to zero. When a weight
-becomes exactly zero, the Sinkhorn row/column scaling produces
-$0/0 = \text{NaN}$, and the optimization collapses.
+becomes exactly zero, the column normalization produces $0/0 = \text{NaN}$,
+and the optimization collapses.
 
-**The log-domain solution**: instead of storing the tiny weights
-directly, store their **logarithms**. A weight of $10^{-20}$ has
-$\log(10^{-20}) = -46$, which is perfectly representable in float32.
+**The log-domain solution**: the IDW kernel is computed in log space
+as $\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$, and the
+column normalization uses the **logsumexp** trick for numerical
+stability. The logsumexp function $\log(\sum_j \exp(x_j))$ is a
+numerically stable primitive available in torch.
 
-### 14.3 Deriving the log-domain Sinkhorn updates
+### 14.3 The column normalization algorithm
 
-Start from the standard Sinkhorn row update. In the classical algorithm,
-we maintain scaling vectors $u$ and $v$ such that
-$W_{ij} = u_i \cdot K_{ij} \cdot v_j$:
-
-$$u_i = \frac{r_i}{\sum_j K_{ij} \cdot v_j}$$
-
-Take the logarithm of both sides:
-
-$$\log u_i = \log r_i - \log\left(\sum_j K_{ij} \cdot v_j\right)$$
-
-Rewrite the sum inside the log by expressing everything in log space:
-
-$$\log u_i = \log r_i - \log\left(\sum_j \exp(\log K_{ij} + \log v_j)\right)$$
-
-The operation $\log\left(\sum_j \exp(x_j)\right)$ is the **logsumexp**
-function — a numerically stable primitive available in torch:
-
-$$\log u_i = \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)$$
-
-Similarly, the column update (with column target $c_j = 1$, so
-$\log c_j = 0$):
-
-$$\log v_j = -\text{logsumexp}_i(\log K_{ij} + \log u_i)$$
-
-And the log-kernel is simply:
-
-$$\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$$
-
-### 14.4 The complete per-bracket log-domain Sinkhorn algorithm
-
-The optimizer performs Sinkhorn transport **per bracket** on 3D tensors.
-Before reading the pseudocode, it helps to understand the tensor shapes
-involved:
+The optimizer performs per-bracket column normalization on 3D tensors.
+The tensor shapes involved:
 
 | Symbol | Shape | Meaning |
 |---|---|---|
@@ -1327,105 +1016,43 @@ involved:
 | `alpha` | $[n]$ | Decay parameters (what we're optimizing) |
 | `P` | $[n \times k_a]$ | Census population per tract and bracket |
 | `V` | $[m \times k_a]$ | Voter counts per station and bracket |
-| `r_mat` | $[k_a \times n]$ | Row targets: bracket × tract |
-| `c_mat` | $[k_a \times m]$ | Column targets: bracket × station |
-| `log_K_3d` | $[k_a \times b \times m]$ | 3D log-kernel (broadcast) |
-| `log_u` | $[k_a \times b \times 1]$ | Log row-scaling factors |
-| `log_v` | $[k_a \times 1 \times m]$ | Log column-scaling factors |
-| `W_all` | $[k_a \times b \times m]$ | Per-bracket weight tensors |
+| `log_K` | $[n \times m]$ | Log-kernel (broadcast to 3D) |
+| `W_all` | $[k_a \times n \times m]$ | Per-bracket weight tensors |
 
-The first dimension ($k_a$) indexes demographic brackets. The second
-dimension ($b$) indexes the sampled tracts in the mini-batch. The third
-dimension ($m$) indexes stations. All $k_a$ brackets share the same
-log-kernel --- only the row/column targets differ --- so the Sinkhorn
-updates can be computed in a single vectorized operation across brackets.
+The first dimension ($k_a$) indexes demographic brackets. All $k_a$
+brackets share the same kernel --- column normalization is applied
+independently to each bracket slice.
 
 ```
-Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka], sk_iter, batch_size
+Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka]
 
-# Preprocess: per-bracket row/column targets (done once)
-for each bracket b in 1..ka:
-    r_mat[b,:] = P[:,b] / sum(P[:,b]) * sum(V[:,b])  # rescale rows
-    c_mat[b,:] = V[:,b]
+# Log-kernel (same for all brackets)
+log_K[i,j] = -alpha[i] * log_t[i, j]                  # [n x m]
 
-# --- PB-SGD step (repeated across max_epochs epochs) ---
-# Sample mini-batch of b tracts
-idx = sample(1..n, batch_size)
-r_batch = r_mat[:, idx]                    # [ka x b]
+# Column normalization in log domain (per bracket)
+log_colsum[j] = logsumexp_i(log_K[i,j])               # [m]
+W[i,j] = exp(log_K[i,j] - log_colsum[j])              # [n x m]
 
-# Column scaling: adjust column targets to match the mini-batch
-# (see explanation below)
-c_batch = c_mat * (rowSums(r_batch) / rowSums(r_mat))  # [ka x m]
-
-# Build 3D log-targets (unsqueeze for broadcasting)
-log_r_3d = log(r_batch)                     # [ka x b x 1]
-log_c_3d = log(c_batch)                     # [ka x 1 x m]
-
-# Log-kernel for batch (same kernel for all brackets)
-log_K[i,j] = -alpha[idx[i]] * log_t[idx[i], j]   # [b x m]
-log_K_3d = log_K expanded to [ka x b x m]   # broadcast across brackets
-
-# Log-domain Sinkhorn iterations (per bracket, batched)
-log_u = zeros(ka, b, 1)
-log_v = zeros(ka, 1, m)
-
-for k = 1 to sk_iter:
-    log_u = log_r_3d - logsumexp_j(log_K_3d + log_v)   # row update
-    log_v = log_c_3d - logsumexp_i(log_K_3d + log_u)   # column update
-
-# Recover weights, aggregate brackets, and column-normalize
-W_all = exp(log_u + log_K_3d + log_v)       # [ka x b x m]
-W_total = sum(W_all, dim=bracket)            # [b x m]
-W_norm = W_total / colSums(W_total)          # column-normalize
-
-# Compute loss (scaled for batch → full-data estimate)
-V_scaled = V * (b / n)
-V_hat = W_norm @ V_scaled                    # [b x ka]
-loss = sum((V_hat - P[idx,:])^2) * (n / b)
+# Per-bracket: broadcast W to [ka x n x m], then interpolate
+V_hat = W @ V                                          # [n x ka]
+loss = sum((V_hat - P)^2)
 ```
 
 Every operation --- log, exp, logsumexp, matrix multiply, subtraction,
 squaring --- has a defined backward pass in torch. The gradient
-$\nabla_\alpha f$ flows backward through all `sk_iter` Sinkhorn
-iterations automatically.
+$\nabla_\alpha f$ flows backward through the column normalization
+automatically.
 
-**Why scale the column targets?** When we sample a mini-batch of $b$
-tracts from the full set of $n$, the row targets for the batch
-(`r_batch`) sum to less than the full row targets (`r_mat`). But the
-column targets (voter counts at stations) remain the same --- we haven't
-sampled stations, only tracts. If we used the full column targets, the
-Sinkhorn problem would be inconsistent: row sums would be much smaller
-than column sums, and the algorithm would fail to converge. The fix is
-to scale each bracket's column targets by the ratio
-$\text{sum}(r_{\text{batch}}^{(k)}) / \text{sum}(r_{\text{full}}^{(k)})$,
-so that the mini-batch Sinkhorn problem has matching row and column
-totals. This ensures that each mini-batch step solves a well-posed
-transport problem that is consistent with the full-data objective.
-
-**Key design choices:**
-
-1. **3D tensors**: all $k_a$ brackets are batched into a single
-   `[ka × b × m]` tensor, enabling efficient GPU parallelism
-2. **Per-bracket targets**: each bracket has its own row/column targets,
-   giving each age group its own spatial transport solution
-3. **Batch scaling**: `V_scaled` is scaled by `b/n` and the loss by
-   `n/b` so that the gradient is an unbiased estimate of the full-data
-   gradient, regardless of batch size
-
-### 14.5 PB-SGD: Per-Bracket Stochastic Gradient Descent
+### 14.4 ADAM optimization with per-bracket weights
 
 We use **ADAM** (Adaptive Moment Estimation) as the underlying optimizer,
-with **epoch-based mini-batch sampling** and **per-bracket Sinkhorn
-transport**. Each epoch is one full shuffled pass through all n tracts,
-divided into sequential batches of `batch_size`. At each gradient step
-within an epoch:
+with **per-bracket column normalization**. At each gradient step:
 
-1. **Sample** the next mini-batch of tracts from the shuffled epoch order
-2. **Per-bracket Sinkhorn**: each demographic column gets its own
-   log-domain Sinkhorn transport on `[ka x batch x m]` tensors
-3. **Aggregate** bracket contributions and column-normalize
-4. **Compute loss**: scaled SSE between interpolated and observed values
-5. **Backward + Adam step** on the unconstrained `theta` parameters
+1. **Build the IDW kernel** from current alpha values
+2. **Per-bracket column normalization**: each demographic column uses the
+   same column-normalized kernel
+3. **Compute loss**: SSE between interpolated and observed values
+4. **Backward + Adam step** on the unconstrained `theta` parameters
 
 At the end of each epoch, the **true objective** is evaluated on the full
 dataset (no gradient) and used for convergence monitoring and logging.
@@ -1434,12 +1061,12 @@ dataset (no gradient) and used for convergence monitoring and logging.
 Instead we optimize `theta` (unconstrained) where `alpha = exp(theta)`,
 initialized as `theta = log(alpha_init)`. This ensures:
 
-- Alpha is always strictly positive — no clamping or projection needed
-- Gradient `d(alpha)/d(theta) = alpha` — no saturation at any boundary
+- Alpha is always strictly positive --- no clamping or projection needed
+- Gradient `d(alpha)/d(theta) = alpha` --- no saturation at any boundary
 - Corner solutions due to hard boundary constraints cannot occur
 
 The learning rate is reduced by half when the epoch loss plateaus
-(ReduceLROnPlateau with patience = 2 × early-stop patience).
+(ReduceLROnPlateau with patience = 2 x early-stop patience).
 
 ```{r optimize-call, eval = FALSE}
 optim_result <- optimize_alpha(
@@ -1447,9 +1074,7 @@ optim_result <- optimize_alpha(
   pop_matrix    = pop_matrix,
   source_matrix = source_matrix,
   row_targets   = row_targets,
-  batch_size    = 500,     # tracts per step (full-batch if n <= 500)
-  sk_iter       = 15,      # Sinkhorn iterations per step
-  max_epochs    = 200,     # maximum epochs (full passes through all tracts)
+  max_epochs    = 200,     # maximum epochs
   lr_init       = 0.05,    # initial learning rate (auto-reduced on plateau)
   use_gpu       = FALSE    # CPU for small problems
 )
@@ -1460,18 +1085,14 @@ knitr::include_graphics("figures/optim-convergence.png")
 ```
 
 The epoch loss curve shows the **true objective** evaluated on all tracts
-at the end of each epoch — not a noisy mini-batch estimate. Each epoch
-covers all tracts exactly once (in shuffled order), so every tract
-receives exactly one gradient update per epoch. The package tracks the
-best epoch loss and returns the corresponding alpha values.
+at the end of each epoch. The package tracks the best epoch loss and
+returns the corresponding alpha values.
 
 **Key tuning parameters**:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `batch_size` | 500 | Tracts per gradient step. Smaller = less memory. |
-| `sk_iter` | 15 | Sinkhorn iterations per step. Higher = more accurate transport. |
-| `max_epochs` | 200 | Maximum epochs (full passes through all tracts). |
+| `max_epochs` | 200 | Maximum epochs. |
 | `lr_init` | 0.05 | Initial learning rate. Auto-reduced when loss plateaus. |
 | `dtype` | `"float32"` | `"float64"` for more precision (2x memory). |
 
@@ -1601,16 +1222,12 @@ preserved exactly.
 
 ```{r conservation-demo, eval = TRUE}
 votes <- c(500, 800, 700)
-interpolated_votes <- as.numeric(W_balanced %*% votes)
+interpolated_votes <- as.numeric(W_col %*% votes)
 
 cat("Source total:", sum(votes), "\n")
 cat("Interpolated total:", round(sum(interpolated_votes)), "\n")
 cat("Per-tract:", round(interpolated_votes), "\n")
 ```
-
-**Row conservation** (population proportionality):
-
-$$\sum_j W_{ij} = r_i = \frac{\text{pop}_i}{\sum \text{pop}} \times m$$
 
 **Calibration residuals**:
 
@@ -1633,9 +1250,9 @@ knitr::include_graphics(
 ```
 
 The blue bars show the census truth (population by age bracket) and the
-yellow bars show the Sinkhorn-interpolated voter profiles. The
-interpolation closely recovers the distinctive age patterns of both
-neighborhoods: Rocinha's young skew and Copacabana's aging profile.
+yellow bars show the IDW-interpolated voter profiles. The interpolation
+closely recovers the distinctive age patterns of both neighborhoods:
+Rocinha's young skew and Copacabana's aging profile.
 
 This is a demanding test. The method does not know anything about
 Rocinha or Copacabana as neighborhoods --- it only sees census tracts and
@@ -1668,22 +1285,23 @@ How well do the two methods recover the census age structure? The
 following figure compares predicted versus observed demographic profiles
 across all four cities:
 
-```{r fig-voronoi-scatter, echo = FALSE, out.width = "100%"}
-knitr::include_graphics("figures/voronoi-vs-sinkhorn-scatter.png")
+```{r fig-voronoi-scatter, echo = FALSE, eval = FALSE, out.width = "100%"}
+# Figure removed — to be regenerated with updated labels
+# knitr::include_graphics("figures/voronoi-vs-idw-scatter.png")
 ```
 
-Sinkhorn points cluster tightly around the 45-degree line in every city.
+IDW points cluster tightly around the 45-degree line in every city.
 Voronoi points show much more scatter --- many tracts have large
 prediction errors because they were assigned to a station with a very
 different demographic composition.
 
-```{r fig-voronoi-residuals, echo = FALSE, out.width = "100%"}
-knitr::include_graphics(
-  "figures/voronoi-vs-sinkhorn-residuals.png")
+```{r fig-voronoi-residuals, echo = FALSE, eval = FALSE, out.width = "100%"}
+# Figure removed — to be regenerated with updated labels
+# knitr::include_graphics("figures/voronoi-vs-idw-residuals.png")
 ```
 
 The residual boxplots confirm the pattern across all four cities:
-Sinkhorn residuals are tightly centered around zero, while Voronoi
+IDW residuals are tightly centered around zero, while Voronoi
 residuals have much larger spread.
 
 The aggregate SSE ratio quantifies the advantage:
@@ -1692,8 +1310,8 @@ The aggregate SSE ratio quantifies the advantage:
 knitr::include_graphics("figures/voronoi-sse-ratio-cities.png")
 ```
 
-In every city, the Sinkhorn method achieves dramatically lower squared
-error than Voronoi assignment --- by a factor of 275x (Cuiabá) to
+In every city, the IDW method achieves dramatically lower squared
+error than Voronoi assignment --- by a factor of 275x (Cuiaba) to
 1,624x (Manaus), with Palmas at 601x and Natal at 639x. The advantage
 is consistent across cities of different sizes and urban layouts,
 confirming that smooth, calibrated weighting is fundamentally superior
@@ -1735,8 +1353,8 @@ influence of extreme values and improve linearity.
 
 ## 18. Performance and Tuning
 
-All timings below assume default PB-SGD parameters:
-`batch_size = 500`, `sk_iter = 15`, `max_epochs = 200`, `dtype = "float32"`.
+All timings below assume default optimization parameters:
+`max_epochs = 200`, `dtype = "float32"`.
 
 | Problem size (tracts) | Recommendation | Typical optimization time |
 |---|---|---|
@@ -1762,29 +1380,25 @@ matrix construction, which can dominate for larger cities.
 components:
 
 1. **Full kernel matrix** (always in memory): $n \times m \times
-   \text{bytes}$ --- e.g., 5,100 × 407 × 4 ≈ 8 MB for Belo
+   \text{bytes}$ --- e.g., 5,100 x 407 x 4 = 8 MB for Belo
    Horizonte in float32.
-2. **3D Sinkhorn tensors** (the main cost): $k_a \times
-   \min(\texttt{batch\_size}, n) \times m \times \text{bytes} \times
-   (2 + 2 \times \texttt{sk\_iter})$ --- torch must store intermediate
-   tensors for backpropagation through all unrolled Sinkhorn iterations.
+2. **Per-bracket weight tensors**: $k_a \times n \times m \times
+   \text{bytes}$ --- torch must store intermediate tensors for
+   backpropagation through the column normalization.
 
-where $k_a$ is the number of active demographic brackets (7 for
-`calib_type = "age_only"`, 14 for `calib_type = "full"`) and
-`bytes` is 4 (float32) or 8 (float64).
+where $k_a = 14$ (gender × 7 age brackets) and `bytes` is
+4 (float32) or 8 (float64).
 
 | Municipality | Tracts | Stations | $k_a$ | Estimated GPU memory |
 |---|---|---|---|---|
 | Varginha | 279 | 37 | 14 | ~28 MB |
-| Niterói | 1,169 | 135 | 14 | ~242 MB |
+| Niteroi | 1,169 | 135 | 14 | ~242 MB |
 | Belo Horizonte | 5,113 | 407 | 14 | ~729 MB |
 | Rio de Janeiro | 13,370 | 1,392 | 14 | ~2.5 GB |
 
 These are actual values reported by the optimizer during precomputation.
-With `calib_type = "age_only"` ($k_a = 7$), memory is approximately 2×
-smaller. For very large cities on GPU, consider reducing `batch_size` or
-`sk_iter`, or switching to `dtype = "float32"` (the default) if using
-`"float64"`.
+For very large cities on GPU, consider using `dtype = "float32"`
+(the default) rather than `"float64"` to halve memory usage.
 
 **RStudio**: torch inside RStudio IDE requires subprocess execution via
 `callr` (automatic and transparent to the user). Standalone R scripts
@@ -1834,9 +1448,8 @@ interpElections_cache_clean()      # clear cache
 - $P \in \mathbb{R}^{N \times K}$: census population by age bracket
 - $S \in \mathbb{R}^{M \times K}$: voter counts by age bracket at
   stations
-- $r \in \mathbb{R}^N$: row targets
-  ($r_i = \text{pop}_i / \sum \text{pop} \times M$)
-- $c \in \mathbb{R}^M$: column targets ($c_j = 1$)
+- $c \in \mathbb{R}^M$: column targets ($c_j = 1$, enforced by column
+  normalization)
 
 ### IDW kernel
 
@@ -1846,97 +1459,36 @@ $$K_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
 
 $$\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$$
 
-### Sinkhorn iterations (log-domain, single bracket)
+### Column normalization
 
-Initialize: $\log u = \mathbf{0}_{N \times 1}$,
-$\log v = \mathbf{0}_{1 \times M}$
+$$W_{ij} = \frac{K_{ij}}{\sum_{i'} K_{i'j}}$$
 
-For $k = 1$ to $K_{\text{sink}}$:
-$$\log u_i \leftarrow \log r_i - \text{logsumexp}_j(\log K_{ij} + \log v_j)$$
-$$\log v_j \leftarrow -\text{logsumexp}_i(\log K_{ij} + \log u_i)$$
+In log domain (for numerical stability):
 
-### Balanced weight matrix (single bracket)
+$$W_{ij} = \exp\!\left(\log K_{ij} - \text{logsumexp}_i(\log K_{ij})\right)$$
 
-$$W_{ij} = \exp(\log u_i + \log K_{ij} + \log v_j)$$
-
-### Per-bracket Sinkhorn
+### Per-bracket column normalization
 
 For each demographic bracket $k = 1, \ldots, K$:
 
-1. Rescale row targets: $r_i^{(k)} = P_{ik} / \sum_i P_{ik} \cdot \sum_j S_{jk}$
-2. Set column targets: $c_j^{(k)} = S_{jk}$
-3. Run Sinkhorn with $(r^{(k)}, c^{(k)})$ on kernel $K$ to get $W^{(k)}$
+1. Compute kernel: $K_{ij} = (t_{ij} + 1)^{-\alpha_i}$
+2. Column-normalize: $W^{(k)}_{ij} = K_{ij} / \sum_{i'} K_{i'j}$
 
-Aggregate:
+Aggregate and column-normalize:
 $$W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}$$
-
-Final balance: run Sinkhorn on $W_{\text{total}}$ with aggregate
-row targets $r_i = \text{pop}_i / \sum \text{pop} \times M$ and column
-targets $c_j = 1$.
-
-### Per-bracket Sinkhorn on 3D tensors (PB-SGD)
-
-During optimization, the per-bracket Sinkhorn is vectorized across
-brackets on 3D tensors. Let $k_a$ = number of active brackets,
-$b$ = mini-batch size, $M$ = number of stations.
-
-**Preprocessing** (done once before the SGD loop):
-
-Per-bracket row targets $r^{(k)} \in \mathbb{R}^N$ and column targets
-$c^{(k)} \in \mathbb{R}^M$ are stored in matrices:
-$R \in \mathbb{R}^{k_a \times N}$, $C \in \mathbb{R}^{k_a \times M}$.
-
-**Per-step computation** (for a sampled batch of indices $\mathcal{B}$,
-$|\mathcal{B}| = b$):
-
-Mini-batch targets:
-$$R_{\text{batch}} = R[:, \mathcal{B}] \in \mathbb{R}^{k_a \times b}, \qquad
-C_{\text{batch},k} = C_k \cdot \frac{\sum_i R_{\text{batch},ki}}{\sum_i R_{ki}} \in \mathbb{R}^{k_a \times M}$$
-
-Initialize:
-$$\log u \in \mathbb{R}^{k_a \times b \times 1} = \mathbf{0}, \qquad
-\log v \in \mathbb{R}^{k_a \times 1 \times M} = \mathbf{0}$$
-
-Log-kernel (shared across brackets):
-$$\log K_{ij} = -\alpha_{\mathcal{B}(i)} \cdot \log(t_{\mathcal{B}(i),j} + 1) \in \mathbb{R}^{b \times M}$$
-
-Broadcast to 3D: $\log K^{3D} \in \mathbb{R}^{k_a \times b \times M}$
-(identical across the bracket dimension).
-
-For $\ell = 1$ to `sk_iter`:
-$$\log u_{k,i,\cdot} \leftarrow \log r^{(k)}_{\text{batch},i} - \text{logsumexp}_j\!\left(\log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times 1]$$
-$$\log v_{k,\cdot,j} \leftarrow \log c^{(k)}_{\text{batch},j} - \text{logsumexp}_i\!\left(\log K^{3D}_{k,i,j} + \log u_{k,i,\cdot}\right) \quad [k_a \times 1 \times M]$$
-
-Recover per-bracket weights and aggregate across brackets:
-$$W^{\text{all}}_{k,i,j} = \exp\!\left(\log u_{k,i,\cdot} + \log K^{3D}_{k,i,j} + \log v_{k,\cdot,j}\right) \quad [k_a \times b \times M]$$
-$$W^{\text{batch}}_{ij} = \sum_{k=1}^{k_a} W^{\text{all}}_{k,i,j} \quad [b \times M]$$
-
-Column-normalize:
-$$W^{\text{norm}}_{ij} = W^{\text{batch}}_{ij} \bigg/ \sum_{i'} W^{\text{batch}}_{i'j} \quad [b \times M]$$
-
-### Mini-batch loss
-
-$$\hat{V} = W^{\text{norm}} \cdot (S \cdot b/N) \quad [b \times K]$$
-$$f_{\text{batch}} = \frac{N}{b} \sum_{i \in \mathcal{B}} \sum_k (\hat{V}_{ik} - P_{ik})^2$$
-
-The scaling factors $b/N$ and $N/b$ ensure that the gradient is an
-unbiased estimator of the full-data gradient.
+$$W_{ij} = W_{\text{total},ij} \bigg/ \sum_{i'} W_{\text{total},i'j}$$
 
 ### Objective function (full data)
 
 $$f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i=1}^N \sum_{k=1}^K \left( \sum_{j=1}^M W_{ij} S_{jk} - P_{ik} \right)^2$$
 
 where $W(\alpha) \in \mathbb{R}^{N \times M}$ is the per-bracket
-Sinkhorn weight matrix.
+column-normalized weight matrix.
 
 ### Gradient
 
-Computed by torch autograd through the unrolled per-bracket Sinkhorn
-iterations on 3D tensors. Each operation (log, exp, logsumexp, matrix
-multiply, subtraction, squaring) has a defined backward pass in torch:
+Computed by torch autograd through the column normalization. Each
+operation (log, exp, logsumexp, matrix multiply, subtraction, squaring)
+has a defined backward pass in torch:
 
-$$\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{pb\_sinkhorn}(\text{kernel}(\alpha), P, S) \cdot S - P \|_F^2$$
-
-The gradient flows backward through all `sk_iter` Sinkhorn iterations.
-Only the components corresponding to the sampled batch indices
-$\mathcal{B}$ are used to update ADAM moments (gradient masking).
+$$\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{colnorm}(\text{kernel}(\alpha)) \cdot S - P \|_F^2$$

@@ -37,12 +37,10 @@ articles:
       - working-with-results
 
 reference:
-  - title: Core Sinkhorn Engine
-    desc: Build weights, evaluate the objective, and optimize decay parameters.
+  - title: Core Engine
+    desc: Build weights and optimize decay parameters.
     contents:
-      - sinkhorn_balance
-      - sinkhorn_weights
-      - sinkhorn_objective
+      - compute_weight_matrix
       - optimize_alpha
 
   - title: High-Level Wrappers

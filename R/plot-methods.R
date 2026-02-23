@@ -36,8 +36,8 @@
 #' @param caption Plot caption. NULL = auto-generated source note.
 #'   Use `""` to suppress.
 #' @param show_sources Overlay source points (polling stations)
-#'   on the map. Requires `sources_sf` in the result
-#'   (use `keep = "sources_sf"` when interpolating). Default: FALSE.
+#'   on the map. Requires `electoral_sf` in the result
+#'   (use `keep = "electoral_sf"` when interpolating). Default: FALSE.
 #' @param border_color Tract border color. Default: `"white"`.
 #' @param border_width Tract border width. Default: 0.05.
 #' @param limits Bounding box for the map extent as
@@ -158,7 +158,7 @@ plot.interpElections_result <- function(
     .map_theme()
 
   # Municipality contour
-  border_layer <- .muni_border_layer(x$code_muni, plot_sf)
+  border_layer <- .muni_border_layer(x$code_muni, plot_sf, x$muni_boundary)
   if (!is.null(border_layer)) p <- p + border_layer
 
   # Crop to limits (interpreted as lon/lat, transformed to data CRS)
@@ -197,16 +197,16 @@ plot.interpElections_result <- function(
 
   # Overlay source points if requested
   if (show_sources) {
-    if (!is.null(x$sources_sf)) {
+    if (!is.null(x$electoral_sf)) {
       p <- p + ggplot2::geom_sf(
-        data = x$sources_sf,
+        data = x$electoral_sf,
         color = "black", size = 0.5, alpha = 0.6,
         inherit.aes = FALSE
       )
     } else {
       warning(
-        "show_sources = TRUE but no sources_sf in result. ",
-        "Re-run with keep = \"sources_sf\".",
+        "show_sources = TRUE but no electoral_sf in result. ",
+        "Re-run with keep = \"electoral_sf\".",
         call. = FALSE
       )
     }
@@ -289,7 +289,7 @@ autoplot.interpElections_result <- function(object, ...) {
     .map_theme()
 
   # Municipality contour
-  border_layer <- .muni_border_layer(x$code_muni, x$tracts_sf)
+  border_layer <- .muni_border_layer(x$code_muni, x$tracts_sf, x$muni_boundary)
   if (!is.null(border_layer)) p <- p + border_layer
 
   # Crop to limits (interpreted as lon/lat, transformed to data CRS)
@@ -326,9 +326,9 @@ autoplot.interpElections_result <- function(object, ...) {
     ))
   }
 
-  if (show_sources && !is.null(x$sources_sf)) {
+  if (show_sources && !is.null(x$electoral_sf)) {
     p <- p + ggplot2::geom_sf(
-      data = x$sources_sf,
+      data = x$electoral_sf,
       color = "black", size = 0.5, alpha = 0.6,
       inherit.aes = FALSE
     )
@@ -373,6 +373,15 @@ autoplot.interpElections_result <- function(object, ...) {
   }
   if (!is.null(result$year)) {
     parts <- c(parts, as.character(result$year))
+  }
+  if (!is.null(result$turno)) {
+    parts <- c(parts, paste0(result$turno, "\u00BA turno"))
+  }
+  if (!is.null(result$cargo)) {
+    cargo_str <- paste(
+      vapply(result$cargo, .br_cargo_label, character(1)),
+      collapse = "/")
+    parts <- c(parts, cargo_str)
   }
 
   if (!is.null(type) && type != "absolute") {
@@ -684,29 +693,44 @@ autoplot.interpElections_result <- function(object, ...) {
 #' @param target_crs Target CRS (from sf::st_crs). NULL to skip transform.
 #' @return An sf object or NULL.
 #' @noRd
-.get_muni_sf <- function(code_muni, target_crs = NULL) {
-  if (is.null(code_muni)) return(NULL)
-  if (!requireNamespace("geobr", quietly = TRUE)) return(NULL)
+.get_muni_sf <- function(code_muni, target_crs = NULL,
+                          muni_boundary = NULL) {
+  muni_sf <- NULL
 
-  cache_key <- paste0("muni_", code_muni)
+  # 1. Use pre-fetched boundary from the result object (no network needed)
+  if (!is.null(muni_boundary)) {
+    muni_sf <- muni_boundary
+  }
 
-  if (exists(cache_key, envir = .plot_cache)) {
-    muni_sf <- get(cache_key, envir = .plot_cache)
-  } else {
-    muni_sf <- tryCatch(
+  # 2. Try in-memory cache
+  if (is.null(muni_sf)) {
+    cache_key <- if (!is.null(code_muni)) paste0("muni_", code_muni) else NULL
+    if (!is.null(cache_key) && exists(cache_key, envir = .plot_cache)) {
+      muni_sf <- get(cache_key, envir = .plot_cache)
+    }
+  }
+
+  # 3. Download from geobr with timeout (last resort)
+  if (is.null(muni_sf) && !is.null(code_muni) &&
+      requireNamespace("geobr", quietly = TRUE)) {
+    cache_key <- paste0("muni_", code_muni)
+    muni_sf <- tryCatch({
+      setTimeLimit(elapsed = 15, transient = TRUE)
+      on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
       suppressMessages(
         geobr::read_municipality(code_muni = as.numeric(code_muni), year = 2022)
-      ),
-      error = function(e) {
-        message("Could not download municipality boundary: ",
-                conditionMessage(e))
-        NULL
-      }
-    )
+      )
+    },
+    error = function(e) {
+      message("Could not download municipality boundary: ",
+              conditionMessage(e))
+      NULL
+    })
     if (!is.null(muni_sf)) {
       assign(cache_key, muni_sf, envir = .plot_cache)
     }
   }
+
   if (is.null(muni_sf)) return(NULL)
 
   # Match CRS if requested
@@ -725,15 +749,16 @@ autoplot.interpElections_result <- function(object, ...) {
 #' @param tracts_sf An sf object (for CRS matching).
 #' @return A ggplot2 layer (geom_sf) or NULL.
 #' @noRd
-.muni_border_layer <- function(code_muni, tracts_sf) {
-  muni_sf <- .get_muni_sf(code_muni, sf::st_crs(tracts_sf))
+.muni_border_layer <- function(code_muni, tracts_sf, muni_boundary = NULL) {
+  muni_sf <- .get_muni_sf(code_muni, sf::st_crs(tracts_sf),
+                           muni_boundary = muni_boundary)
   if (is.null(muni_sf)) return(NULL)
 
   ggplot2::geom_sf(
     data = muni_sf,
     fill = NA,
-    color = "grey30",
-    linewidth = 0.5,
+    color = "grey20",
+    linewidth = 0.8,
     inherit.aes = FALSE
   )
 }

@@ -76,18 +76,16 @@ test_that("W from optimize_alpha matches compute_weight_matrix with same alpha",
   storage.mode(pop) <- "double"
   storage.mode(src) <- "double"
 
-  # Test with sinkhorn method (explicit) so compute_weight_matrix matches
   result <- suppressWarnings(optimize_alpha(
     time_matrix, pop, src,
-    method = "sinkhorn",
     use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
   ))
 
   W_recomputed <- compute_weight_matrix(
     time_matrix, result$alpha, pop, src,
-    offset = 1, method = "sinkhorn", verbose = FALSE
+    offset = 1, verbose = FALSE
   )
 
-  # Should be very close (both use the same 3D Sinkhorn algorithm)
+  # Should be very close (both use the same column normalization)
   expect_equal(result$W, W_recomputed, tolerance = 0.01)
 })

@@ -224,148 +224,14 @@ test_that("census year auto-selection works correctly", {
 }
 
 
-test_that(".br_match_calibration for census 2010 produces 7 matched groups", {
-  skip_if_not_installed("sf")
-
-  set.seed(10)
-  tracts <- .mock_tracts_for_calib(8, 2010)
-  elec <- .mock_electoral_for_calib(5)
-
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
-    calib_type = "age_only")
-
-  expect_equal(length(result$calib_tracts), 7)
-  expect_equal(length(result$calib_sources), 7)
-
-  # 7 calibration census tract columns
-  expect_equal(result$calib_tracts, c(
-    "pop_18_20", "pop_21_24", "pop_25_29",
-    "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
-  ))
-
-  # 7 calibration source columns (some aggregated)
-  expect_equal(result$calib_sources, c(
-    "votantes_18_20", "votantes_21_24", "votantes_25_29",
-    "votantes_30_39", "votantes_40_49", "votantes_50_59",
-    "votantes_60_69"
-  ))
-
-  # Aggregated votantes columns should exist in returned electoral_sf
-  elec_df <- sf::st_drop_geometry(result$electoral_sf)
-  expect_true("votantes_18_20" %in% names(elec_df))
-  expect_true("votantes_30_39" %in% names(elec_df))
-  expect_true("votantes_40_49" %in% names(elec_df))
-  expect_true("votantes_50_59" %in% names(elec_df))
-  expect_true("votantes_60_69" %in% names(elec_df))
-
-  # votantes_18_20 should be aggregated from votantes_18_19 + votantes_20
-  orig_elec <- sf::st_drop_geometry(elec)
-  expect_equal(
-    elec_df$votantes_18_20,
-    orig_elec$votantes_18_19 + orig_elec$votantes_20
-  )
-})
-
-test_that(".br_match_calibration for census 2000 produces same groups as 2010", {
-  skip_if_not_installed("sf")
-
-  set.seed(20)
-  tracts <- .mock_tracts_for_calib(6, 2000)
-  elec <- .mock_electoral_for_calib(4)
-
-  result <- interpElections:::.br_match_calibration(2000, tracts, elec,
-    calib_type = "age_only")
-
-  expect_equal(result$calib_tracts, c(
-    "pop_18_20", "pop_21_24", "pop_25_29",
-    "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
-  ))
-})
-
-test_that(".br_match_calibration for census 2022 splits 18-19 and 20-24 brackets", {
-  skip_if_not_installed("sf")
-
-  set.seed(30)
-  tracts <- .mock_tracts_for_calib(8, 2022)
-  elec <- .mock_electoral_for_calib(5)
-
-  result <- interpElections:::.br_match_calibration(2022, tracts, elec,
-    calib_type = "age_only")
-
-  # 7 groups for 2022 (pop_18_19 proxy + pop_20_24)
-  expect_equal(length(result$calib_tracts), 7)
-  expect_equal(length(result$calib_sources), 7)
-
-  expect_equal(result$calib_tracts, c(
-    "pop_18_19", "pop_20_24", "pop_25_29",
-    "pop_30_39", "pop_40_49", "pop_50_59", "pop_60_69"
-  ))
-
-  expect_equal(result$calib_sources, c(
-    "votantes_18_19", "votantes_20_24", "votantes_25_29",
-    "votantes_30_39", "votantes_40_49", "votantes_50_59",
-    "votantes_60_69"
-  ))
-
-  # pop_18_19 should be pop_15_19 * 2/5 (uniform distribution proxy)
-  tracts_df <- sf::st_drop_geometry(result$tracts_sf)
-  orig_df <- sf::st_drop_geometry(tracts)
-  expect_equal(
-    tracts_df$pop_18_19,
-    orig_df$pop_15_19 * 2 / 5
-  )
-
-  # votantes_20_24 should be sum of votantes_20 and votantes_21_24
-  elec_df <- sf::st_drop_geometry(result$electoral_sf)
-  orig_elec <- sf::st_drop_geometry(elec)
-  expect_equal(
-    elec_df$votantes_20_24,
-    orig_elec$votantes_20 + orig_elec$votantes_21_24
-  )
-})
-
-test_that(".br_match_calibration aggregation is numerically correct", {
-  skip_if_not_installed("sf")
-
-  set.seed(50)
-  tracts <- .mock_tracts_for_calib(4, 2010)
-  elec <- .mock_electoral_for_calib(3)
-
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
-    calib_type = "age_only")
-  elec_df <- sf::st_drop_geometry(result$electoral_sf)
-  orig_df <- sf::st_drop_geometry(elec)
-
-  # votantes_18_20 = votantes_18_19 + votantes_20
-  expect_equal(
-    elec_df$votantes_18_20,
-    orig_df$votantes_18_19 + orig_df$votantes_20
-  )
-
-  # votantes_30_39 = votantes_30_34 + votantes_35_39
-  expect_equal(
-    elec_df$votantes_30_39,
-    orig_df$votantes_30_34 + orig_df$votantes_35_39
-  )
-
-  # votantes_60_69 = votantes_60_64 + votantes_65_69
-  expect_equal(
-    elec_df$votantes_60_69,
-    orig_df$votantes_60_64 + orig_df$votantes_65_69
-  )
-})
-
-# --- calib_type = "full" tests ---
-
-test_that(".br_match_calibration full mode for census 2010 produces 14 pairs", {
+test_that(".br_match_calibration for census 2010 produces 14 pairs", {
   skip_if_not_installed("sf")
 
   set.seed(100)
   tracts <- .mock_tracts_for_calib(8, 2010)
   elec <- .mock_electoral_for_calib(5)
 
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
-    calib_type = "full")
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec)
 
   # 14 = 2 genders x 7 age groups (literacy aggregated away)
   expect_equal(length(result$calib_tracts), 14)
@@ -381,15 +247,14 @@ test_that(".br_match_calibration full mode for census 2010 produces 14 pairs", {
   expect_equal(result$calib_tracts[8], "pop_mul_18_20")
 })
 
-test_that(".br_match_calibration full mode for census 2022 uses 18_19 bracket", {
+test_that(".br_match_calibration for census 2022 uses 18_19 bracket", {
   skip_if_not_installed("sf")
 
   set.seed(110)
   tracts <- .mock_tracts_for_calib(8, 2022)
   elec <- .mock_electoral_for_calib(5)
 
-  result <- interpElections:::.br_match_calibration(2022, tracts, elec,
-    calib_type = "full")
+  result <- interpElections:::.br_match_calibration(2022, tracts, elec)
 
   expect_equal(length(result$calib_tracts), 14)
   expect_equal(length(result$calib_sources), 14)
@@ -409,15 +274,14 @@ test_that(".br_match_calibration full mode for census 2022 uses 18_19 bracket", 
   )
 })
 
-test_that(".br_match_calibration full mode aggregation is correct", {
+test_that(".br_match_calibration aggregation is correct", {
   skip_if_not_installed("sf")
 
   set.seed(120)
   tracts <- .mock_tracts_for_calib(4, 2010)
   elec <- .mock_electoral_for_calib(3)
 
-  result <- interpElections:::.br_match_calibration(2010, tracts, elec,
-    calib_type = "full")
+  result <- interpElections:::.br_match_calibration(2010, tracts, elec)
   elec_df <- sf::st_drop_geometry(result$electoral_sf)
   orig_df <- sf::st_drop_geometry(elec)
   tracts_df <- sf::st_drop_geometry(result$tracts_sf)
@@ -445,20 +309,6 @@ test_that(".br_match_calibration full mode aggregation is correct", {
   expect_equal(
     tracts_df$pop_hom_60_69,
     orig_tracts_df$pop_hom_alf_60_69 + orig_tracts_df$pop_hom_nalf_60_69
-  )
-})
-
-test_that(".br_match_calibration rejects invalid calib_type", {
-  skip_if_not_installed("sf")
-
-  set.seed(130)
-  tracts <- .mock_tracts_for_calib(4, 2010)
-  elec <- .mock_electoral_for_calib(3)
-
-  expect_error(
-    interpElections:::.br_match_calibration(2010, tracts, elec,
-      calib_type = "invalid"),
-    "calib_type"
   )
 })
 

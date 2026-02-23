@@ -23,8 +23,17 @@ summary.interpElections_result <- function(object, ...) {
       cat(sprintf("Municipality: %s (%s) -- IBGE: %s, TSE: %s\n",
                   x$nome_municipio, x$uf,
                   x$code_muni, x$code_muni_tse))
-      cat(sprintf("Election: %d | Census: %d\n",
-                  x$year, x$census_year))
+      election_line <- sprintf("Election: %d | Census: %d",
+                               x$year, x$census_year)
+      if (!is.null(x$turno))
+        election_line <- paste0(election_line, sprintf(" | Turno: %d", x$turno))
+      if (!is.null(x$cargo)) {
+        cargo_str <- paste(
+          vapply(x$cargo, .br_cargo_label, character(1)),
+          collapse = ", ")
+        election_line <- paste0(election_line, sprintf(" | Cargo: %s", cargo_str))
+      }
+      cat(election_line, "\n")
     } else {
       cat(sprintf("Municipality: %s (election %d, census %d)\n",
                   x$code_muni, x$year, x$census_year))
@@ -79,7 +88,7 @@ summary.interpElections_result <- function(object, ...) {
               as.numeric(utils::object.size(x)) / 1e6))
   has_w <- !is.null(x$weights)
   has_t <- !is.null(x$time_matrix)
-  has_s <- !is.null(x$sources_sf)
+  has_s <- !is.null(x$electoral_sf)
   has_n <- !is.null(x$neighborhoods)
   if (!has_w && !has_t && !has_s && !has_n) {
     cat(" (lightweight)")
@@ -191,10 +200,8 @@ coef.interpElections_result <- function(object, ...) {
 #' Compute calibration residuals
 #'
 #' Returns the matrix of calibration residuals (fitted minus observed)
-#' for each census tract and calibration bracket. Requires the weight matrix
-#' or travel time matrix to be present in the result (use
-#' `keep = "weights"` or `keep = "time_matrix"` when running the
-#' interpolation).
+#' for each census tract and calibration bracket. Both the weight matrix
+#' and travel time matrix are kept by default.
 #'
 #' @param object An `interpElections_result` object.
 #' @param ... Ignored.
@@ -216,7 +223,8 @@ residuals.interpElections_result <- function(object, ...) {
   if (!has_W && is.null(object$time_matrix)) {
     message(
       "Cannot compute residuals without weights or time_matrix.\n",
-      "Re-run with keep = c(\"weights\") or keep = c(\"time_matrix\")."
+      "These are kept by default; this result may have been created ",
+      "with an older version."
     )
     return(invisible(NULL))
   }
@@ -246,8 +254,7 @@ residuals.interpElections_result <- function(object, ...) {
   } else {
     W <- compute_weight_matrix(object$time_matrix, object$alpha,
                                 pop_mat, src_mat,
-                                offset = object$offset,
-                                method = object$optimization$method_type %||% "colnorm")
+                                offset = object$offset)
   }
 
   # Fitted = W %*% source_matrix

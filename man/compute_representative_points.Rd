@@ -8,7 +8,7 @@ compute_representative_points(
   tracts_sf,
   method = c("point_on_surface", "centroid", "pop_weighted"),
   pop_raster = NULL,
-  pop_min_area = 1,
+  min_area_for_pop_weight = 1,
   tract_id = "id",
   verbose = TRUE
 )
@@ -25,7 +25,7 @@ which can fall outside concave shapes.}
 May fall outside concave polygons.}
 \item{\code{"pop_weighted"}}{Uses a population density raster (WorldPop
 Constrained 2020 by default) to find the most populated cell within
-each tract. Only applied to tracts with area >= \code{pop_min_area};
+each tract. Only applied to tracts with area >= \code{min_area_for_pop_weight};
 smaller tracts use \code{point_on_surface}. Requires the \code{terra} package.}
 }}
 
@@ -34,7 +34,7 @@ or \code{NULL}. Population density raster for \code{method = "pop_weighted"}.
 If \code{NULL} (default), the WorldPop Brazil Constrained 2020 raster (~48 MB)
 is downloaded automatically and cached. Ignored for other methods.}
 
-\item{pop_min_area}{Numeric. Minimum tract area in km² for applying the
+\item{min_area_for_pop_weight}{Numeric. Minimum tract area in km² for applying the
 population-weighted method. Tracts smaller than this threshold use
 \code{point_on_surface} instead. Default: 1 (km²). Only used when
 \code{method = "pop_weighted"}.}

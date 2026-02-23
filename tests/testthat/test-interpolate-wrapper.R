@@ -89,10 +89,10 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   expect_equal(ncol(result$alpha), k)
   expect_true(is.finite(result$optimization$value))
 
-  # Lightweight by default: heavy objects are NULL
-  expect_null(result$weights)
-  expect_null(result$time_matrix)
-  expect_null(result$sources_sf)
+  # weights and time_matrix always kept; electoral_sf opt-in
+  expect_true(is.matrix(result$weights))
+  expect_true(is.matrix(result$time_matrix))
+  expect_null(result$electoral_sf)
 
   # New fields present
   expect_s3_class(result$tracts_sf, "sf")
@@ -131,7 +131,7 @@ test_that("interpolate_election() with keep includes heavy objects", {
     calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
-    keep = c("weights", "time_matrix"),
+    # weights and time_matrix are always kept by default
     verbose = FALSE
   ))
 
@@ -141,7 +141,7 @@ test_that("interpolate_election() with keep includes heavy objects", {
   expect_equal(dim(result$time_matrix), c(n, m))
 })
 
-test_that("interpolate_election() keep sources_sf returns sf object", {
+test_that("interpolate_election() keep electoral_sf returns sf object", {
   skip_if_not_installed("sf")
 
   set.seed(42)
@@ -161,15 +161,15 @@ test_that("interpolate_election() keep sources_sf returns sf object", {
     calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt,
-    keep = "sources_sf",
+    keep = "electoral_sf",
     verbose = FALSE
   ))
 
-  expect_s3_class(result$sources_sf, "sf")
-  expect_equal(nrow(result$sources_sf), m)
-  # Without keep, should be NULL
-  expect_null(result$weights)
-  expect_null(result$time_matrix)
+  expect_s3_class(result$electoral_sf, "sf")
+  expect_equal(nrow(result$electoral_sf), m)
+  # weights and time_matrix always kept
+  expect_true(is.matrix(result$weights))
+  expect_true(is.matrix(result$time_matrix))
 })
 
 test_that("interpolate_election() tracts_sf contains interpolated columns", {
@@ -207,46 +207,6 @@ test_that("interpolate_election() tracts_sf contains interpolated columns", {
     result$tracts_sf$CAND_X,
     as.numeric(result$interpolated[, "CAND_X"])
   )
-})
-
-test_that("interpolate_election() with pre-supplied alpha skips optimization", {
-  skip_if_not_installed("sf")
-
-  set.seed(1)
-  n <- 8; m <- 4; k <- 2
-  pop_cols <- c("pop_young", "pop_old")
-  src_cols <- c("src_young", "src_old")
-
-  tracts <- .mock_tracts_sf(n, pop_cols, seed = 1)
-  sources <- .mock_electoral_sf(m, src_cols, seed = 1)
-  tt <- matrix(abs(rnorm(n * m, 30, 10)), n, m)
-  alpha_fixed <- rep(1.5, n)
-
-  result <- interpolate_election(
-    tracts_sf = tracts,
-    electoral_sf = sources,
-    tract_id = "zone_id",
-    point_id = "point_id",
-    calib_tracts = pop_cols,
-    calib_sources = src_cols,
-    time_matrix = tt,
-    alpha = alpha_fixed,
-    verbose = FALSE
-  )
-
-  expect_null(result$optimization)
-  expect_equal(result$alpha, alpha_fixed)
-
-  # Should match direct compute_weight_matrix call
-  pop_mat <- as.matrix(sf::st_drop_geometry(tracts)[, pop_cols])
-  src_mat <- as.matrix(sf::st_drop_geometry(sources)[, src_cols])
-  storage.mode(pop_mat) <- "double"
-  storage.mode(src_mat) <- "double"
-  alpha_mat <- matrix(alpha_fixed, nrow = n, ncol = k)
-  W_direct <- compute_weight_matrix(tt, alpha_mat, pop_mat, src_mat,
-                                     offset = 1, verbose = FALSE)
-  direct <- W_direct %*% src_mat
-  expect_equal(result$interpolated, direct, tolerance = 1e-4)
 })
 
 test_that("interpolate_election() with explicit interp_sources works", {
@@ -308,7 +268,7 @@ test_that("interpolate_election() auto-detects interp columns as non-calib numer
   expect_true(all(c("votes", "turnout") %in% colnames(result$interpolated)))
 })
 
-test_that("interpolate_election() filters census tracts with min_pop", {
+test_that("interpolate_election() filters census tracts with min_tract_pop", {
   skip_if_not_installed("sf")
 
   set.seed(99)
@@ -333,7 +293,7 @@ test_that("interpolate_election() filters census tracts with min_pop", {
     calib_tracts = pop_cols,
     calib_sources = src_cols,
     time_matrix = tt[4:10, ],  # match filtered tracts
-    min_pop = 1,
+    min_tract_pop = 1,
     verbose = FALSE
   ))
 
@@ -359,7 +319,8 @@ test_that("interpolate_election() errors on invalid inputs", {
   # Mismatched calib lengths
   expect_error(
     interpolate_election(
-      tracts, sources, "zone_id", "point_id",
+      tracts, sources,
+      tract_id = "zone_id", point_id = "point_id",
       calib_tracts = c("pop_a", "pop_a"), calib_sources = "src_a",
       time_matrix = matrix(1, 3, 2), verbose = FALSE
     ),
@@ -369,7 +330,8 @@ test_that("interpolate_election() errors on invalid inputs", {
   # Not sf objects
   expect_error(
     interpolate_election(
-      data.frame(x = 1), sources, "zone_id", "point_id",
+      data.frame(x = 1), sources,
+      tract_id = "zone_id", point_id = "point_id",
       calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 1, 2), verbose = FALSE
     ),
@@ -388,7 +350,8 @@ test_that("interpolate_election() errors on invalid inputs", {
   )
   expect_error(
     interpolate_election(
-      tracts, near_sources, "zone_id", "point_id",
+      tracts, near_sources,
+      tract_id = "zone_id", point_id = "point_id",
       calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 5, 2),  # 5 rows but 3 tracts
       verbose = FALSE
@@ -408,7 +371,8 @@ test_that("interpolate_election() errors on invalid inputs", {
   )
   expect_error(
     interpolate_election(
-      tracts, far_sources, "zone_id", "point_id",
+      tracts, far_sources,
+      tract_id = "zone_id", point_id = "point_id",
       calib_tracts = "pop_a", calib_sources = "src_a",
       time_matrix = matrix(1, 3, 2),
       verbose = FALSE

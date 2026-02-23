@@ -67,8 +67,8 @@ creates synchronized side-by-side panels via \code{leafsync::sync()}.
 }
 \examples{
 \dontrun{
-result <- interpolate_election_br(3304557, 2020, 2022,
-                                   keep = "sources_sf")
+result <- interpolate_election_br(3304557, 2022,
+                                   keep = "electoral_sf")
 
 # Interactive map by candidate name
 plot_interactive(result, variable = "Lula", type = "pct_tract")

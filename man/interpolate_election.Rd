@@ -7,24 +7,25 @@
 interpolate_election(
   tracts_sf,
   electoral_sf,
-  tract_id,
-  point_id,
   calib_tracts,
   calib_sources,
   interp_sources = NULL,
+  tract_id = "id",
+  point_id = "id",
   time_matrix = NULL,
-  network_path = NULL,
-  elevation_path = NULL,
-  osm_buffer_km = 10,
-  min_pop = 1,
-  alpha = NULL,
+  max_epochs = 2000L,
+  alpha_min = 1,
+  mode = "WALK",
+  gtfs_zip_path = NULL,
+  max_trip_duration = 300L,
+  point_method = "pop_weighted",
+  min_area_for_pop_weight = 1,
+  min_tract_pop = 1,
   offset = 1,
-  keep = NULL,
   use_gpu = NULL,
+  keep = NULL,
   verbose = TRUE,
-  ...,
-  .step_offset = 0L,
-  .step_total = NULL
+  ...
 )
 }
 \arguments{
@@ -32,10 +33,6 @@ interpolate_election(
 
 \item{electoral_sf}{An \code{sf} point object. Source points (e.g., voting
 locations).}
-
-\item{tract_id}{Character. Name of the ID column in \code{tracts_sf}.}
-
-\item{point_id}{Character. Name of the ID column in \code{electoral_sf}.}
 
 \item{calib_tracts}{Character vector. Column names in \code{tracts_sf} to use
 as the calibration population matrix. Must match \code{calib_sources} in
@@ -49,88 +46,84 @@ length.}
 \code{electoral_sf} to interpolate. Default NULL means all numeric columns
 not in \code{calib_sources}.}
 
+\item{tract_id}{Character. Name of the ID column in \code{tracts_sf}.
+Default: \code{"id"}.}
+
+\item{point_id}{Character. Name of the ID column in \code{electoral_sf}.
+Default: \code{"id"}.}
+
 \item{time_matrix}{Numeric matrix [n x m] or NULL. Pre-computed travel
 times. If provided, skips all travel time computation.}
 
-\item{network_path}{Character or NULL. Path to directory with an OSM
-\code{.pbf} file. If provided (and \code{time_matrix} is NULL), travel times
-are computed directly without downloading OSM data.}
+\item{max_epochs}{Integer. Maximum optimizer epochs. Default: 2000.
+See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
-\item{elevation_path}{Character or NULL. Path to elevation \code{.tif} file
-for r5r routing.}
+\item{alpha_min}{Numeric. Lower bound for decay parameters. Default: 1.
+See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
-\item{osm_buffer_km}{Numeric. Buffer in kilometers to expand the
-bounding box when auto-downloading OSM data. Default: 10.}
+\item{mode}{Character. Routing mode: \code{"WALK"} (default), \code{"BICYCLE"},
+\code{"CAR"}, or transit combos like \code{"WALK;TRANSIT"}.}
 
-\item{min_pop}{Numeric. Minimum total population in \code{calib_tracts} for a
-census tract to be included. Default: 1.}
+\item{gtfs_zip_path}{Character or NULL. Path to a GTFS \code{.zip} file for
+transit routing. Default: NULL.}
 
-\item{alpha}{Numeric vector of length n, or NULL. Pre-computed decay
-parameters. If provided, optimization is skipped.}
+\item{max_trip_duration}{Integer. Maximum trip duration in minutes.
+Also used as fill value for unreachable pairs. Default: 300.}
+
+\item{point_method}{Character. Method for tract representative points:
+\code{"pop_weighted"} (default), \code{"point_on_surface"}, or \code{"centroid"}.
+See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
+
+\item{min_area_for_pop_weight}{Numeric. Minimum tract area in km2
+for the pop_weighted method. Smaller tracts use point_on_surface.
+Default: 1.}
+
+\item{min_tract_pop}{Numeric. Minimum total population in
+\code{calib_tracts} for a census tract to be included. Default: 1.}
 
 \item{offset}{Numeric. Travel time offset. Default: 1.}
 
-\item{keep}{Character vector or NULL. Names of heavy intermediate
-objects to include in the result. Default NULL (lightweight).
-Options: \code{"weights"} (column-standardized weight matrix [n x m]),
-\code{"time_matrix"} (travel time matrix [n x m]),
-\code{"sources_sf"} (source points as \code{sf} object with geometry),
-\code{"pop_raster"} (population density raster, when \code{point_method = "pop_weighted"}),
-\code{"rep_points"} (representative points \code{sf} object used for routing).
-These can be large for big municipalities. Travel times are
-cached on disk and can be reloaded without keeping them in memory.}
-
 \item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+
+\item{keep}{Character vector or NULL. Names of extra intermediate
+objects to include in the result. \code{weights} and \code{time_matrix} are
+always kept. Options: \code{"electoral_sf"}, \code{"pop_raster"},
+\code{"rep_points"}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
-\item{...}{Additional arguments forwarded to \code{\link[=optimize_alpha]{optimize_alpha()}},
-\code{\link[=compute_travel_times]{compute_travel_times()}}, and/or \code{\link[=download_r5r_data]{download_r5r_data()}}.
-Notable forwarded arguments: \code{point_method} (representative point
-method), \code{pop_raster} (population density raster),
-\code{pop_min_area} (area threshold for pop-weighted points).
-See \code{\link[=compute_travel_times]{compute_travel_times()}} for details.}
-
-\item{.step_offset}{Integer. Internal: offset added to step numbers
-when called from \code{\link[=interpolate_election_br]{interpolate_election_br()}}. Do not set manually.}
-
-\item{.step_total}{Integer or NULL. Internal: total step count for
-unified progress display. Do not set manually.}
+\item{...}{Advanced tuning. See \link{interpElections-passthrough}.}
 }
 \value{
 A list of class \code{"interpElections_result"} with components:
 \describe{
 \item{interpolated}{Numeric matrix [n x p]. Interpolated values.}
-\item{alpha}{Numeric vector of length n. Decay parameters used.}
-\item{tracts_sf}{\code{sf} object with interpolated columns joined to census tracts.}
+\item{alpha}{Decay parameters used.}
+\item{tracts_sf}{\code{sf} object with interpolated columns joined.}
 \item{sources}{Data frame (no geometry) of source point data.}
-\item{optimization}{\code{interpElections_optim} object, or NULL if \code{alpha} was
-pre-supplied.}
+\item{optimization}{\code{interpElections_optim} object.}
 \item{offset}{Numeric. Offset value used.}
 \item{call}{The matched call.}
-\item{tract_id}{Character. Name of the census tract ID column.}
-\item{point_id}{Character. Name of the ID column in sources.}
-\item{interp_cols}{Character vector. Names of interpolated columns.}
-\item{calib_cols}{List with \verb{$tracts} and \verb{$sources} calibration columns.}
-\item{weights}{Numeric matrix [n x m] or NULL. Present only when
-\code{keep} includes \code{"weights"}.}
-\item{time_matrix}{Numeric matrix [n x m] or NULL. Present only when
-\code{keep} includes \code{"time_matrix"}.}
-\item{sources_sf}{\code{sf} point object or NULL. Source points with
-geometry. Present only when \code{keep} includes \code{"sources_sf"}.}
-\item{pop_raster}{\link[terra:SpatRaster-class]{terra::SpatRaster} or NULL. Population density
-raster (cropped to municipality). Present only when \code{keep} includes
-\code{"pop_raster"} and \code{point_method = "pop_weighted"} was used.}
-\item{rep_points}{\code{sf} POINT object or NULL. Representative points
-used for travel time routing. Present only when \code{keep} includes
-\code{"rep_points"}.}
+\item{tract_id, point_id}{ID column names.}
+\item{interp_cols}{Character vector. Interpolated column names.}
+\item{calib_cols}{List with \verb{$tracts} and \verb{$sources}.}
+\item{weights}{Weight matrix or NULL (opt-in via \code{keep}).}
+\item{time_matrix}{Travel time matrix or NULL (opt-in via \code{keep}).}
+\item{electoral_sf}{\code{sf} point object or NULL (opt-in via \code{keep}).}
+\item{pop_raster}{Population raster or NULL (opt-in via \code{keep}).}
+\item{rep_points}{Representative points or NULL (opt-in via \code{keep}).}
 }
 }
 \description{
-High-level wrapper that combines travel-time computation (optional),
-alpha optimization, and interpolation into a single call. If no travel
-time matrix is provided, OSM road network data is automatically
-downloaded and travel times are computed via r5r.
+General-purpose wrapper that combines travel-time computation (optional),
+alpha optimization, and interpolation into a single call. Accepts R
+objects (sf data frames) directly. If no travel time matrix is provided,
+OSM road network data is automatically downloaded and travel times are
+computed via r5r.
+}
+\details{
+For Brazilian elections, use \code{\link[=interpolate_election_br]{interpolate_election_br()}} which
+auto-downloads all required data.
 }
 \examples{
 \dontrun{
@@ -138,8 +131,6 @@ downloaded and travel times are computed via r5r.
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  tract_id     = "code_tract",
-  point_id     = "id",
   calib_tracts  = c("pop_18_24", "pop_25_34"),
   calib_sources = c("voters_18_24", "voters_25_34")
 )
@@ -148,8 +139,6 @@ result <- interpolate_election(
 result <- interpolate_election(
   tracts_sf    = census_tracts,
   electoral_sf = voting_stations,
-  tract_id     = "code_tract",
-  point_id     = "id",
   calib_tracts  = c("pop_young", "pop_old"),
   calib_sources = c("voters_young", "voters_old"),
   time_matrix  = my_tt_matrix
@@ -159,7 +148,8 @@ result <- interpolate_election(
 }
 \seealso{
 \code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=compute_weight_matrix]{compute_weight_matrix()}},
-\code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper.
+\code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper,
+\link{interpElections-passthrough} for advanced tuning via \code{...}.
 
 Other wrappers: 
 \code{\link{interpolate_election_br}()}

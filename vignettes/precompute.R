@@ -119,14 +119,14 @@ result_vga <- interpolate_election_br(
   "Varginha", year = 2022,
   cargo = "presidente",
   what = c("candidates", "turnout"),
-  keep = c("weights", "sources_sf", "time_matrix", "pop_raster", "rep_points")
+  keep = c("electoral_sf", "pop_raster", "rep_points")
 )
 
 # ── 1b. Extract intermediate objects from result ──────────────────────────────
 
 message("\n[Varginha] Extracting intermediates...")
 tracts_sf_vga    <- result_vga$tracts_sf
-electoral_sf_vga <- result_vga$sources_sf
+electoral_sf_vga <- result_vga$electoral_sf
 time_matrix_vga  <- result_vga$time_matrix
 W_vga            <- result_vga$weights
 optim_vga        <- result_vga$optimization
@@ -526,7 +526,7 @@ result_igr <- interpolate_election_br(
   "Igrejinha", year = 2022,
   cargo = "presidente",
   what = c("candidates", "turnout"),
-  keep = c("weights", "sources_sf")
+  keep = "electoral_sf"
 )
 
 saveRDS(result_igr, file.path(out_data, "igrejinha_2022.rds"))
@@ -548,7 +548,7 @@ result_nit <- interpolate_election_br(
   "Niteroi", year = 2022,
   cargo = "presidente",
   what = c("candidates", "parties", "turnout", "demographics"),
-  keep = c("weights", "sources_sf", "time_matrix"),
+  keep = "electoral_sf",
   use_gpu = TRUE
 )
 
@@ -656,7 +656,7 @@ result_bh <- interpolate_election_br(
   "Belo Horizonte", year = 2022,
   cargo = "presidente",
   what = c("candidates", "turnout"),
-  keep = c("weights", "sources_sf"),
+  keep = "electoral_sf",
   use_gpu = TRUE
 )
 
@@ -742,7 +742,7 @@ tryCatch({
   )
   pts_sp_w <- compute_representative_points(
     tracts_south, method = "pop_weighted",
-    tract_id = "id", pop_min_area = 0.5
+    tract_id = "id", min_area_for_pop_weight = 0.5
   )
   pop_raster_sp <- attr(pts_sp_w, "pop_raster")
 
@@ -891,7 +891,7 @@ tryCatch({
 
 
 # ═════════════════════════════════════════════════════════════════════
-# 6. PALMAS (TO) — Voronoi vs Sinkhorn comparison
+# 6. PALMAS (TO) — Voronoi vs IDW comparison
 # ═════════════════════════════════════════════════════════════════════
 
 message("\n", strrep("=", 70))
@@ -904,11 +904,11 @@ tryCatch({
     "Palmas", uf = "TO", year = 2022,
     cargo = "presidente",
     what = c("candidates", "turnout"),
-    keep = c("weights", "sources_sf", "time_matrix")
+    keep = "electoral_sf"
   )
 
   tracts_pal <- result_pal$tracts_sf
-  elec_pal <- result_pal$sources_sf
+  elec_pal <- result_pal$electoral_sf
   W_pal <- result_pal$weights
   calib_pal <- result_pal$calib_cols
 
@@ -924,7 +924,7 @@ tryCatch({
   storage.mode(pop_mat_pal) <- "double"
   storage.mode(src_mat_pal) <- "double"
 
-  # Sinkhorn interpolated demographics
+  # IDW interpolated demographics
   fitted_pal <- W_pal %*% src_mat_pal
 
   # --- Voronoi assignment ---
@@ -950,12 +950,12 @@ tryCatch({
   ))
 
   # Compute SSE for both methods
-  sse_sinkhorn <- sum((fitted_pal - pop_mat_pal)^2)
+  sse_idw <- sum((fitted_pal - pop_mat_pal)^2)
   sse_voronoi <- sum((voronoi_fitted - pop_mat_pal)^2)
   message(sprintf(
-    "  SSE Sinkhorn: %.0f | SSE Voronoi: %.0f (ratio: %.1fx)",
-    sse_sinkhorn, sse_voronoi,
-    sse_voronoi / max(sse_sinkhorn, 1)
+    "  SSE IDW: %.0f | SSE Voronoi: %.0f (ratio: %.1fx)",
+    sse_idw, sse_voronoi,
+    sse_voronoi / max(sse_idw, 1)
   ))
 
   # Save RDS
@@ -965,11 +965,11 @@ tryCatch({
     electoral_sf = elec_pal,
     pop_matrix = pop_mat_pal,
     source_matrix = src_mat_pal,
-    fitted_sinkhorn = fitted_pal,
+    fitted_idw = fitted_pal,
     fitted_voronoi = voronoi_fitted,
     nearest_station = nearest_idx,
     voronoi_sf = voronoi_sf,
-    sse_sinkhorn = sse_sinkhorn,
+    sse_idw = sse_idw,
     sse_voronoi = sse_voronoi,
     calib_cols = calib_pal
   ), file.path(out_data, "palmas_2022.rds"))
@@ -1028,7 +1028,7 @@ tryCatch({
       observed = pop_pal_agg[, k],
       predicted = fitted_pal_agg[, k],
       bracket = age_labels_pal[k],
-      method = "Sinkhorn IDW"
+      method = "IDW"
     )
     scatter_list[[length(scatter_list) + 1]] <- data.frame(
       observed = pop_pal_agg[, k],
@@ -1046,15 +1046,15 @@ tryCatch({
     geom_abline(slope = 1, intercept = 0,
                 linetype = "dashed", color = "grey40") +
     scale_color_manual(values = c(
-      "Sinkhorn IDW" = "#4575b4",
+      "IDW" = "#4575b4",
       "Voronoi (nearest)" = "#d73027"
     )) +
     facet_wrap(~method) +
     labs(
       title = "Predicted vs Observed Age Demographics",
       subtitle = sprintf(
-        "Palmas (TO) \u2014 SSE: Sinkhorn=%.0f, Voronoi=%.0f",
-        sse_sinkhorn, sse_voronoi
+        "Palmas (TO) \u2014 SSE: IDW=%.0f, Voronoi=%.0f",
+        sse_idw, sse_voronoi
       ),
       x = "Census population", y = "Predicted",
       color = ""
@@ -1064,7 +1064,7 @@ tryCatch({
       plot.title = element_text(face = "bold"),
       legend.position = "none"
     )
-  save_fig(p, "voronoi-vs-sinkhorn-scatter.png",
+  save_fig(p, "voronoi-vs-idw-scatter.png",
            width = 10, height = 5)
 
   # Residual boxplot by bracket (aggregated to 7 age brackets)
@@ -1073,7 +1073,7 @@ tryCatch({
     resid_list[[length(resid_list) + 1]] <- data.frame(
       residual = fitted_pal_agg[, k] - pop_pal_agg[, k],
       bracket = age_labels_pal[k],
-      method = "Sinkhorn IDW"
+      method = "IDW"
     )
     resid_list[[length(resid_list) + 1]] <- data.frame(
       residual = voronoi_pal_agg[, k] - pop_pal_agg[, k],
@@ -1090,11 +1090,11 @@ tryCatch({
     geom_hline(yintercept = 0, linetype = "dashed",
                color = "grey50") +
     scale_fill_manual(values = c(
-      "Sinkhorn IDW" = "#4575b4",
+      "IDW" = "#4575b4",
       "Voronoi (nearest)" = "#d73027"
     )) +
     labs(
-      title = "Calibration Residuals: Sinkhorn vs Voronoi",
+      title = "Calibration Residuals: IDW vs Voronoi",
       subtitle = "Palmas (TO) \u2014 fitted minus census",
       x = "Age bracket", y = "Residual", fill = ""
     ) +
@@ -1104,7 +1104,7 @@ tryCatch({
       axis.text.x = element_text(angle = 45, hjust = 1),
       legend.position = "bottom"
     )
-  save_fig(p, "voronoi-vs-sinkhorn-residuals.png",
+  save_fig(p, "voronoi-vs-idw-residuals.png",
            width = 9, height = 6)
 
   message("  [Palmas] Done.")
@@ -1263,7 +1263,7 @@ tryCatch({
     "Rio de Janeiro", year = 2022,
     cargo = "presidente",
     what = c("candidates", "turnout"),
-    keep = c("weights", "sources_sf", "time_matrix"),
+    keep = "electoral_sf",
     use_gpu = TRUE
   )
 
@@ -1271,7 +1271,7 @@ tryCatch({
   calib_rj <- result_rj$calib_cols
   tracts_rj_result <- result_rj$tracts_sf
   W_rj <- result_rj$weights
-  elec_rj <- result_rj$sources_sf
+  elec_rj <- result_rj$electoral_sf
   elec_df_rj <- st_drop_geometry(elec_rj)
   src_mat_rj <- as.matrix(
     elec_df_rj[, calib_rj$sources]
@@ -1356,7 +1356,7 @@ tryCatch({
       labs(
         title = "Age Structure Recovery: Census vs Interpolated",
         subtitle = paste0(
-          "Rio de Janeiro 2022 \u2014 Sinkhorn-interpolated ",
+          "Rio de Janeiro 2022 \u2014 IDW-interpolated ",
           "voter profiles vs census truth"
         ),
         x = "% of group total",
@@ -1774,7 +1774,7 @@ tryCatch({
       "Compute weighted\ncentroids",
       "Locate polling\nstations",
       "Calculate walking\ntravel times",
-      "Sinkhorn IDW\ninterpolation")
+      "IDW\ninterpolation")
   } else {
     L1 <- rotate_data_geom(muni_sf, y_add = y_offsets[1])
     L2 <- rotate_data_geom(vga_tracts_d, y_add = y_offsets[2])
@@ -1797,7 +1797,7 @@ tryCatch({
       "Subdivide into\ncensus tracts",
       "Locate polling\nstations",
       "Calculate walking\ntravel times",
-      "Sinkhorn IDW\ninterpolation")
+      "IDW\ninterpolation")
   }
 
   # LEFT SIDE labels
@@ -1938,7 +1938,7 @@ tryCatch({
     label = c(
       "1. Set initial\nalpha = 1",
       "2. Build IDW\nkernel",
-      "3. Sinkhorn\nbalance",
+      "3. IDW\nbalance",
       "4. Interpolate\nage profiles",
       "5. Compare with\ncensus (SSE)",
       "6. Adjust alpha\n(PB-SGD step)"
@@ -2164,10 +2164,10 @@ tryCatch({
         city$name, uf = city$uf, year = 2022,
         cargo = "presidente",
         what = c("candidates", "turnout"),
-        keep = c("weights", "sources_sf", "time_matrix"))
+        keep = "electoral_sf")
 
       tracts <- result$tracts_sf
-      elec <- result$sources_sf
+      elec <- result$electoral_sf
       W <- result$weights
       calib <- result$calib_cols
       tracts_df <- st_drop_geometry(tracts)
@@ -2177,26 +2177,26 @@ tryCatch({
       storage.mode(pop_mat) <- "double"
       storage.mode(src_mat) <- "double"
 
-      fitted_sink <- W %*% src_mat
+      fitted_idw_r <- W %*% src_mat
       tract_pts <- st_centroid(tracts)
       elec_pts <- st_transform(elec, st_crs(tracts))
       dist_mat <- st_distance(tract_pts, elec_pts)
       nearest_idx <- apply(dist_mat, 1, which.min)
       fitted_vor <- src_mat[nearest_idx, , drop = FALSE]
 
-      sse_s <- sum((fitted_sink - pop_mat)^2)
+      sse_s <- sum((fitted_idw_r - pop_mat)^2)
       sse_v <- sum((fitted_vor - pop_mat)^2)
       message(sprintf(
-        "  [%s] SSE: Sinkhorn=%.0f, Voronoi=%.0f (%.1fx)",
+        "  [%s] SSE: IDW=%.0f, Voronoi=%.0f (%.1fx)",
         city$name, sse_s, sse_v,
         sse_v / max(sse_s, 1)))
 
       city_data <- list(
         city = city$name,
         pop_matrix = pop_mat, source_matrix = src_mat,
-        fitted_sinkhorn = fitted_sink,
+        fitted_idw = fitted_idw_r,
         fitted_voronoi = fitted_vor,
-        sse_sinkhorn = sse_s, sse_voronoi = sse_v,
+        sse_idw = sse_s, sse_voronoi = sse_v,
         calib_cols = calib,
         n_tracts = nrow(tracts),
         n_stations = nrow(elec))
@@ -2217,7 +2217,7 @@ tryCatch({
 
   all_sse <- data.frame(
     city = "Palmas (TO)",
-    sse_sinkhorn = palmas_data$sse_sinkhorn,
+    sse_idw = palmas_data$sse_idw,
     sse_voronoi = palmas_data$sse_voronoi,
     stringsAsFactors = FALSE)
 
@@ -2227,12 +2227,12 @@ tryCatch({
       sapply(voronoi_cities, function(x) x$name) == nm)]]$uf
     all_sse <- rbind(all_sse, data.frame(
       city = sprintf("%s (%s)", nm, uf),
-      sse_sinkhorn = r$sse_sinkhorn,
+      sse_idw = r$sse_idw,
       sse_voronoi = r$sse_voronoi,
       stringsAsFactors = FALSE))
   }
   all_sse$ratio <- all_sse$sse_voronoi /
-    pmax(all_sse$sse_sinkhorn, 1)
+    pmax(all_sse$sse_idw, 1)
   all_sse$city <- factor(all_sse$city,
     levels = all_sse$city[order(all_sse$ratio)])
 
@@ -2245,14 +2245,14 @@ tryCatch({
                color = "grey50") +
     coord_flip(ylim = c(0, max(all_sse$ratio) * 1.15)) +
     labs(
-      title = "Voronoi vs Sinkhorn: SSE Ratio by City",
+      title = "Voronoi vs IDW: SSE Ratio by City",
       subtitle = paste0(
         "How many times worse is Voronoi (nearest-station) ",
-        "compared to Sinkhorn IDW?"),
-      x = "", y = "SSE(Voronoi) / SSE(Sinkhorn)",
+        "compared to IDW?"),
+      x = "", y = "SSE(Voronoi) / SSE(IDW)",
       caption = paste0(
         "SSE = sum of squared errors in age bracket recovery. ",
-        "Higher ratio = larger Sinkhorn advantage.")
+        "Higher ratio = larger IDW advantage.")
     ) +
     theme_minimal(base_size = 13) +
     theme(
@@ -2270,16 +2270,16 @@ tryCatch({
   all_scatter <- list()
   pal_cols <- palmas_data$calib_cols$tracts
   pop_pal_a <- aggregate_to_age(palmas_data$pop_matrix, pal_cols)
-  sk_pal_a <- aggregate_to_age(palmas_data$fitted_sinkhorn, pal_cols)
+  idw_pal_a <- aggregate_to_age(palmas_data$fitted_idw, pal_cols)
   vor_pal_a <- aggregate_to_age(palmas_data$fitted_voronoi, pal_cols)
   age_labs <- colnames(pop_pal_a)
 
   for (k in seq_along(age_labs)) {
     all_scatter[[length(all_scatter) + 1]] <- data.frame(
       observed = pop_pal_a[, k],
-      predicted = sk_pal_a[, k],
+      predicted = idw_pal_a[, k],
       bracket = age_labs[k],
-      method = "Sinkhorn", city = "Palmas (TO)")
+      method = "IDW", city = "Palmas (TO)")
     all_scatter[[length(all_scatter) + 1]] <- data.frame(
       observed = pop_pal_a[, k],
       predicted = vor_pal_a[, k],
@@ -2293,15 +2293,15 @@ tryCatch({
     city_label <- sprintf("%s (%s)", nm, uf)
     r_cols <- r$calib_cols$tracts
     r_pop_a <- aggregate_to_age(r$pop_matrix, r_cols)
-    r_sk_a <- aggregate_to_age(r$fitted_sinkhorn, r_cols)
+    r_idw_a <- aggregate_to_age(r$fitted_idw, r_cols)
     r_vor_a <- aggregate_to_age(r$fitted_voronoi, r_cols)
     r_labs <- colnames(r_pop_a)
     for (k in seq_along(r_labs)) {
       all_scatter[[length(all_scatter) + 1]] <- data.frame(
         observed = r_pop_a[, k],
-        predicted = r_sk_a[, k],
+        predicted = r_idw_a[, k],
         bracket = r_labs[k],
-        method = "Sinkhorn", city = city_label)
+        method = "IDW", city = city_label)
       all_scatter[[length(all_scatter) + 1]] <- data.frame(
         observed = r_pop_a[, k],
         predicted = r_vor_a[, k],
@@ -2317,10 +2317,10 @@ tryCatch({
     geom_abline(slope = 1, intercept = 0,
                 linetype = "dashed", color = "grey40") +
     scale_color_manual(values = c(
-      "Sinkhorn" = "#4575b4", "Voronoi" = "#d73027")) +
+      "IDW" = "#4575b4", "Voronoi" = "#d73027")) +
     facet_grid(city ~ method, scales = "free") +
     labs(
-      title = "Predicted vs Observed: Sinkhorn vs Voronoi",
+      title = "Predicted vs Observed: IDW vs Voronoi",
       subtitle = paste0(
         "Age bracket demographics across 4 Brazilian cities"),
       x = "Census population (observed)",
@@ -2334,16 +2334,16 @@ tryCatch({
       legend.position = "none",
       strip.text = element_text(face = "bold", size = 10)
     )
-  save_fig(p, "voronoi-vs-sinkhorn-scatter.png",
+  save_fig(p, "voronoi-vs-idw-scatter.png",
            width = 10, height = 12)
 
   # Combined residual boxplot (aggregated to 7 age brackets)
   all_resid <- list()
   for (k in seq_along(age_labs)) {
     all_resid[[length(all_resid) + 1]] <- data.frame(
-      residual = sk_pal_a[, k] - pop_pal_a[, k],
+      residual = idw_pal_a[, k] - pop_pal_a[, k],
       bracket = age_labs[k],
-      method = "Sinkhorn", city = "Palmas (TO)")
+      method = "IDW", city = "Palmas (TO)")
     all_resid[[length(all_resid) + 1]] <- data.frame(
       residual = vor_pal_a[, k] - pop_pal_a[, k],
       bracket = age_labs[k],
@@ -2356,14 +2356,14 @@ tryCatch({
     city_label <- sprintf("%s (%s)", nm, uf)
     r_cols <- r$calib_cols$tracts
     r_pop_a <- aggregate_to_age(r$pop_matrix, r_cols)
-    r_sk_a <- aggregate_to_age(r$fitted_sinkhorn, r_cols)
+    r_idw_a <- aggregate_to_age(r$fitted_idw, r_cols)
     r_vor_a <- aggregate_to_age(r$fitted_voronoi, r_cols)
     r_labs <- colnames(r_pop_a)
     for (k in seq_along(r_labs)) {
       all_resid[[length(all_resid) + 1]] <- data.frame(
-        residual = r_sk_a[, k] - r_pop_a[, k],
+        residual = r_idw_a[, k] - r_pop_a[, k],
         bracket = r_labs[k],
-        method = "Sinkhorn", city = city_label)
+        method = "IDW", city = city_label)
       all_resid[[length(all_resid) + 1]] <- data.frame(
         residual = r_vor_a[, k] - r_pop_a[, k],
         bracket = r_labs[k],
@@ -2378,10 +2378,10 @@ tryCatch({
     geom_hline(yintercept = 0, linetype = "dashed",
                color = "grey50") +
     scale_fill_manual(values = c(
-      "Sinkhorn" = "#4575b4", "Voronoi" = "#d73027")) +
+      "IDW" = "#4575b4", "Voronoi" = "#d73027")) +
     facet_wrap(~city, ncol = 2, scales = "free_y") +
     labs(
-      title = "Calibration Residuals: Sinkhorn vs Voronoi",
+      title = "Calibration Residuals: IDW vs Voronoi",
       subtitle = paste0(
         "Fitted minus census, by age bracket and city"),
       x = "Age bracket", y = "Residual", fill = ""
@@ -2396,7 +2396,7 @@ tryCatch({
       legend.position = "bottom",
       strip.text = element_text(face = "bold", size = 11)
     )
-  save_fig(p, "voronoi-vs-sinkhorn-residuals.png",
+  save_fig(p, "voronoi-vs-idw-residuals.png",
            width = 12, height = 10)
 
   message("  [Multi-city Voronoi] Done.")
@@ -2417,29 +2417,28 @@ message(strrep("=", 70))
 tryCatch({
   income_cities <- list(
     list(name = "S\u00e3o Paulo", ibge = "3550308", uf = "SP",
-         gpu = TRUE,  sk = 5L),
+         gpu = TRUE),
     list(name = "Salvador",      ibge = "2927408", uf = "BA",
-         gpu = TRUE,  sk = 15L),
+         gpu = TRUE),
     list(name = "Porto Alegre",  ibge = "4314902", uf = "RS",
-         gpu = FALSE, sk = 15L),
+         gpu = FALSE),
     list(name = "Cuiab\u00e1",   ibge = "5103403", uf = "MT",
-         gpu = FALSE, sk = 15L)
+         gpu = FALSE)
   )
 
   income_results <- list()
 
   for (city in income_cities) {
-    message(sprintf("\n  [%s] Running pipeline (K=%d)...",
-                    city$name, city$sk))
+    message(sprintf("\n  [%s] Running pipeline...",
+                    city$name))
 
     result_inc <- tryCatch({
       interpolate_election_br(
         city$name, uf = city$uf, year = 2022,
         cargo = "presidente",
         what = c("candidates", "turnout"),
-        keep = c("weights", "sources_sf"),
+        keep = "electoral_sf",
         use_gpu = city$gpu,
-        sk_iter = city$sk,
         force = TRUE
       )
     }, error = function(e) {
@@ -2524,7 +2523,7 @@ tryCatch({
           "Income: IBGE Census 2022 ",
           "(ResponsavelRenda via censobr). ",
           "Votes: interpolated from TSE data ",
-          "(Sinkhorn IDW interpolation).")
+          "(IDW interpolation).")
       ) +
       theme_minimal(base_size = 13) +
       theme(

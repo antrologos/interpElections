@@ -16,14 +16,14 @@
 #'       May fall outside concave polygons.}
 #'     \item{`"pop_weighted"`}{Uses a population density raster (WorldPop
 #'       Constrained 2020 by default) to find the most populated cell within
-#'       each tract. Only applied to tracts with area >= `pop_min_area`;
+#'       each tract. Only applied to tracts with area >= `min_area_for_pop_weight`;
 #'       smaller tracts use `point_on_surface`. Requires the `terra` package.}
 #'   }
 #' @param pop_raster A [terra::SpatRaster] object, a file path to a GeoTIFF,
 #'   or `NULL`. Population density raster for `method = "pop_weighted"`.
 #'   If `NULL` (default), the WorldPop Brazil Constrained 2020 raster (~48 MB)
 #'   is downloaded automatically and cached. Ignored for other methods.
-#' @param pop_min_area Numeric. Minimum tract area in km² for applying the
+#' @param min_area_for_pop_weight Numeric. Minimum tract area in km² for applying the
 #'   population-weighted method. Tracts smaller than this threshold use
 #'   `point_on_surface` instead. Default: 1 (km²). Only used when
 #'   `method = "pop_weighted"`.
@@ -52,7 +52,7 @@ compute_representative_points <- function(
     tracts_sf,
     method = c("point_on_surface", "centroid", "pop_weighted"),
     pop_raster = NULL,
-    pop_min_area = 1,
+    min_area_for_pop_weight = 1,
     tract_id = "id",
     verbose = TRUE
 ) {
@@ -100,7 +100,7 @@ compute_representative_points <- function(
     pts_proj <- .pop_weighted_points(
       tracts_proj = tracts_proj,
       pop_raster = pop_raster,
-      pop_min_area = pop_min_area,
+      min_area_for_pop_weight = min_area_for_pop_weight,
       tract_id = tract_id,
       verbose = verbose
     )
@@ -126,7 +126,7 @@ compute_representative_points <- function(
 .pop_weighted_points <- function(
     tracts_proj,
     pop_raster,
-    pop_min_area = 1,
+    min_area_for_pop_weight = 1,
     tract_id = "id",
     verbose = TRUE
 ) {
@@ -134,13 +134,13 @@ compute_representative_points <- function(
   areas_m2 <- as.numeric(sf::st_area(tracts_proj))
   areas_km2 <- areas_m2 / 1e6
 
-  large_idx <- which(areas_km2 >= pop_min_area)
-  small_idx <- which(areas_km2 < pop_min_area)
+  large_idx <- which(areas_km2 >= min_area_for_pop_weight)
+  small_idx <- which(areas_km2 < min_area_for_pop_weight)
 
   if (verbose) {
     message(sprintf(
       "    %d tracts >= %.1f km\u00b2 (pop-weighted), %d tracts < %.1f km\u00b2 (point-on-surface)",
-      length(large_idx), pop_min_area, length(small_idx), pop_min_area
+      length(large_idx), min_area_for_pop_weight, length(small_idx), min_area_for_pop_weight
     ))
   }
 
@@ -197,7 +197,7 @@ compute_representative_points <- function(
     warning(
       sprintf(
         "%d tract(s) >= %.1f km\u00b2 have no population in the WorldPop raster ",
-        n_fallback, pop_min_area
+        n_fallback, min_area_for_pop_weight
       ),
       "(all cells are NA or zero). Using point-on-surface fallback.\n",
       "Tract IDs: ", paste(fallback_ids, collapse = ", "), "\n",

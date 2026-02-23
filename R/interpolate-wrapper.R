@@ -1,15 +1,17 @@
 #' One-step IDW interpolation from source points to census tracts
 #'
-#' High-level wrapper that combines travel-time computation (optional),
-#' alpha optimization, and interpolation into a single call. If no travel
-#' time matrix is provided, OSM road network data is automatically
-#' downloaded and travel times are computed via r5r.
+#' General-purpose wrapper that combines travel-time computation (optional),
+#' alpha optimization, and interpolation into a single call. Accepts R
+#' objects (sf data frames) directly. If no travel time matrix is provided,
+#' OSM road network data is automatically downloaded and travel times are
+#' computed via r5r.
+#'
+#' For Brazilian elections, use [interpolate_election_br()] which
+#' auto-downloads all required data.
 #'
 #' @param tracts_sf An `sf` polygon object. Target census tracts.
 #' @param electoral_sf An `sf` point object. Source points (e.g., voting
 #'   locations).
-#' @param tract_id Character. Name of the ID column in `tracts_sf`.
-#' @param point_id Character. Name of the ID column in `electoral_sf`.
 #' @param calib_tracts Character vector. Column names in `tracts_sf` to use
 #'   as the calibration population matrix. Must match `calib_sources` in
 #'   length.
@@ -19,69 +21,56 @@
 #' @param interp_sources Character vector or NULL. Column names in
 #'   `electoral_sf` to interpolate. Default NULL means all numeric columns
 #'   not in `calib_sources`.
+#' @param tract_id Character. Name of the ID column in `tracts_sf`.
+#'   Default: `"id"`.
+#' @param point_id Character. Name of the ID column in `electoral_sf`.
+#'   Default: `"id"`.
 #' @param time_matrix Numeric matrix \[n x m\] or NULL. Pre-computed travel
 #'   times. If provided, skips all travel time computation.
-#' @param network_path Character or NULL. Path to directory with an OSM
-#'   `.pbf` file. If provided (and `time_matrix` is NULL), travel times
-#'   are computed directly without downloading OSM data.
-#' @param elevation_path Character or NULL. Path to elevation `.tif` file
-#'   for r5r routing.
-#' @param osm_buffer_km Numeric. Buffer in kilometers to expand the
-#'   bounding box when auto-downloading OSM data. Default: 10.
-#' @param min_pop Numeric. Minimum total population in `calib_tracts` for a
-#'   census tract to be included. Default: 1.
-#' @param alpha Numeric vector of length n, or NULL. Pre-computed decay
-#'   parameters. If provided, optimization is skipped.
+#' @param max_epochs Integer. Maximum optimizer epochs. Default: 2000.
+#'   See [optimize_alpha()].
+#' @param alpha_min Numeric. Lower bound for decay parameters. Default: 1.
+#'   See [optimize_alpha()].
+#' @param mode Character. Routing mode: `"WALK"` (default), `"BICYCLE"`,
+#'   `"CAR"`, or transit combos like `"WALK;TRANSIT"`.
+#' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
+#'   transit routing. Default: NULL.
+#' @param max_trip_duration Integer. Maximum trip duration in minutes.
+#'   Also used as fill value for unreachable pairs. Default: 300.
+#' @param point_method Character. Method for tract representative points:
+#'   `"pop_weighted"` (default), `"point_on_surface"`, or `"centroid"`.
+#'   See [compute_representative_points()].
+#' @param min_area_for_pop_weight Numeric. Minimum tract area in km2
+#'   for the pop_weighted method. Smaller tracts use point_on_surface.
+#'   Default: 1.
+#' @param min_tract_pop Numeric. Minimum total population in
+#'   `calib_tracts` for a census tract to be included. Default: 1.
 #' @param offset Numeric. Travel time offset. Default: 1.
-#' @param keep Character vector or NULL. Names of heavy intermediate
-#'   objects to include in the result. Default NULL (lightweight).
-#'   Options: `"weights"` (column-standardized weight matrix \[n x m\]),
-#'   `"time_matrix"` (travel time matrix \[n x m\]),
-#'   `"sources_sf"` (source points as `sf` object with geometry),
-#'   `"pop_raster"` (population density raster, when `point_method =
-#'   "pop_weighted"`),
-#'   `"rep_points"` (representative points `sf` object used for routing).
-#'   These can be large for big municipalities. Travel times are
-#'   cached on disk and can be reloaded without keeping them in memory.
 #' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
+#' @param keep Character vector or NULL. Names of extra intermediate
+#'   objects to include in the result. `weights` and `time_matrix` are
+#'   always kept. Options: `"electoral_sf"`, `"pop_raster"`,
+#'   `"rep_points"`.
 #' @param verbose Logical. Print progress. Default: TRUE.
-#' @param ... Additional arguments forwarded to [optimize_alpha()],
-#'   [compute_travel_times()], and/or [download_r5r_data()].
-#'   Notable forwarded arguments: `point_method` (representative point
-#'   method), `pop_raster` (population density raster),
-#'   `pop_min_area` (area threshold for pop-weighted points).
-#'   See [compute_travel_times()] for details.
-#' @param .step_offset Integer. Internal: offset added to step numbers
-#'   when called from [interpolate_election_br()]. Do not set manually.
-#' @param .step_total Integer or NULL. Internal: total step count for
-#'   unified progress display. Do not set manually.
+#' @param ... Advanced tuning. See [interpElections-passthrough].
 #'
 #' @return A list of class `"interpElections_result"` with components:
 #' \describe{
 #'   \item{interpolated}{Numeric matrix \[n x p\]. Interpolated values.}
-#'   \item{alpha}{Numeric vector of length n. Decay parameters used.}
-#'   \item{tracts_sf}{`sf` object with interpolated columns joined to census tracts.}
+#'   \item{alpha}{Decay parameters used.}
+#'   \item{tracts_sf}{`sf` object with interpolated columns joined.}
 #'   \item{sources}{Data frame (no geometry) of source point data.}
-#'   \item{optimization}{`interpElections_optim` object, or NULL if `alpha` was
-#'     pre-supplied.}
+#'   \item{optimization}{`interpElections_optim` object.}
 #'   \item{offset}{Numeric. Offset value used.}
 #'   \item{call}{The matched call.}
-#'   \item{tract_id}{Character. Name of the census tract ID column.}
-#'   \item{point_id}{Character. Name of the ID column in sources.}
-#'   \item{interp_cols}{Character vector. Names of interpolated columns.}
-#'   \item{calib_cols}{List with `$tracts` and `$sources` calibration columns.}
-#'   \item{weights}{Numeric matrix \[n x m\] or NULL. Present only when
-#'     `keep` includes `"weights"`.}
-#'   \item{time_matrix}{Numeric matrix \[n x m\] or NULL. Present only when
-#'     `keep` includes `"time_matrix"`.}
-#'   \item{sources_sf}{`sf` point object or NULL. Source points with
-#'     geometry. Present only when `keep` includes `"sources_sf"`.}
-#'   \item{pop_raster}{[terra::SpatRaster] or NULL. Population density
-#'     raster (cropped to municipality). Present only when `keep` includes
-#'     `"pop_raster"` and `point_method = "pop_weighted"` was used.}
-#'   \item{rep_points}{`sf` POINT object or NULL. Representative points
-#'     used for travel time routing. Present only when `keep` includes
-#'     `"rep_points"`.}
+#'   \item{tract_id, point_id}{ID column names.}
+#'   \item{interp_cols}{Character vector. Interpolated column names.}
+#'   \item{calib_cols}{List with `$tracts` and `$sources`.}
+#'   \item{weights}{Weight matrix or NULL (opt-in via `keep`).}
+#'   \item{time_matrix}{Travel time matrix or NULL (opt-in via `keep`).}
+#'   \item{electoral_sf}{`sf` point object or NULL (opt-in via `keep`).}
+#'   \item{pop_raster}{Population raster or NULL (opt-in via `keep`).}
+#'   \item{rep_points}{Representative points or NULL (opt-in via `keep`).}
 #' }
 #'
 #' @examples
@@ -90,8 +79,6 @@
 #' result <- interpolate_election(
 #'   tracts_sf    = census_tracts,
 #'   electoral_sf = voting_stations,
-#'   tract_id     = "code_tract",
-#'   point_id     = "id",
 #'   calib_tracts  = c("pop_18_24", "pop_25_34"),
 #'   calib_sources = c("voters_18_24", "voters_25_34")
 #' )
@@ -100,8 +87,6 @@
 #' result <- interpolate_election(
 #'   tracts_sf    = census_tracts,
 #'   electoral_sf = voting_stations,
-#'   tract_id     = "code_tract",
-#'   point_id     = "id",
 #'   calib_tracts  = c("pop_young", "pop_old"),
 #'   calib_sources = c("voters_young", "voters_old"),
 #'   time_matrix  = my_tt_matrix
@@ -111,33 +96,52 @@
 #' @family wrappers
 #'
 #' @seealso [optimize_alpha()], [compute_weight_matrix()],
-#'   [interpolate_election_br()] for the Brazilian-specific wrapper.
+#'   [interpolate_election_br()] for the Brazilian-specific wrapper,
+#'   [interpElections-passthrough] for advanced tuning via `...`.
 #'
 #' @export
 interpolate_election <- function(
     tracts_sf,
     electoral_sf,
-    tract_id,
-    point_id,
+    # -- Calibration --
     calib_tracts,
     calib_sources,
-    interp_sources = NULL,
-    time_matrix    = NULL,
-    network_path   = NULL,
-    elevation_path = NULL,
-    osm_buffer_km  = 10,
-    min_pop        = 1,
-    alpha          = NULL,
-    offset         = 1,
-    keep           = NULL,
-    use_gpu        = NULL,
-    verbose        = TRUE,
-    ...,
-    .step_offset   = 0L,
-    .step_total    = NULL
+    interp_sources     = NULL,
+    # -- ID columns --
+    tract_id           = "id",
+    point_id           = "id",
+    # -- Pre-computed input --
+    time_matrix        = NULL,
+    # -- Optimization --
+    max_epochs         = 2000L,
+    alpha_min          = 1,
+    # -- Routing --
+    mode               = "WALK",
+    gtfs_zip_path      = NULL,
+    max_trip_duration  = 300L,
+    point_method       = "pop_weighted",
+    min_area_for_pop_weight = 1,
+    # -- Filtering --
+    min_tract_pop      = 1,
+    # -- Output --
+    offset             = 1,
+    use_gpu            = NULL,
+    keep               = NULL,
+    verbose            = TRUE,
+    ...
 ) {
   cl <- match.call()
   dots <- list(...)
+
+  # Extract internal progress tracking from dots
+  .progress <- dots$.progress %||% list(offset = 0L, total = NULL)
+  .step_offset <- .progress$offset
+  .step_total <- .progress$total
+
+  # Extract demoted args from dots
+  network_path   <- dots$network_path
+  elevation_path <- dots$elevation_path
+  osm_buffer_km  <- dots$osm_buffer_km %||% 10
 
   # --- Check all dependencies upfront ---
   missing_pkgs <- character(0)
@@ -234,17 +238,17 @@ interpolate_election <- function(
     )
   }
 
-  # --- Filter census tracts by min_pop ---
-  if (min_pop > 0) {
+  # --- Filter census tracts by min_tract_pop ---
+  if (min_tract_pop > 0) {
     pop_total <- rowSums(tracts_df[, calib_tracts, drop = FALSE], na.rm = TRUE)
-    keep_rows <- pop_total >= min_pop
+    keep_rows <- pop_total >= min_tract_pop
     if (sum(keep_rows) < nrow(tracts_sf)) {
       n_removed <- sum(!keep_rows)
       tracts_sf <- tracts_sf[keep_rows, ]
       tracts_df <- sf::st_drop_geometry(tracts_sf)
       if (verbose) {
         message(sprintf("  Filtered %d census tracts with pop < %g (%d remaining)",
-                        n_removed, min_pop, nrow(tracts_sf)))
+                        n_removed, min_tract_pop, nrow(tracts_sf)))
       }
     }
   }
@@ -266,12 +270,9 @@ interpolate_election <- function(
     point_ids <- as.character(elec_df[[point_id]])
     # Include routing params in cache key so different modes/methods
     # don't collide
-    tt_mode <- dots$mode %||% "WALK"
-    tt_dur <- dots$max_trip_duration %||% 300L
-    tt_point_method <- dots$point_method %||% "point_on_surface"
     cache_input <- paste(
       c(zone_ids, "||", point_ids, "||",
-        tt_mode, tt_dur, tt_point_method),
+        mode, max_trip_duration, point_method),
       collapse = ","
     )
     tt_hash <- substr(.digest_simple(cache_input), 1, 16)
@@ -351,14 +352,21 @@ interpolate_election <- function(
       if (verbose) message(sprintf("[%d/%d] Computing travel times...",
                                    step_num, total_steps))
 
-      tt_args <- .extract_args(dots, compute_travel_times)
-      time_matrix <- do.call(compute_travel_times, c(
-        list(tracts_sf = tracts_sf, points_sf = electoral_sf,
-             network_path = network_path,
-             tract_id = tract_id, point_id = point_id,
-             verbose = verbose),
-        tt_args
-      ))
+      # Build explicit args + forward remaining dots (excluding already-listed)
+      tt_explicit <- list(
+        tracts_sf = tracts_sf, points_sf = electoral_sf,
+        network_path = network_path,
+        tract_id = tract_id, point_id = point_id,
+        point_method = point_method,
+        min_area_for_pop_weight = min_area_for_pop_weight,
+        mode = mode,
+        max_trip_duration = max_trip_duration,
+        gtfs_zip_path = gtfs_zip_path,
+        verbose = verbose
+      )
+      tt_extra <- .extract_args(dots, compute_travel_times)
+      tt_extra <- tt_extra[!names(tt_extra) %in% names(tt_explicit)]
+      time_matrix <- do.call(compute_travel_times, c(tt_explicit, tt_extra))
 
       # Extract heavy/non-serializable attributes before caching
       # (SpatRaster and sf objects should not be serialized inside the
@@ -426,26 +434,22 @@ interpolate_election <- function(
   }
 
   # --- Step 4: Optimize alpha ---
-  # Compute row_targets for Sinkhorn balancing
+  # Compute row_targets for population-proportional allocation
   pop_total <- rowSums(pop_matrix)
   row_targets <- pop_total / sum(pop_total) * ncol(time_matrix)
 
   optim_result <- NULL
-  if (is.null(alpha)) {
-    if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
-                                 step_num, total_steps))
-    opt_args <- .extract_args(dots, optimize_alpha)
-    optim_result <- do.call(optimize_alpha, c(
-      list(time_matrix = time_matrix, pop_matrix = pop_matrix,
-           source_matrix = source_matrix, row_targets = row_targets,
-           offset = offset, use_gpu = use_gpu, verbose = verbose),
-      opt_args
-    ))
-    alpha <- optim_result$alpha
-  } else {
-    if (verbose) message(sprintf("[%d/%d] Using pre-supplied alpha (skipping optimization)",
-                                 step_num, total_steps))
-  }
+  if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
+                               step_num, total_steps))
+  opt_args <- .extract_args(dots, optimize_alpha)
+  optim_result <- do.call(optimize_alpha, c(
+    list(time_matrix = time_matrix, pop_matrix = pop_matrix,
+         source_matrix = source_matrix, row_targets = row_targets,
+         max_epochs = max_epochs, alpha_min = alpha_min,
+         offset = offset, use_gpu = use_gpu, verbose = verbose),
+    opt_args
+  ))
+  alpha <- optim_result$alpha
   step_num <- step_num + 1L
 
   # --- Step 5: Interpolate ---
@@ -454,10 +458,8 @@ interpolate_election <- function(
   if (!is.null(optim_result) && !is.null(optim_result$W)) {
     W <- optim_result$W
   } else {
-    method_val <- dots[["method"]] %||% "colnorm"
     W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
-                                offset = offset, method = method_val,
-                                use_gpu = use_gpu)
+                                offset = offset, use_gpu = use_gpu)
   }
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
@@ -483,10 +485,11 @@ interpolate_election <- function(
     interp_cols   = colnames(interpolated),
     calib_cols    = list(tracts = calib_tracts, sources = calib_sources),
     row_targets   = row_targets,
+    # Always kept (needed for reinterpolate, residuals, etc.)
+    weights       = W,
+    time_matrix   = time_matrix,
     # Heavy objects (opt-in)
-    weights       = if ("weights" %in% keep) W else NULL,
-    time_matrix   = if ("time_matrix" %in% keep) time_matrix else NULL,
-    sources_sf    = if ("sources_sf" %in% keep) electoral_sf else NULL,
+    electoral_sf  = if ("electoral_sf" %in% keep) electoral_sf else NULL,
     pop_raster    = if ("pop_raster" %in% keep) pop_raster_obj else NULL,
     rep_points    = if ("rep_points" %in% keep) rep_points_obj else NULL,
     # Brazilian metadata (NULL when called generically)
@@ -494,11 +497,16 @@ interpolate_election <- function(
     nome_municipio = NULL,
     code_muni_tse  = NULL,
     uf             = NULL,
+    turno          = NULL,
+    cargo          = NULL,
     year           = NULL,
     census_year    = NULL,
     what           = NULL,
     pop_data       = NULL,
-    dictionary     = NULL
+    dictionary     = NULL,
+    # Spatial data for plotting (set by interpolate_election_br)
+    muni_boundary  = NULL,
+    neighborhoods  = NULL
   )
   class(result) <- "interpElections_result"
 
@@ -517,8 +525,17 @@ print.interpElections_result <- function(x, ...) {
     cat("interpElections result -- Brazilian election\n")
     if (!is.null(x$nome_municipio)) {
       cat(sprintf("  Municipality: %s (%s)\n", x$nome_municipio, x$uf))
-      cat(sprintf("  IBGE: %s | TSE: %s | Election: %d | Census: %d\n",
-                  x$code_muni, x$code_muni_tse, x$year, x$census_year))
+      info_line <- sprintf("  IBGE: %s | TSE: %s | Election: %d | Census: %d",
+                           x$code_muni, x$code_muni_tse, x$year, x$census_year)
+      if (!is.null(x$turno))
+        info_line <- paste0(info_line, sprintf(" | Turno: %d", x$turno))
+      if (!is.null(x$cargo)) {
+        cargo_str <- paste(
+          vapply(x$cargo, .br_cargo_label, character(1)),
+          collapse = ", ")
+        info_line <- paste0(info_line, sprintf(" | Cargo: %s", cargo_str))
+      }
+      cat(info_line, "\n")
     } else {
       cat(sprintf("  Municipality: %s (election %d, census %d)\n",
                   x$code_muni, x$year, x$census_year))
@@ -570,12 +587,12 @@ print.interpElections_result <- function(x, ...) {
   # Heavy objects
   has_w <- !is.null(x$weights)
   has_t <- !is.null(x$time_matrix)
-  has_s <- !is.null(x$sources_sf)
+  has_s <- !is.null(x$electoral_sf)
   has_p <- !is.null(x$pop_raster)
   has_r <- !is.null(x$rep_points)
   if (has_w) cat("    result$weights         weight matrix\n")
   if (has_t) cat("    result$time_matrix     travel time matrix\n")
-  if (has_s) cat("    result$sources_sf      source locations (sf)\n")
+  if (has_s) cat("    result$electoral_sf    electoral locations (sf)\n")
   if (has_p) cat("    result$pop_raster      population density raster\n")
   if (has_r) cat("    result$rep_points      representative points (sf)\n")
 
