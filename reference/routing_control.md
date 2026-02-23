@@ -107,7 +107,7 @@ routing_control()
 #>   departure_datetime: NULL 
 #>   pop_raster: NULL (auto-download) 
 #>   osm_buffer_km: 10 
-#>   fill_missing: 300 
+#>   fill_missing: Inf 
 
 # Transit mode with GTFS
 routing_control(
@@ -125,7 +125,7 @@ routing_control(
 #>   departure_datetime: 2022-10-02 10:00:00 
 #>   pop_raster: NULL (auto-download) 
 #>   osm_buffer_km: 10 
-#>   fill_missing: 300 
+#>   fill_missing: Inf 
 
 # Bicycle with centroid-based points
 routing_control(mode = "BICYCLE", point_method = "centroid")
@@ -139,5 +139,5 @@ routing_control(mode = "BICYCLE", point_method = "centroid")
 #>   departure_datetime: NULL 
 #>   pop_raster: NULL (auto-download) 
 #>   osm_buffer_km: 10 
-#>   fill_missing: 300 
+#>   fill_missing: Inf 
 ```
