@@ -298,8 +298,25 @@ compute_travel_times <- function(
   # Replace any remaining NA with fill_missing
   mat[is.na(mat)] <- fill_missing
 
+  # Replace Inf with a large finite sentinel to avoid 0/0 in column
+
+  # normalization.  K = (sentinel + offset)^(-alpha) ~ 0 for any
+  # practical alpha, but remains numerically stable.
+  if (any(is.infinite(mat))) {
+    finite_max <- max(mat[is.finite(mat)], na.rm = TRUE)
+    sentinel <- max(finite_max * 100, 1e6)
+    mat[is.infinite(mat)] <- sentinel
+    attr(mat, "fill_sentinel") <- sentinel
+  }
+
   # Diagnostic: detect tracts where ALL travel times equal fill_missing
-  all_filled <- rowSums(mat == fill_missing) == ncol(mat)
+  # (or sentinel).  Use the sentinel if present, otherwise fill_missing.
+  fill_val <- if (!is.null(attr(mat, "fill_sentinel"))) {
+    attr(mat, "fill_sentinel")
+  } else {
+    fill_missing
+  }
+  all_filled <- rowSums(mat == fill_val) == ncol(mat)
   n_unreachable <- sum(all_filled)
   if (n_unreachable > 0) {
     unreachable_ids <- tract_ids[all_filled]

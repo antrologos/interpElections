@@ -6,35 +6,35 @@ Census tracts: 5109 | Sources: 407 | Variables: 28
 
 Calibration: gender x 7 age brackets (14 pairs)
 
-Optimization: pb_sgd_colnorm_cuda | Objective: 8123.8301 | Convergence: 0
-  Alpha: min=1.000, Q1=1.202, median=1.292, Q3=1.406, max=16.569
+Optimization: pb_sgd_colnorm_cuda | Objective: 9191.1953 | Convergence: 0
+  Alpha: min=1.000, Q1=1.219, median=1.314, Q3=1.431, max=17.504
 
 Candidates (13):
-  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=    603542  mean=   118.1  [2.9, 320.5]
+  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=    603542  mean=   118.1  [2.9, 324.0]
   CAND_27                  JOSE MARIA EYMAEL (DC) total=       209  mean=     0.0  [0.0, 0.2]
-  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=     14496  mean=     2.8  [0.1, 8.9]
-  CAND_14                  KELMON LUIS DA SILVA SOUZA (PTB) total=       861  mean=     0.2  [0.0, 0.6]
+  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=     14496  mean=     2.8  [0.1, 9.5]
+  CAND_14                  KELMON LUIS DA SILVA SOUZA (PTB) total=       861  mean=     0.2  [0.0, 0.8]
   ... 9 more -- View(result$dictionary)
 
 Turnout (1):
-  QT_COMPARECIMENTO        turnout                total=   1489578  mean=   291.6  [7.1, 788.7]
+  QT_COMPARECIMENTO        turnout                total=   1489578  mean=   291.6  [7.1, 797.5]
 
 Calibration (14):
-  vot_hom_18_19            calibration            total=     21044  mean=     4.1  [0.0, 12.1]
-  vot_hom_20_24            calibration            total=     73593  mean=    14.4  [0.3, 42.5]
-  vot_hom_25_29            calibration            total=     81481  mean=    15.9  [0.4, 45.2]
-  vot_hom_30_39            calibration            total=    172752  mean=    33.8  [0.8, 92.7]
-  vot_hom_40_49            calibration            total=    170766  mean=    33.4  [0.8, 91.2]
-  vot_hom_50_59            calibration            total=    138388  mean=    27.1  [0.7, 72.3]
-  vot_hom_60_69            calibration            total=    105049  mean=    20.6  [0.5, 52.4]
-  vot_mul_18_19            calibration            total=     23556  mean=     4.6  [0.0, 13.8]
-  vot_mul_20_24            calibration            total=     77657  mean=    15.2  [0.3, 44.8]
-  vot_mul_25_29            calibration            total=     88270  mean=    17.3  [0.4, 49.0]
-  vot_mul_30_39            calibration            total=    190378  mean=    37.3  [0.9, 102.8]
-  vot_mul_40_49            calibration            total=    194436  mean=    38.1  [0.9, 104.3]
-  vot_mul_50_59            calibration            total=    165447  mean=    32.4  [0.8, 87.1]
-  vot_mul_60_69            calibration            total=    137434  mean=    26.9  [0.6, 68.8]
+  vot_hom_18_19            calibration            total=     21044  mean=     4.1  [0.0, 12.2]
+  vot_hom_20_24            calibration            total=     73593  mean=    14.4  [0.3, 42.9]
+  vot_hom_25_29            calibration            total=     81481  mean=    15.9  [0.4, 45.4]
+  vot_hom_30_39            calibration            total=    172752  mean=    33.8  [0.8, 93.4]
+  vot_hom_40_49            calibration            total=    170766  mean=    33.4  [0.8, 91.8]
+  vot_hom_50_59            calibration            total=    138388  mean=    27.1  [0.7, 73.1]
+  vot_hom_60_69            calibration            total=    105049  mean=    20.6  [0.5, 53.2]
+  vot_mul_18_19            calibration            total=     23556  mean=     4.6  [0.0, 13.9]
+  vot_mul_20_24            calibration            total=     77657  mean=    15.2  [0.3, 45.2]
+  vot_mul_25_29            calibration            total=     88270  mean=    17.3  [0.4, 52.6]
+  vot_mul_30_39            calibration            total=    190378  mean=    37.3  [0.9, 103.5]
+  vot_mul_40_49            calibration            total=    194436  mean=    38.1  [0.9, 105.0]
+  vot_mul_50_59            calibration            total=    165447  mean=    32.4  [0.8, 88.1]
+  vot_mul_60_69            calibration            total=    137434  mean=    26.9  [0.6, 70.0]
 
 
-Object size: 235.5 MB
+Object size: 243.8 MB
 Neighborhoods: 865

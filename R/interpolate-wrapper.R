@@ -167,6 +167,7 @@ interpolate_election <- function(
   max_trip_duration   <- routing$max_trip_duration
   point_method        <- routing$point_method
   osm_buffer_km       <- routing$osm_buffer_km
+  fill_missing        <- routing$fill_missing
 
   # Extract internal progress tracking from dots
   .progress <- dots$.progress %||% list(offset = 0L, total = NULL)
@@ -306,7 +307,7 @@ interpolate_election <- function(
     # don't collide
     cache_input <- paste(
       c(zone_ids, "||", point_ids, "||",
-        mode, max_trip_duration, point_method),
+        mode, max_trip_duration, point_method, fill_missing),
       collapse = ","
     )
     tt_hash <- substr(.digest_simple(cache_input), 1, 16)

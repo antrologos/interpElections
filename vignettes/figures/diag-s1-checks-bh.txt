@@ -1,12 +1,12 @@
 interpElections diagnostics
 -------------------------------------------------- 
  [PASS] Convergence: optimizer converged (code 0)
- [PASS] Alpha distribution: median=1.29, IQR=[1.21, 1.39], 0% > 15
- [PASS] Residual RMSE: 7.0678 (informational)
- [WARN] Residual bias: max |colMeans(resid)| = 1.8894 (26.7% of RMSE)
+ [PASS] Alpha distribution: median=1.32, IQR=[1.23, 1.41], 0% > 15
+ [PASS] Residual RMSE: 7.1102 (informational)
+ [WARN] Residual bias: max |colMeans(resid)| = 1.8894 (26.6% of RMSE)
  [PASS] Population-voter gap: census=1650864, source=1640251, gap=0.6%
- [FAIL] Unreachable pairs: 15.1% of pairs near max travel time (>= 285 min)
- [PASS] Alpha spatial variation: CV of median-alpha = 0.558
- [PASS] Implied turnout: 2.1% of tracts with implied turnout > 110%
+ [FAIL] Unreachable pairs: 12.1% of pairs near max travel time (>= 950000 min)
+ [PASS] Alpha spatial variation: CV of median-alpha = 0.578
+ [PASS] Implied turnout: 2.2% of tracts with implied turnout > 110%
 -------------------------------------------------- 
 6 PASS, 1 WARN, 1 FAIL 

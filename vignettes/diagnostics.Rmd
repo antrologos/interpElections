@@ -511,6 +511,24 @@ plot_weights(result_bh, type = "entropy")
 knitr::include_graphics("figures/diag-s5-wt-bh-entropy.png")
 ```
 
+Interactive version (click tracts to see weight summary stats):
+
+```{r s5-ent-bh-interactive, eval = FALSE}
+plot_weights(result_bh, type = "entropy", interactive = TRUE)
+```
+
+```{r s5-ent-bh-interactive-embed, echo = FALSE, results = "asis"}
+html_file <- "figures/diag-s5-ent-bh-interactive.html"
+if (file.exists(html_file)) {
+  cat(sprintf(
+    '<iframe src="%s" width="100%%" height="600px" style="border: none;"></iframe>',
+    html_file
+  ))
+} else {
+  cat("*Interactive widget not available. Run `precompute-diagnostics.R` to generate.*")
+}
+```
+
 ### Dominant station map: `plot_weights(type = "dominant")`
 
 ```{r s5-dominant-vga, eval = FALSE}
@@ -574,6 +592,20 @@ plot_connections(result_bh)
 knitr::include_graphics("figures/diag-s5-conn-bh-overview.png")
 ```
 
+Interactive version for BH (click tracts and stations for detailed weight tables):
+
+```{r s5-conn-bh-interactive-embed, echo = FALSE, results = "asis"}
+html_file <- "figures/diag-s5-conn-bh-interactive.html"
+if (file.exists(html_file)) {
+  cat(sprintf(
+    '<iframe src="%s" width="100%%" height="600px" style="border: none;"></iframe>',
+    html_file
+  ))
+} else {
+  cat("*Interactive widget not available. Run `precompute-diagnostics.R` to generate.*")
+}
+```
+
 Detail for a specific tract:
 
 ```{r s5-conn-detail, eval = FALSE}
@@ -584,8 +616,49 @@ plot_connections(result_vga, tract = 1)
 knitr::include_graphics("figures/diag-s5-conn-vga-detail1.png")
 ```
 
+### Interactive exploration
+
+All weight diagnostics support `interactive = TRUE`, which produces leaflet/mapview maps with rich click popups. This is the recommended way to explore the weight structure for individual tracts and stations.
+
+**Interactive connections** --- click any tract to see its top-5 connected stations (with weights, travel times, and cumulative weight). Click any station to see which tracts it serves:
+
+```{r s5-conn-interactive, eval = FALSE}
+plot_connections(result_vga, interactive = TRUE)
+```
+
+```{r s5-conn-interactive-embed, echo = FALSE, results = "asis"}
+html_file <- "figures/diag-s5-conn-vga-interactive.html"
+if (file.exists(html_file)) {
+  cat(sprintf(
+    '<iframe src="%s" width="100%%" height="600px" style="border: none;"></iframe>',
+    html_file
+  ))
+} else {
+  cat("*Interactive widget not available. Run `precompute-diagnostics.R` to generate.*")
+}
+```
+
+**Interactive dominant station map** --- click any tract to see weight summary statistics (effective sources, HHI, dominant weight):
+
+```{r s5-dom-interactive, eval = FALSE}
+plot_weights(result_vga, type = "dominant", interactive = TRUE)
+```
+
+```{r s5-dom-interactive-embed, echo = FALSE, results = "asis"}
+html_file <- "figures/diag-s5-dom-vga-interactive.html"
+if (file.exists(html_file)) {
+  cat(sprintf(
+    '<iframe src="%s" width="100%%" height="600px" style="border: none;"></iframe>',
+    html_file
+  ))
+} else {
+  cat("*Interactive widget not available. Run `precompute-diagnostics.R` to generate.*")
+}
+```
+
 ### Interpretation
 
+- **Effective number of sources**: This is the exponential of Shannon entropy on the row-normalized weights. A value of 1 means the tract depends on a single station; a value of 10 means the weights are equivalent to 10 equal-weight stations. High values (e.g., > 50) can indicate that the travel time ceiling is creating a uniform background weight across many distant stations. The `fill_missing = Inf` default (see Section 6) addresses this by zeroing out unreachable pairs.
 - **Low entropy tracts** (effective N close to 1): The interpolation for this tract depends almost entirely on a single station. If that station's data is atypical, the interpolated values may be unreliable.
 - **Dominant station map**: Produces a Voronoi-like partition. If catchment areas don't match geographic intuition, check the travel time matrix.
 - **Connections**: The spoke pattern should make geographic sense --- tracts should connect to nearby stations. Long-distance connections suggest routing issues.
@@ -639,9 +712,21 @@ plot_travel_times(result_vga, type = "map", tract = 1)
 knitr::include_graphics("figures/diag-s6-tt-vga-map.png")
 ```
 
+### The `fill_missing` parameter
+
+When the routing engine cannot find a path between a tract and a station, the travel time is set to `fill_missing`. By default, `routing_control(fill_missing = NULL)` resolves to `Inf`, which is internally replaced by a large finite sentinel value (e.g., $10^6$ minutes). This gives these unreachable pairs an effective weight of zero:
+
+$$K_{ij} = (10^6 + 1)^{-\alpha} \approx 0$$
+
+Previous versions used `fill_missing = max_trip_duration` (typically 300 minutes), which gave unreachable pairs a non-negligible weight of $(301)^{-\alpha}$. In dense cities with many unreachable pairs, this created a uniform background weight that inflated the effective number of sources. To restore the old behavior:
+
+```{r fill-missing-old, eval = FALSE}
+routing_control(fill_missing = 300)
+```
+
 ### Interpretation
 
-- **Spike at maximum value**: These are "fill" values for unreachable pairs. A large spike means the routing engine couldn't find paths for many pairs.
+- **Spike at sentinel value**: These are "fill" values for unreachable pairs. With `fill_missing = Inf`, these pairs receive zero weight and do not affect interpolation. A large number of unreachable pairs suggests poor OSM network coverage.
 - **Bimodal distribution**: May indicate disconnected graph components (e.g., separated by a river without bridge in the OSM network).
 - **Block-diagonal heatmap**: Expected --- nearby tracts have similar travel times to the same stations. Absence of block structure suggests the travel times lack spatial coherence.
 

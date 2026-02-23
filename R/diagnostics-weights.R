@@ -117,6 +117,11 @@ plot_weights <- function(result, tract = NULL,
 
   type <- match.arg(type)
 
+  if (interactive) {
+    return(.plot_weights_interactive(result, type, tract, top_k, threshold,
+                                      palette))
+  }
+
   switch(type,
     entropy   = .plot_weights_entropy(result, palette, breaks, n_breaks),
     dominant  = .plot_weights_dominant(result, palette),
@@ -174,6 +179,10 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   station_coords <- .get_station_coords(result)
   if (is.null(station_coords)) {
     stop("Cannot extract station coordinates from result.", call. = FALSE)
+  }
+
+  if (interactive) {
+    return(.plot_connections_interactive(result, W, centroids, station_coords))
   }
 
   if (is.null(tract)) {
@@ -326,24 +335,51 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
 
   station_coords <- .get_station_coords(result)
 
+  # Tract centroid for connection lines
+  tract_sf <- result$tracts_sf[tract_idx, , drop = FALSE]
+  tract_centroid <- sf::st_coordinates(
+    sf::st_centroid(sf::st_geometry(tract_sf))
+  )
+
   # Build plot
   p <- ggplot2::ggplot(result$tracts_sf) +
-    ggplot2::geom_sf(fill = "grey95", color = "grey80", linewidth = 0.1)
+    ggplot2::geom_sf(fill = "grey90", color = "grey70", linewidth = 0.15)
 
   # Highlight selected tract
-  tract_sf <- result$tracts_sf[tract_idx, , drop = FALSE]
   p <- p + ggplot2::geom_sf(
     data = tract_sf,
     fill = "#3182bd", color = "#08519c", linewidth = 0.6, alpha = 0.4
   )
 
-  # Station points sized and colored by weight
+  # Connection lines + station points sized and colored by weight
   if (!is.null(station_coords) && any(keep)) {
     station_df <- data.frame(
       x = station_coords[keep, 1],
       y = station_coords[keep, 2],
       weight = w[keep]
     )
+    # Connection lines from tract centroid to stations
+    conn_df <- data.frame(
+      cx = tract_centroid[1, 1],
+      cy = tract_centroid[1, 2],
+      sx = station_df$x,
+      sy = station_df$y,
+      weight = station_df$weight
+    )
+    p <- p + ggplot2::geom_segment(
+      data = conn_df,
+      ggplot2::aes(
+        x = .data$cx, y = .data$cy,
+        xend = .data$sx, yend = .data$sy,
+        alpha = .data$weight, linewidth = .data$weight
+      ),
+      color = "steelblue",
+      inherit.aes = FALSE
+    ) +
+      ggplot2::scale_linewidth_continuous(range = c(0.5, 3), guide = "none") +
+      ggplot2::scale_alpha_continuous(range = c(0.4, 1), guide = "none")
+
+    # Station points
     p <- p + ggplot2::geom_point(
       data = station_df,
       ggplot2::aes(
@@ -352,11 +388,21 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
       ),
       inherit.aes = FALSE
     ) +
-      ggplot2::scale_size_continuous(range = c(1, 6), guide = "none") +
+      ggplot2::scale_size_continuous(range = c(1.5, 7), guide = "none") +
       ggplot2::scale_color_distiller(
         palette = palette, direction = 1, na.value = "grey50",
         name = "Weight"
       )
+
+    # Zoom: bounding box of tract + connected stations, expanded by 30%
+    all_x <- c(tract_centroid[1, 1], station_df$x)
+    all_y <- c(tract_centroid[1, 2], station_df$y)
+    x_range <- range(all_x)
+    y_range <- range(all_y)
+    x_pad <- max(diff(x_range) * 0.3, diff(range(sf::st_bbox(tract_sf)[c(1, 3)])))
+    y_pad <- max(diff(y_range) * 0.3, diff(range(sf::st_bbox(tract_sf)[c(2, 4)])))
+    zoom_xlim <- x_range + c(-x_pad, x_pad)
+    zoom_ylim <- y_range + c(-y_pad, y_pad)
   }
 
   # Tract label
@@ -377,6 +423,11 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   border_layer <- .muni_border_layer(result$code_muni, result$tracts_sf,
                                       result$muni_boundary)
   if (!is.null(border_layer)) p <- p + border_layer
+
+  # Apply zoom AFTER all geom_sf layers (adding geom_sf after coord_sf resets it)
+  if (exists("zoom_xlim")) {
+    p <- p + ggplot2::coord_sf(xlim = zoom_xlim, ylim = zoom_ylim)
+  }
 
   print(p)
   invisible(p)
@@ -403,10 +454,15 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   if (show_all_tracts) {
     p <- p + ggplot2::geom_sf(
       data = result$tracts_sf,
-      fill = "grey95", color = "grey80", linewidth = 0.1,
+      fill = "grey90", color = "grey70", linewidth = 0.15,
       inherit.aes = FALSE
     )
   }
+
+  # Auto-scale line aesthetics based on density
+  line_alpha <- if (n > 2000) 0.1 else if (n > 1000) 0.15 else 0.3
+  line_lw    <- if (n > 2000) 0.1 else if (n > 1000) 0.15 else 0.3
+  pt_size    <- if (n > 2000) 0.6 else if (n > 1000) 0.8  else 1.2
 
   p <- p +
     ggplot2::geom_segment(
@@ -415,7 +471,7 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
         x = .data$cx, y = .data$cy,
         xend = .data$sx, yend = .data$sy
       ),
-      color = "steelblue", alpha = 0.3, linewidth = 0.3
+      color = "steelblue", alpha = line_alpha, linewidth = line_lw
     )
 
   # Station points
@@ -423,7 +479,7 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   p <- p + ggplot2::geom_point(
     data = st_df,
     ggplot2::aes(x = .data$x, y = .data$y),
-    color = "black", size = 1.2,
+    color = "black", size = pt_size,
     inherit.aes = FALSE
   )
 
@@ -480,7 +536,7 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   if (show_all_tracts) {
     p <- p + ggplot2::geom_sf(
       data = result$tracts_sf,
-      fill = "grey95", color = "grey80", linewidth = 0.1,
+      fill = "grey90", color = "grey70", linewidth = 0.15,
       inherit.aes = FALSE
     )
   }
@@ -504,8 +560,8 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
           color = .data$tract
         )
       ) +
-        ggplot2::scale_linewidth_continuous(range = c(0.3, 2), guide = "none") +
-        ggplot2::scale_alpha_continuous(range = c(0.3, 1), guide = "none")
+        ggplot2::scale_linewidth_continuous(range = c(0.5, 3), guide = "none") +
+        ggplot2::scale_alpha_continuous(range = c(0.5, 1), guide = "none")
     } else {
       p <- p + ggplot2::geom_segment(
         data = seg_df,
@@ -516,17 +572,57 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
         ),
         color = "steelblue"
       ) +
-        ggplot2::scale_linewidth_continuous(range = c(0.3, 2), guide = "none") +
-        ggplot2::scale_alpha_continuous(range = c(0.3, 1), guide = "none")
+        ggplot2::scale_linewidth_continuous(range = c(0.5, 3), guide = "none") +
+        ggplot2::scale_alpha_continuous(range = c(0.5, 1), guide = "none")
+
+      # Weight labels on top-3 connections
+      top3 <- seg_df[order(seg_df$weight, decreasing = TRUE), ]
+      top3 <- top3[seq_len(min(3L, nrow(top3))), ]
+      top3$label <- sprintf("%.3f", top3$weight)
+      top3$lx <- (top3$cx + top3$sx) / 2
+      top3$ly <- (top3$cy + top3$sy) / 2
+      p <- p + ggplot2::geom_label(
+        data = top3,
+        ggplot2::aes(x = .data$lx, y = .data$ly, label = .data$label),
+        size = 2.8, fill = "white", alpha = 0.8,
+        label.padding = ggplot2::unit(0.15, "lines"),
+        inherit.aes = FALSE
+      )
     }
+
+    # Zoom: bounding box of selected tract(s) + connected stations, expanded 30%
+    all_x <- c(seg_df$cx, seg_df$sx)
+    all_y <- c(seg_df$cy, seg_df$sy)
+    x_range <- range(all_x)
+    y_range <- range(all_y)
+    x_pad <- diff(x_range) * 0.3
+    y_pad <- diff(y_range) * 0.3
+    # Ensure minimum padding from tract bounding box
+    sel_bbox <- sf::st_bbox(sel_sf)
+    x_pad <- max(x_pad, (sel_bbox[["xmax"]] - sel_bbox[["xmin"]]) * 0.5)
+    y_pad <- max(y_pad, (sel_bbox[["ymax"]] - sel_bbox[["ymin"]]) * 0.5)
+    zoom_xlim <- x_range + c(-x_pad, x_pad)
+    zoom_ylim <- y_range + c(-y_pad, y_pad)
   }
 
-  # Station points
-  st_df <- data.frame(x = station_coords[, 1], y = station_coords[, 2])
+  # Station points (only connected stations in zoomed view)
+  if (!is.null(seg_df) && nrow(seg_df) > 0L) {
+    connected_idx <- unique(match(
+      paste(seg_df$sx, seg_df$sy),
+      paste(station_coords[, 1], station_coords[, 2])
+    ))
+    connected_idx <- connected_idx[!is.na(connected_idx)]
+    st_df <- data.frame(
+      x = station_coords[connected_idx, 1],
+      y = station_coords[connected_idx, 2]
+    )
+  } else {
+    st_df <- data.frame(x = station_coords[, 1], y = station_coords[, 2])
+  }
   p <- p + ggplot2::geom_point(
     data = st_df,
     ggplot2::aes(x = .data$x, y = .data$y),
-    color = "black", size = 1.2,
+    color = "black", size = 2.5, shape = 16,
     inherit.aes = FALSE
   )
 
@@ -541,6 +637,11 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   border_layer <- .muni_border_layer(result$code_muni, result$tracts_sf,
                                       result$muni_boundary)
   if (!is.null(border_layer)) p <- p + border_layer
+
+  # Apply zoom AFTER all geom_sf layers (adding geom_sf after coord_sf resets it)
+  if (exists("zoom_xlim")) {
+    p <- p + ggplot2::coord_sf(xlim = zoom_xlim, ylim = zoom_ylim)
+  }
 
   p
 }

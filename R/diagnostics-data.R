@@ -53,11 +53,26 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
 #' @noRd
 .tt_histogram <- function(tt) {
   vals <- as.numeric(tt)
-  max_val <- max(vals, na.rm = TRUE)
-  n_at_max <- sum(vals >= max_val - 0.1, na.rm = TRUE)
-  pct_at_max <- n_at_max / length(vals) * 100
+  n_total <- length(vals)
 
-  df <- data.frame(time = vals)
+  # Detect sentinel values (from fill_missing = Inf replacement)
+  sentinel <- attr(tt, "fill_sentinel")
+  if (!is.null(sentinel)) {
+    n_sentinel <- sum(vals >= sentinel * 0.95, na.rm = TRUE)
+    pct_sentinel <- n_sentinel / n_total * 100
+    # Filter out sentinel values for histogram display
+    vals_plot <- vals[vals < sentinel * 0.95]
+  } else {
+    n_sentinel <- 0L
+    pct_sentinel <- 0
+    vals_plot <- vals
+  }
+
+  max_val <- max(vals_plot, na.rm = TRUE)
+  n_at_max <- sum(vals_plot >= max_val - 0.1, na.rm = TRUE)
+  pct_at_max <- n_at_max / n_total * 100
+
+  df <- data.frame(time = vals_plot)
   p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$time)) +
     ggplot2::geom_histogram(bins = 50, fill = "steelblue", color = "white",
                              linewidth = 0.1) +
@@ -66,12 +81,22 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
     ggplot2::annotate("text", x = max_val, y = Inf,
                        label = sprintf("max = %.0f min\n(%d pairs, %.1f%%)",
                                        max_val, n_at_max, pct_at_max),
-                       hjust = 1.1, vjust = 1.5, size = 3.5, color = "red") +
+                       hjust = 1.1, vjust = 1.5, size = 3.5, color = "red")
+
+  # Add sentinel annotation if present
+  sub_text <- sprintf("%d tracts x %d stations = %s pairs",
+                      nrow(tt), ncol(tt),
+                      format(n_total, big.mark = ","))
+  if (n_sentinel > 0) {
+    sub_text <- paste0(sub_text, sprintf(
+      "\n%d unreachable pairs (%.1f%%) excluded (fill_missing = Inf)",
+      n_sentinel, pct_sentinel))
+  }
+
+  p <- p +
     ggplot2::labs(
       title = "Travel time distribution",
-      subtitle = sprintf("%d tracts x %d stations = %s pairs",
-                         nrow(tt), ncol(tt),
-                         format(length(vals), big.mark = ",")),
+      subtitle = sub_text,
       x = "Travel time (minutes)",
       y = "Count"
     ) +
@@ -96,6 +121,13 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
   lat_order <- order(coords[, 2])
 
   tt_ordered <- tt[lat_order, , drop = FALSE]
+
+  # Cap sentinel values at finite max for color scale
+  sentinel <- attr(tt, "fill_sentinel")
+  if (!is.null(sentinel)) {
+    finite_max <- max(tt_ordered[tt_ordered < sentinel * 0.95], na.rm = TRUE)
+    tt_ordered[tt_ordered >= sentinel * 0.95] <- NA
+  }
 
   # Build long data frame
   df <- data.frame(

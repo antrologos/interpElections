@@ -305,15 +305,23 @@ print.interpElections_diagnostics <- function(x, ...) {
     return(list(
       status = "skip",
       label = "Unreachable pairs",
-      detail = "time_matrix not available (use keep_time = TRUE)",
+      detail = "time_matrix not available",
       value = NA
     ))
   }
 
   tt <- result$time_matrix
   max_val <- max(tt, na.rm = TRUE)
-  # Consider "at or near max" as >= 95% of max value
-  threshold <- max_val * 0.95
+  # With fill_missing = Inf (new default), the sentinel value can be very
+
+  # large (e.g. 1e6).  Use a two-tier threshold: 95% of max for normal
+  # matrices, or 1e5 to catch large sentinel values.
+  sentinel <- attr(tt, "fill_sentinel")
+  if (!is.null(sentinel)) {
+    threshold <- sentinel * 0.95
+  } else {
+    threshold <- max_val * 0.95
+  }
   n_total <- length(tt)
   n_at_max <- sum(tt >= threshold, na.rm = TRUE)
   pct <- n_at_max / n_total * 100

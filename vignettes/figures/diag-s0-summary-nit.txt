@@ -6,54 +6,54 @@ Census tracts: 1161 | Sources: 135 | Variables: 49
 
 Calibration: gender x 7 age brackets (14 pairs)
 
-Optimization: pb_sgd_colnorm_cpu | Objective: 3009.6062 | Convergence: 0
-  Alpha: min=1.000, Q1=1.238, median=1.382, Q3=1.551, max=16.037
+Optimization: pb_sgd_colnorm_cpu | Objective: 21875.8711 | Convergence: 0
+  Alpha: min=1.000, Q1=1.268, median=1.413, Q3=1.585, max=17.375
 
 Candidates (13):
   CAND_27                  JOSE MARIA EYMAEL (DC) total=        61  mean=     0.1  [0.0, 0.2]
-  CAND_14                  KELMON LUIS DA SILVA SOUZA (PTB) total=       219  mean=     0.2  [0.0, 0.9]
-  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=      2419  mean=     2.1  [0.0, 6.4]
-  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=    147370  mean=   126.9  [3.1, 314.2]
+  CAND_14                  KELMON LUIS DA SILVA SOUZA (PTB) total=       219  mean=     0.2  [0.0, 1.0]
+  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=      2419  mean=     2.1  [0.0, 7.1]
+  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=    147370  mean=   126.9  [0.0, 314.5]
   ... 9 more -- View(result$dictionary)
 
 Parties (11):
   PARTY_27                 DC                     total=        61  mean=     0.1  [0.0, 0.2]
-  PARTY_14                 PTB                    total=       219  mean=     0.2  [0.0, 0.9]
-  PARTY_30                 NOVO                   total=      2419  mean=     2.1  [0.0, 6.4]
-  PARTY_13                 PT                     total=    147370  mean=   126.9  [3.1, 314.2]
+  PARTY_14                 PTB                    total=       219  mean=     0.2  [0.0, 1.0]
+  PARTY_30                 NOVO                   total=      2419  mean=     2.1  [0.0, 7.1]
+  PARTY_13                 PT                     total=    147370  mean=   126.9  [0.0, 314.5]
   ... 7 more -- View(result$dictionary)
 
 Turnout (1):
-  QT_COMPARECIMENTO        turnout                total=    327588  mean=   282.2  [7.0, 682.1]
+  QT_COMPARECIMENTO        turnout                total=    327588  mean=   282.2  [0.1, 685.5]
 
 Demographics (10):
-  GENERO_FEMININO          demographics           total=    225250  mean=   194.0  [4.8, 472.4]
-  GENERO_MASCULINO         demographics           total=    180120  mean=   155.1  [3.8, 378.3]
-  EDUC_ANALFABETO          demographics           total=      2799  mean=     2.4  [0.1, 8.2]
-  EDUC_FUND_COMP           demographics           total=     21513  mean=    18.5  [0.4, 55.4]
-  EDUC_FUND_INCOMP         demographics           total=     51749  mean=    44.6  [1.0, 151.5]
-  EDUC_LE_ESCREVE          demographics           total=      6701  mean=     5.8  [0.1, 18.7]
-  EDUC_MEDIO_COMP          demographics           total=    110919  mean=    95.5  [2.4, 250.3]
-  EDUC_MEDIO_INCOMP        demographics           total=     52051  mean=    44.8  [1.1, 131.9]
-  EDUC_SUP_COMP            demographics           total=    117315  mean=   101.0  [1.3, 410.2]
-  EDUC_SUP_INCOMP          demographics           total=     42323  mean=    36.5  [0.6, 115.3]
+  GENERO_FEMININO          demographics           total=    225250  mean=   194.0  [0.1, 472.4]
+  GENERO_MASCULINO         demographics           total=    180120  mean=   155.1  [0.0, 379.7]
+  EDUC_ANALFABETO          demographics           total=      2799  mean=     2.4  [0.0, 8.3]
+  EDUC_FUND_COMP           demographics           total=     21513  mean=    18.5  [0.0, 57.8]
+  EDUC_FUND_INCOMP         demographics           total=     51749  mean=    44.6  [0.0, 153.8]
+  EDUC_LE_ESCREVE          demographics           total=      6701  mean=     5.8  [0.0, 19.0]
+  EDUC_MEDIO_COMP          demographics           total=    110919  mean=    95.5  [0.0, 268.7]
+  EDUC_MEDIO_INCOMP        demographics           total=     52051  mean=    44.8  [0.0, 141.2]
+  EDUC_SUP_COMP            demographics           total=    117315  mean=   101.0  [0.0, 453.1]
+  EDUC_SUP_INCOMP          demographics           total=     42323  mean=    36.5  [0.0, 128.5]
 
 Calibration (14):
-  vot_hom_18_19            calibration            total=      4242  mean=     3.7  [0.1, 10.6]
-  vot_hom_20_24            calibration            total=     14955  mean=    12.9  [0.3, 34.7]
-  vot_hom_25_29            calibration            total=     16529  mean=    14.2  [0.4, 46.4]
-  vot_hom_30_39            calibration            total=     33827  mean=    29.1  [0.8, 87.5]
-  vot_hom_40_49            calibration            total=     34255  mean=    29.5  [0.7, 73.3]
-  vot_hom_50_59            calibration            total=     29529  mean=    25.4  [0.6, 62.3]
-  vot_hom_60_69            calibration            total=     25886  mean=    22.3  [0.4, 53.9]
-  vot_mul_18_19            calibration            total=      4747  mean=     4.1  [0.1, 11.7]
-  vot_mul_20_24            calibration            total=     16551  mean=    14.3  [0.4, 38.6]
-  vot_mul_25_29            calibration            total=     18393  mean=    15.8  [0.4, 49.8]
-  vot_mul_30_39            calibration            total=     38134  mean=    32.8  [0.8, 91.3]
-  vot_mul_40_49            calibration            total=     40703  mean=    35.1  [0.9, 86.5]
-  vot_mul_50_59            calibration            total=     37001  mean=    31.9  [0.8, 78.4]
-  vot_mul_60_69            calibration            total=     35554  mean=    30.6  [0.6, 79.7]
+  vot_hom_18_19            calibration            total=      4242  mean=     3.7  [0.0, 11.6]
+  vot_hom_20_24            calibration            total=     14955  mean=    12.9  [0.0, 35.0]
+  vot_hom_25_29            calibration            total=     16529  mean=    14.2  [0.0, 50.6]
+  vot_hom_30_39            calibration            total=     33827  mean=    29.1  [0.0, 97.6]
+  vot_hom_40_49            calibration            total=     34255  mean=    29.5  [0.0, 73.6]
+  vot_hom_50_59            calibration            total=     29529  mean=    25.4  [0.0, 63.8]
+  vot_hom_60_69            calibration            total=     25886  mean=    22.3  [0.0, 54.7]
+  vot_mul_18_19            calibration            total=      4747  mean=     4.1  [0.0, 12.2]
+  vot_mul_20_24            calibration            total=     16551  mean=    14.3  [0.0, 39.2]
+  vot_mul_25_29            calibration            total=     18393  mean=    15.8  [0.0, 54.3]
+  vot_mul_30_39            calibration            total=     38134  mean=    32.8  [0.0, 101.8]
+  vot_mul_40_49            calibration            total=     40703  mean=    35.1  [0.0, 86.8]
+  vot_mul_50_59            calibration            total=     37001  mean=    31.9  [0.0, 79.5]
+  vot_mul_60_69            calibration            total=     35554  mean=    30.6  [0.0, 88.0]
 
 
-Object size: 187.0 MB
+Object size: 187.6 MB
 Neighborhoods: 402

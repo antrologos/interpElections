@@ -23,9 +23,13 @@ tests/testthat/Rplots.pdf
 # Vignette build artifacts
 vignettes/*.R
 !vignettes/precompute.R
+!vignettes/precompute-diagnostics.R
 vignettes/*.html
 /doc/
 /Meta/
+
+# Widget dependency directories (HTML widgets are self-contained)
+vignettes/figures/*_files/
 
 # Pre-computed vignette data (too large for git; regenerate with precompute.R)
 vignettes/precomputed/

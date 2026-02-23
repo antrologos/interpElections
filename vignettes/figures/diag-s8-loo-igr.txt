@@ -1,4 +1,4 @@
   LOO: station 1 / 17  LOO: station 2 / 17  LOO: station 3 / 17  LOO: station 4 / 17  LOO: station 5 / 17  LOO: station 6 / 17  LOO: station 7 / 17  LOO: station 8 / 17  LOO: station 9 / 17  LOO: station 10 / 17  LOO: station 11 / 17  LOO: station 12 / 17  LOO: station 13 / 17  LOO: station 14 / 17  LOO: station 15 / 17  LOO: station 16 / 17  LOO: station 17 / 17
-Leave-one-out RMSE: 7.2895 (mean), 7.1405 (median)
-Full model RMSE:    6.7769
-LOO degradation:    7.6%
+Leave-one-out RMSE: 7.2895 (mean), 7.1375 (median)
+Full model RMSE:    6.7842
+LOO degradation:    7.4%

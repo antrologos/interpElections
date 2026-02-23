@@ -143,8 +143,11 @@ optim_control <- function(
 #'   WorldPop data is auto-downloaded. Default: NULL.
 #' @param osm_buffer_km Numeric. Buffer in km around the combined bounding
 #'   box of tracts and points when clipping OSM data. Default: 10.
-#' @param fill_missing Numeric or NULL. Value for unreachable OD pairs.
-#'   NULL (default) uses `max_trip_duration`.
+#' @param fill_missing Numeric, `Inf`, or NULL. Value for unreachable OD pairs.
+#'   `Inf` (default when NULL) effectively assigns zero weight to unreachable
+#'   pairs by replacing them internally with a large finite sentinel. Previous
+#'   versions used `max_trip_duration`, which gave non-negligible weight to
+#'   distant pairs. Set to `max_trip_duration` to restore old behavior.
 #'
 #' @return A list of class `"interpElections_routing_control"` with one element
 #'   per parameter.
@@ -226,7 +229,7 @@ routing_control <- function(
 
   # Resolve fill_missing default
   fill_resolved <- if (is.null(fill_missing)) {
-    as.integer(max_trip_duration)
+    Inf
   } else {
     fill_missing
   }
