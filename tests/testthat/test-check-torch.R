@@ -103,10 +103,10 @@ test_that(".check_mps_runtime returns expected structure", {
 })
 
 
-# --- check_torch() -----------------------------------------------------------
+# --- interpElections:::check_torch() -----------------------------------------------------------
 
 test_that("check_torch returns expected structure", {
-  result <- check_torch(verbose = FALSE)
+  result <- interpElections:::check_torch(verbose = FALSE)
   expect_type(result, "list")
   expect_named(result, c(
     "torch_installed", "torch_version", "binaries_installed",
@@ -125,7 +125,7 @@ test_that("check_torch returns expected structure", {
 })
 
 test_that("check_torch ready flag is consistent with sub-checks", {
-  result <- check_torch(verbose = FALSE)
+  result <- interpElections:::check_torch(verbose = FALSE)
   if (result$ready) {
     expect_true(result$torch_installed)
     expect_true(result$binaries_installed)
@@ -134,11 +134,11 @@ test_that("check_torch ready flag is consistent with sub-checks", {
 })
 
 test_that("check_torch verbose=TRUE produces messages", {
-  expect_message(check_torch(verbose = TRUE), "torch")
+  expect_message(interpElections:::check_torch(verbose = TRUE), "torch")
 })
 
 test_that("check_torch verbose=FALSE is silent", {
-  expect_silent(check_torch(verbose = FALSE))
+  expect_silent(interpElections:::check_torch(verbose = FALSE))
 })
 
 

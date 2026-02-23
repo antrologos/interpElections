@@ -12,23 +12,7 @@ interpElections_cache_clean(
 )
 }
 \arguments{
-\item{category}{Character. Which category to clear. One of:
-\describe{
-\item{\code{"all"}}{Delete the entire cache}
-\item{\code{"downloads"}}{All raw downloads (votes, turnout, geocode, profile, hidalgo, osm)}
-\item{\code{"processed"}}{All processed/cached results (electoral, tracts)}
-\item{\code{"networks"}}{All r5r network indices}
-\item{\code{"travel_times"}}{Cached travel time matrices}
-\item{\code{"votes"}}{TSE vote data ZIPs}
-\item{\code{"turnout"}}{TSE turnout data ZIPs}
-\item{\code{"geocode"}}{TSE polling station location ZIPs}
-\item{\code{"profile"}}{TSE voter profile ZIPs}
-\item{\code{"hidalgo"}}{Hidalgo geocoding fallback data}
-\item{\code{"osm"}}{OpenStreetMap road network extracts}
-\item{\code{"electoral"}}{Processed electoral data (br_prepare_electoral output)}
-\item{\code{"tracts"}}{Cached census tract geometries}
-\item{\code{"r5r"}}{r5r routing network indices}
-}}
+\item{category}{Character. Which category to clear.}
 
 \item{verbose}{Logical. Print messages. Default: TRUE.}
 }
@@ -36,28 +20,11 @@ interpElections_cache_clean(
 Invisibly returns the path(s) that were deleted.
 }
 \description{
-Convenience function for clearing specific categories of cached data.
-More discoverable than \code{\link[=interpElections_cache]{interpElections_cache()}} with \code{delete_file}.
-}
-\examples{
-\dontrun{
-# Clear only processed electoral data (forces re-computation next run)
-interpElections_cache_clean("electoral")
-
-# Clear all raw downloads
-interpElections_cache_clean("downloads")
-
-# Clear everything
-interpElections_cache_clean("all")
-}
-
+Internal workhorse for \code{interpElections_cache("clean", ...)}.
+Use \code{interpElections_cache("clean", category = "votes")} instead
+of calling this directly.
 }
 \seealso{
 \code{\link[=interpElections_cache]{interpElections_cache()}}
-
-Other cache: 
-\code{\link{get_interpElections_cache_dir}()},
-\code{\link{interpElections_cache}()},
-\code{\link{set_interpElections_cache_dir}()}
 }
-\concept{cache}
+\keyword{internal}

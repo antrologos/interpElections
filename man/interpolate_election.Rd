@@ -13,16 +13,10 @@ interpolate_election(
   tract_id = "id",
   point_id = "id",
   time_matrix = NULL,
-  max_epochs = 2000L,
-  alpha_min = 1,
-  mode = "WALK",
-  gtfs_zip_path = NULL,
-  max_trip_duration = 300L,
-  point_method = "pop_weighted",
-  min_area_for_pop_weight = 1,
+  optim = optim_control(),
+  routing = routing_control(),
   min_tract_pop = 1,
   offset = 1,
-  use_gpu = NULL,
   keep = NULL,
   verbose = TRUE,
   ...
@@ -55,35 +49,16 @@ Default: \code{"id"}.}
 \item{time_matrix}{Numeric matrix [n x m] or NULL. Pre-computed travel
 times. If provided, skips all travel time computation.}
 
-\item{max_epochs}{Integer. Maximum optimizer epochs. Default: 2000.
-See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
+Default: \code{optim_control()}.}
 
-\item{alpha_min}{Numeric. Lower bound for decay parameters. Default: 1.
-See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
-
-\item{mode}{Character. Routing mode: \code{"WALK"} (default), \code{"BICYCLE"},
-\code{"CAR"}, or transit combos like \code{"WALK;TRANSIT"}.}
-
-\item{gtfs_zip_path}{Character or NULL. Path to a GTFS \code{.zip} file for
-transit routing. Default: NULL.}
-
-\item{max_trip_duration}{Integer. Maximum trip duration in minutes.
-Also used as fill value for unreachable pairs. Default: 300.}
-
-\item{point_method}{Character. Method for tract representative points:
-\code{"pop_weighted"} (default), \code{"point_on_surface"}, or \code{"centroid"}.
-See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
-
-\item{min_area_for_pop_weight}{Numeric. Minimum tract area in km2
-for the pop_weighted method. Smaller tracts use point_on_surface.
-Default: 1.}
+\item{routing}{A \code{\link[=routing_control]{routing_control()}} object with routing parameters.
+Default: \code{routing_control()}.}
 
 \item{min_tract_pop}{Numeric. Minimum total population in
 \code{calib_tracts} for a census tract to be included. Default: 1.}
 
 \item{offset}{Numeric. Travel time offset. Default: 1.}
-
-\item{use_gpu}{Logical or NULL. Passed to \code{\link[=optimize_alpha]{optimize_alpha()}}.}
 
 \item{keep}{Character vector or NULL. Names of extra intermediate
 objects to include in the result. \code{weights} and \code{time_matrix} are
@@ -92,7 +67,11 @@ always kept. Options: \code{"electoral_sf"}, \code{"pop_raster"},
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
-\item{...}{Advanced tuning. See \link{interpElections-passthrough}.}
+\item{...}{Advanced arguments. \code{network_path} (character) for
+pre-downloaded OSM data, \code{elevation_path} (character) for
+elevation GeoTIFF. Also accepts \strong{deprecated} old-style
+parameters (\code{max_epochs}, \code{alpha_min}, \code{use_gpu}, \code{mode},
+\code{gtfs_zip_path}, etc.) for backward compatibility.}
 }
 \value{
 A list of class \code{"interpElections_result"} with components:
@@ -143,13 +122,23 @@ result <- interpolate_election(
   calib_sources = c("voters_young", "voters_old"),
   time_matrix  = my_tt_matrix
 )
+
+# GPU optimization with custom routing
+result <- interpolate_election(
+  tracts_sf    = census_tracts,
+  electoral_sf = voting_stations,
+  calib_tracts  = c("pop_young", "pop_old"),
+  calib_sources = c("voters_young", "voters_old"),
+  optim   = optim_control(use_gpu = TRUE),
+  routing = routing_control(mode = c("WALK", "TRANSIT"))
+)
 }
 
 }
 \seealso{
+\code{\link[=optim_control]{optim_control()}}, \code{\link[=routing_control]{routing_control()}},
 \code{\link[=optimize_alpha]{optimize_alpha()}}, \code{\link[=compute_weight_matrix]{compute_weight_matrix()}},
-\code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper,
-\link{interpElections-passthrough} for advanced tuning via \code{...}.
+\code{\link[=interpolate_election_br]{interpolate_election_br()}} for the Brazilian-specific wrapper.
 
 Other wrappers: 
 \code{\link{interpolate_election_br}()}

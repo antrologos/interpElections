@@ -97,7 +97,7 @@
 #'   `nr_local_votacao`, `lat`, `long`). If NULL, coordinates are
 #'   obtained from TSE and Danny Hidalgo's geocoding project.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
-#'   persistently. See [get_interpElections_cache_dir()].
+#'   persistently. See [interpElections_cache()].
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param verbose Logical. Print progress messages. Default: TRUE.
@@ -206,7 +206,7 @@
 #'   [br_download_votes()], [br_download_turnout()],
 #'   [interpElections_cache()]
 #'
-#' @export
+#' @keywords internal
 br_prepare_electoral <- function(
     code_muni_ibge,
     code_muni_tse,

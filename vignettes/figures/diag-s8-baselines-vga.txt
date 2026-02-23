@@ -1,0 +1,6 @@
+Baseline comparison
+---------------------------------------------------------------------- 
+  Optimized IDW          RMSE=11.16  Deviance=16164.46
+  Nearest station        RMSE=36.79  Deviance=157454.96  (IDW 70% better)
+  Uniform weights        RMSE=15.81  Deviance=34553.92  (IDW 29% better)
+---------------------------------------------------------------------- 

@@ -27,32 +27,23 @@
 #'   Default: `"id"`.
 #' @param time_matrix Numeric matrix \[n x m\] or NULL. Pre-computed travel
 #'   times. If provided, skips all travel time computation.
-#' @param max_epochs Integer. Maximum optimizer epochs. Default: 2000.
-#'   See [optimize_alpha()].
-#' @param alpha_min Numeric. Lower bound for decay parameters. Default: 1.
-#'   See [optimize_alpha()].
-#' @param mode Character. Routing mode: `"WALK"` (default), `"BICYCLE"`,
-#'   `"CAR"`, or transit combos like `"WALK;TRANSIT"`.
-#' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
-#'   transit routing. Default: NULL.
-#' @param max_trip_duration Integer. Maximum trip duration in minutes.
-#'   Also used as fill value for unreachable pairs. Default: 300.
-#' @param point_method Character. Method for tract representative points:
-#'   `"pop_weighted"` (default), `"point_on_surface"`, or `"centroid"`.
-#'   See [compute_representative_points()].
-#' @param min_area_for_pop_weight Numeric. Minimum tract area in km2
-#'   for the pop_weighted method. Smaller tracts use point_on_surface.
-#'   Default: 1.
+#' @param optim An [optim_control()] object with optimization parameters.
+#'   Default: `optim_control()`.
+#' @param routing A [routing_control()] object with routing parameters.
+#'   Default: `routing_control()`.
 #' @param min_tract_pop Numeric. Minimum total population in
 #'   `calib_tracts` for a census tract to be included. Default: 1.
 #' @param offset Numeric. Travel time offset. Default: 1.
-#' @param use_gpu Logical or NULL. Passed to [optimize_alpha()].
 #' @param keep Character vector or NULL. Names of extra intermediate
 #'   objects to include in the result. `weights` and `time_matrix` are
 #'   always kept. Options: `"electoral_sf"`, `"pop_raster"`,
 #'   `"rep_points"`.
 #' @param verbose Logical. Print progress. Default: TRUE.
-#' @param ... Advanced tuning. See [interpElections-passthrough].
+#' @param ... Advanced arguments. `network_path` (character) for
+#'   pre-downloaded OSM data, `elevation_path` (character) for
+#'   elevation GeoTIFF. Also accepts **deprecated** old-style
+#'   parameters (`max_epochs`, `alpha_min`, `use_gpu`, `mode`,
+#'   `gtfs_zip_path`, etc.) for backward compatibility.
 #'
 #' @return A list of class `"interpElections_result"` with components:
 #' \describe{
@@ -91,13 +82,23 @@
 #'   calib_sources = c("voters_young", "voters_old"),
 #'   time_matrix  = my_tt_matrix
 #' )
+#'
+#' # GPU optimization with custom routing
+#' result <- interpolate_election(
+#'   tracts_sf    = census_tracts,
+#'   electoral_sf = voting_stations,
+#'   calib_tracts  = c("pop_young", "pop_old"),
+#'   calib_sources = c("voters_young", "voters_old"),
+#'   optim   = optim_control(use_gpu = TRUE),
+#'   routing = routing_control(mode = c("WALK", "TRANSIT"))
+#' )
 #' }
 #'
 #' @family wrappers
 #'
-#' @seealso [optimize_alpha()], [compute_weight_matrix()],
-#'   [interpolate_election_br()] for the Brazilian-specific wrapper,
-#'   [interpElections-passthrough] for advanced tuning via `...`.
+#' @seealso [optim_control()], [routing_control()],
+#'   [optimize_alpha()], [compute_weight_matrix()],
+#'   [interpolate_election_br()] for the Brazilian-specific wrapper.
 #'
 #' @export
 interpolate_election <- function(
@@ -112,20 +113,13 @@ interpolate_election <- function(
     point_id           = "id",
     # -- Pre-computed input --
     time_matrix        = NULL,
-    # -- Optimization --
-    max_epochs         = 2000L,
-    alpha_min          = 1,
-    # -- Routing --
-    mode               = "WALK",
-    gtfs_zip_path      = NULL,
-    max_trip_duration  = 300L,
-    point_method       = "pop_weighted",
-    min_area_for_pop_weight = 1,
+    # -- Control --
+    optim              = optim_control(),
+    routing            = routing_control(),
     # -- Filtering --
     min_tract_pop      = 1,
     # -- Output --
     offset             = 1,
-    use_gpu            = NULL,
     keep               = NULL,
     verbose            = TRUE,
     ...
@@ -133,15 +127,55 @@ interpolate_election <- function(
   cl <- match.call()
   dots <- list(...)
 
+  # --- Backward compatibility: detect old-style params in ... ---
+  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
+                         "device", "dtype", "convergence_tol", "patience",
+                         "barrier_mu", "alpha_min")
+  routing_param_names <- c("point_method", "pop_raster",
+                           "min_area_for_pop_weight", "mode",
+                           "max_trip_duration", "fill_missing",
+                           "n_threads", "departure_datetime",
+                           "gtfs_zip_path", "osm_buffer_km")
+  old_optim <- intersect(names(dots), optim_param_names)
+  old_routing <- intersect(names(dots), routing_param_names)
+  if (length(old_optim) > 0) {
+    warning(
+      "Passing optimization parameters directly is deprecated.\n",
+      "Use optim = optim_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_optim, collapse = ", "),
+      call. = FALSE
+    )
+    ctrl_list <- unclass(optim)
+    ctrl_list[old_optim] <- dots[old_optim]
+    optim <- do.call(optim_control, ctrl_list)
+  }
+  if (length(old_routing) > 0) {
+    warning(
+      "Passing routing parameters directly is deprecated.\n",
+      "Use routing = routing_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_routing, collapse = ", "),
+      call. = FALSE
+    )
+    ctrl_list <- unclass(routing)
+    ctrl_list[old_routing] <- dots[old_routing]
+    routing <- do.call(routing_control, ctrl_list)
+  }
+
+  # Extract from control objects
+  use_gpu             <- optim$use_gpu
+  mode                <- routing$mode
+  max_trip_duration   <- routing$max_trip_duration
+  point_method        <- routing$point_method
+  osm_buffer_km       <- routing$osm_buffer_km
+
   # Extract internal progress tracking from dots
   .progress <- dots$.progress %||% list(offset = 0L, total = NULL)
   .step_offset <- .progress$offset
   .step_total <- .progress$total
 
-  # Extract demoted args from dots
+  # Extract advanced args from dots
   network_path   <- dots$network_path
   elevation_path <- dots$elevation_path
-  osm_buffer_km  <- dots$osm_buffer_km %||% 10
 
   # --- Check all dependencies upfront ---
   missing_pkgs <- character(0)
@@ -326,12 +360,10 @@ interpolate_election <- function(
       r5r_dir <- file.path(get_interpElections_cache_dir(),
                            .cache_subdirs()$r5r, bbox_hash)
       if (!dir.exists(r5r_dir)) dir.create(r5r_dir, recursive = TRUE)
-      dl_args <- .extract_args(dots, download_r5r_data)
-      r5r_data <- do.call(download_r5r_data, c(
-        list(area_sf = expanded_area, output_dir = r5r_dir,
-             elevation = FALSE, verbose = verbose),
-        dl_args
-      ))
+      r5r_data <- download_r5r_data(
+        area_sf = expanded_area, output_dir = r5r_dir,
+        elevation = FALSE, verbose = verbose
+      )
       network_path <- r5r_data$output_dir
 
       # If user provided elevation file, copy it to the network dir
@@ -352,21 +384,13 @@ interpolate_election <- function(
       if (verbose) message(sprintf("[%d/%d] Computing travel times...",
                                    step_num, total_steps))
 
-      # Build explicit args + forward remaining dots (excluding already-listed)
-      tt_explicit <- list(
+      time_matrix <- compute_travel_times(
         tracts_sf = tracts_sf, points_sf = electoral_sf,
         network_path = network_path,
         tract_id = tract_id, point_id = point_id,
-        point_method = point_method,
-        min_area_for_pop_weight = min_area_for_pop_weight,
-        mode = mode,
-        max_trip_duration = max_trip_duration,
-        gtfs_zip_path = gtfs_zip_path,
+        routing = routing,
         verbose = verbose
       )
-      tt_extra <- .extract_args(dots, compute_travel_times)
-      tt_extra <- tt_extra[!names(tt_extra) %in% names(tt_explicit)]
-      time_matrix <- do.call(compute_travel_times, c(tt_explicit, tt_extra))
 
       # Extract heavy/non-serializable attributes before caching
       # (SpatRaster and sf objects should not be serialized inside the
@@ -441,14 +465,12 @@ interpolate_election <- function(
   optim_result <- NULL
   if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
                                step_num, total_steps))
-  opt_args <- .extract_args(dots, optimize_alpha)
-  optim_result <- do.call(optimize_alpha, c(
-    list(time_matrix = time_matrix, pop_matrix = pop_matrix,
-         source_matrix = source_matrix, row_targets = row_targets,
-         max_epochs = max_epochs, alpha_min = alpha_min,
-         offset = offset, use_gpu = use_gpu, verbose = verbose),
-    opt_args
-  ))
+  optim_result <- optimize_alpha(
+    time_matrix = time_matrix, pop_matrix = pop_matrix,
+    source_matrix = source_matrix, row_targets = row_targets,
+    optim = optim,
+    offset = offset, verbose = verbose
+  )
   alpha <- optim_result$alpha
   step_num <- step_num + 1L
 
@@ -459,7 +481,7 @@ interpolate_election <- function(
     W <- optim_result$W
   } else {
     W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
-                                offset = offset, use_gpu = use_gpu)
+                                offset = offset, use_gpu = optim$use_gpu)
   }
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {

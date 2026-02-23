@@ -17,40 +17,18 @@
 #'   for balancing. Each element specifies how much weight a zone should
 #'   attract, proportional to its share of total population. If NULL
 #'   (default), auto-computed as `rowSums(pop_matrix) / sum(pop_matrix) * m`.
-#' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
-#'   Initial guess for alpha. A scalar is recycled to all n tracts and k
-#'   brackets. A vector of length n is recycled across brackets. Default: 1.
-#' @param max_epochs Integer. Maximum number of epochs (full passes through
-#'   all tracts). The optimizer may stop earlier if convergence is detected.
-#'   Each epoch is a single gradient step (~0.1s for 5000 tracts
-#'   on GPU), so 2000 epochs is typically under 4 minutes. Default: 2000.
-#' @param lr_init Numeric. Initial ADAM learning rate. Reduced automatically
-#'   via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.
-#' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
-#'   `FALSE`, use CPU. If `NULL` (default), reads the package option
-#'   `interpElections.use_gpu` (set via [use_gpu()]).
-#' @param device Character or NULL. Torch device: `"cuda"`, `"mps"`, or
-#'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
-#' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
-#'   `"float32"`. Float32 halves memory usage with negligible precision loss.
-#' @param convergence_tol Numeric. Relative change in epoch loss below which
-#'   the optimizer considers the solution converged. Default: 1e-4.
-#' @param patience Integer. Number of consecutive epochs with no improvement
-#'   (at minimum learning rate) before early stopping. The LR scheduler
-#'   uses `2 * patience` as its own patience. Default: 50.
-#' @param barrier_mu Numeric. Strength of the log-barrier penalty that
-#'   prevents any census tract from receiving zero predicted voters. The
-#'   penalty term is `-barrier_mu * sum(log(V_hat_total))`. Set to 0 to
-#'   disable. Default: 10.
-#' @param alpha_min Numeric. Lower bound for alpha values. The
-#'   reparameterization becomes `alpha = alpha_min + softplus(theta)`,
-#'   ensuring all alpha values are at least `alpha_min`. Default: 1,
-#'   which restricts decay to linear or steeper (alpha >= 1 matches
-#'   physical travel-time behavior in urban settings). Set to 0 to
-#'   remove the lower bound, or to 2 for inverse-square minimum.
+#' @param optim An [optim_control()] object with optimization parameters
+#'   (max_epochs, lr_init, convergence_tol, patience, barrier_mu,
+#'   alpha_init, alpha_min, use_gpu, device, dtype). Default:
+#'   `optim_control()`.
 #' @param offset Numeric. Value added to travel times before exponentiation.
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
+#' @param ... **Deprecated**. Old-style individual parameters
+#'   (`alpha_init`, `max_epochs`, `lr_init`, `use_gpu`, `device`, `dtype`,
+#'   `convergence_tol`, `patience`, `barrier_mu`, `alpha_min`) are still
+#'   accepted via `...` for backward compatibility, but will be removed
+#'   in a future release. Use `optim = optim_control(...)` instead.
 #'
 #' @return A list of class `"interpElections_optim"` with components:
 #' \describe{
@@ -111,9 +89,15 @@
 #' src <- matrix(c(80, 120, 100), nrow = 3)
 #' result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 #' result$alpha
+#'
+#' # With custom control
+#' result <- optimize_alpha(tt, pop, src,
+#'   optim = optim_control(use_gpu = TRUE, max_epochs = 5000),
+#'   verbose = FALSE)
 #' }
 #'
-#' @seealso [use_gpu()] to toggle GPU globally, [compute_weight_matrix()]
+#' @seealso [optim_control()] for tuning parameters,
+#'   [use_gpu()] to toggle GPU globally, [compute_weight_matrix()]
 #'   to rebuild the weight matrix from pre-computed alpha,
 #'   [setup_torch()] to install torch.
 #'
@@ -123,19 +107,41 @@ optimize_alpha <- function(
     pop_matrix,
     source_matrix,
     row_targets = NULL,
-    alpha_init = NULL,
-    max_epochs = 2000L,
-    lr_init = 0.05,
-    use_gpu = NULL,
-    device = NULL,
-    dtype = "float32",
-    convergence_tol = 1e-4,
-    patience = 50L,
-    barrier_mu = 10,
-    alpha_min = 1,
+    optim = optim_control(),
     offset = 1,
-    verbose = TRUE
+    verbose = TRUE,
+    ...
 ) {
+  # --- Backward compatibility: detect old-style params in ... ---
+  dots <- list(...)
+  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
+                         "device", "dtype", "convergence_tol", "patience",
+                         "barrier_mu", "alpha_min")
+  old_params <- intersect(names(dots), optim_param_names)
+  if (length(old_params) > 0) {
+    warning(
+      "Passing optimization parameters directly is deprecated.\n",
+      "Use optim = optim_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_params, collapse = ", "),
+      call. = FALSE
+    )
+    # Override control object fields with old-style params
+    ctrl_list <- unclass(optim)
+    ctrl_list[old_params] <- dots[old_params]
+    optim <- do.call(optim_control, ctrl_list)
+  }
+
+  # Extract from control object
+  alpha_init      <- optim$alpha_init
+  max_epochs      <- optim$max_epochs
+  lr_init         <- optim$lr_init
+  use_gpu         <- optim$use_gpu
+  device          <- optim$device
+  dtype           <- optim$dtype
+  convergence_tol <- optim$convergence_tol
+  patience        <- optim$patience
+  barrier_mu      <- optim$barrier_mu
+  alpha_min       <- optim$alpha_min
   # --- Check torch is available ---
   if (!requireNamespace("torch", quietly = TRUE)) {
     stop(
@@ -330,4 +336,423 @@ print.interpElections_optim <- function(x, ...) {
   cat(sprintf("  Elapsed:     %.1f secs\n",
               as.numeric(x$elapsed, units = "secs")))
   invisible(x)
+}
+
+# ============================================================
+# Internal: Per-Tract-Per-Bracket SGD via torch (GPU or CPU)
+# ============================================================
+#
+# Column normalization uses full-data gradient steps (1 per epoch).
+# Per-tract-per-bracket decay kernels:
+#   K^b[i,j] = t[i,j]^(-alpha[i,b]).
+# Softplus reparameterization: alpha = alpha_min + softplus(theta),
+# theta unconstrained — no clamping, no gradient death at boundaries.
+# Epoch structure: the loss reported at each epoch is the true
+# objective evaluated on the full dataset.
+
+.optimize_torch <- function(time_matrix, pop_matrix, source_matrix,
+                             alpha_init,
+                             max_epochs, lr_init, device, dtype,
+                             convergence_tol, patience,
+                             barrier_mu, alpha_min,
+                             verbose) {
+
+  # --- RStudio subprocess delegation ---
+  if (.is_rstudio() && !identical(Sys.getenv("INTERPELECTIONS_SUBPROCESS"), "1")) {
+    if (!requireNamespace("callr", quietly = TRUE)) {
+      stop(
+        "Torch optimization inside RStudio requires the 'callr' package.\n",
+        "Install with: install.packages('callr')",
+        call. = FALSE
+      )
+    }
+    if (verbose) {
+      message("  Running torch optimization in subprocess...")
+    }
+    result <- callr::r(
+      function(time_matrix, pop_matrix, source_matrix, alpha_init,
+               max_epochs, lr_init,
+               device, dtype,
+               convergence_tol, patience,
+               barrier_mu, alpha_min,
+               verbose, pkg_path) {
+        Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
+        if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
+          pkgload::load_all(pkg_path, quiet = TRUE)
+        } else {
+          library(interpElections)
+        }
+        interpElections:::.optimize_torch(
+          time_matrix = time_matrix,
+          pop_matrix = pop_matrix,
+          source_matrix = source_matrix,
+          alpha_init = alpha_init,
+          max_epochs = max_epochs, lr_init = lr_init,
+          device = device, dtype = dtype,
+          convergence_tol = convergence_tol, patience = patience,
+          barrier_mu = barrier_mu,
+          alpha_min = alpha_min,
+          verbose = verbose
+        )
+      },
+      args = list(
+        time_matrix = time_matrix,
+        pop_matrix = pop_matrix,
+        source_matrix = source_matrix,
+        alpha_init = alpha_init,
+        max_epochs = max_epochs, lr_init = lr_init,
+        device = device, dtype = dtype,
+        convergence_tol = convergence_tol, patience = patience,
+        barrier_mu = barrier_mu,
+        alpha_min = alpha_min,
+        verbose = verbose,
+        pkg_path = .find_package_root()
+      ),
+      show = verbose
+    )
+    return(result)
+  }
+
+  torch_dtype <- .resolve_dtype(dtype)
+  n <- nrow(time_matrix)
+  m <- ncol(time_matrix)
+  k <- ncol(pop_matrix)
+
+  # --- Per-bracket preprocessing (R-side) ---
+  P_cpu <- pop_matrix
+  V_cpu <- source_matrix
+  c_mat <- matrix(0, k, m)
+  skip  <- logical(k)
+
+  for (bi in seq_len(k)) {
+    rb <- P_cpu[, bi]
+    cb <- V_cpu[, bi]
+    if (sum(cb) < 0.5 || sum(rb) < 0.5) {
+      skip[bi] <- TRUE
+      next
+    }
+    c_mat[bi, ] <- cb
+  }
+
+  active <- which(!skip)
+  ka     <- length(active)
+
+  if (ka == 0L) {
+    stop("All demographic brackets are empty (sum < 0.5). Cannot optimize.",
+         call. = FALSE)
+  }
+
+  c_mat <- c_mat[active, , drop = FALSE]
+
+  # LR schedule: ReduceLROnPlateau — halve LR when epoch loss plateaus.
+  min_lr <- lr_init * 1e-3
+
+  # Verbose: print ~20 lines regardless of epoch count
+  report_every <- max(1L, max_epochs %/% 20L)
+
+  # --- Memory safety check (GPU only) ---
+  bytes_per_elem <- if (dtype == "float32") 4 else 8
+  # Dominant cost: log_K_3d (ka×n×m)
+  estimated_mb   <- (2.0 * as.double(ka) * n * m) * bytes_per_elem / 1e6
+
+  if (grepl("cuda", device, fixed = TRUE)) {
+    vram_mb <- tryCatch({
+      hw <- .detect_gpu_nvidia()
+      if (hw$found && !is.na(hw$vram_mb)) hw$vram_mb else NA_real_
+    }, error = function(e) NA_real_)
+
+    if (!is.na(vram_mb) && estimated_mb > vram_mb * 0.8) {
+      stop(sprintf(paste0(
+        "Estimated GPU memory: %.0f MB ",
+        "(%.0f MB VRAM available).\n",
+        "Use use_gpu = FALSE for CPU optimization."
+      ), estimated_mb, vram_mb), call. = FALSE)
+    }
+
+    if (verbose && !is.na(vram_mb)) {
+      message(sprintf("  Estimated memory: %.0f MB / %.0f MB VRAM",
+                      estimated_mb, vram_mb))
+    }
+  }
+
+  if (verbose) {
+    message(sprintf(paste0(
+      "  PB-SGD colnorm (%s, %s): full-data gradient, barrier_mu=%.1f, ",
+      "loss=poisson, alpha_min=%.1f, max %d epochs"),
+      device, dtype, barrier_mu, alpha_min,
+      max_epochs))
+  }
+
+  # Track tensors for cleanup
+  gpu_tensors <- new.env(parent = emptyenv())
+  on.exit({
+    rm(list = ls(gpu_tensors), envir = gpu_tensors)
+    gc(verbose = FALSE)
+    if (requireNamespace("torch", quietly = TRUE)) {
+      tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
+    }
+  }, add = TRUE)
+
+  result <- tryCatch({
+    # Transfer to tensors
+    log_t_torch <- torch::torch_log(torch::torch_tensor(
+      time_matrix, device = device, dtype = torch_dtype))
+
+    # --- Pre-computations ---
+    p_mat_active <- P_cpu[, active, drop = FALSE]   # n × ka
+
+    log_V_b_torch <- torch::torch_tensor(
+      log(pmax(c_mat, 1e-30)),
+      device = device, dtype = torch_dtype)          # (ka, m)
+
+    # Active-bracket population tensor for loss computation
+    p_active_torch <- torch::torch_tensor(
+      p_mat_active, device = device, dtype = torch_dtype)  # (n, ka)
+
+    # --- Softplus reparameterization — per-tract-per-bracket ---
+    # alpha[i,b] = alpha_min + softplus(theta[i,b]), theta unconstrained.
+    # One alpha per census tract per active bracket.
+    alpha_init_mat <- matrix(
+      pmax(alpha_init, alpha_min + 1e-6), nrow = n, ncol = ka)
+    # Invert: theta = softplus_inverse(alpha - alpha_min)
+    # softplus_inverse(x) = log(exp(x) - 1); for x > 20, ~ x
+    sp_arg <- alpha_init_mat - alpha_min
+    theta_init <- ifelse(
+      sp_arg > 20,
+      sp_arg,
+      log(pmax(exp(sp_arg) - 1, 1e-30))
+    )
+
+    # Break initialization symmetry with small deterministic perturbation
+    # so different tracts/brackets get different initial gradients.
+    old_seed <- if (exists(".Random.seed", envir = globalenv()))
+      get(".Random.seed", envir = globalenv()) else NULL
+    on.exit({
+      if (is.null(old_seed)) {
+        if (exists(".Random.seed", envir = globalenv()))
+          rm(".Random.seed", envir = globalenv())
+      } else {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      }
+    }, add = TRUE)
+    set.seed(n * 7919L + ka * 104729L)
+    theta_init <- theta_init + matrix(
+      stats::rnorm(n * ka, mean = 0, sd = 0.1),
+      nrow = n, ncol = ka
+    )
+
+    theta_torch <- torch::torch_tensor(
+      theta_init,
+      device        = device,
+      requires_grad = TRUE,
+      dtype         = torch_dtype
+    )
+
+    # alpha_fn: theta -> alpha (always >= alpha_min)
+    alpha_min_t <- torch::torch_tensor(
+      alpha_min, device = device, dtype = torch_dtype)
+    alpha_fn <- function(th) alpha_min_t + torch::nnf_softplus(th)
+
+    # Loss computation: Poisson deviance
+    compute_data_loss <- function(V_hat, P, scale_factor) {
+      V_clamped <- torch::torch_clamp(V_hat, min = 1e-30)
+      P_safe <- torch::torch_where(
+        P > 0, P, torch::torch_ones_like(P))
+      log_ratio <- torch::torch_where(
+        P > 0,
+        torch::torch_log(P_safe) - torch::torch_log(V_clamped),
+        torch::torch_zeros_like(P))
+      dev <- 2 * (V_clamped - P + P * log_ratio)
+      dev$sum() * scale_factor
+    }
+
+    gpu_tensors$log_t   <- log_t_torch
+    gpu_tensors$p_act   <- p_active_torch
+    gpu_tensors$theta   <- theta_torch
+    gpu_tensors$log_V_b <- log_V_b_torch
+
+    optimizer <- torch::optim_adam(
+      list(theta_torch), lr = lr_init, betas = c(0.9, 0.99))
+
+    scheduler <- torch::lr_reduce_on_plateau(
+      optimizer,
+      mode       = "min",
+      factor     = 0.5,
+      patience   = as.integer(patience * 2L),
+      threshold  = convergence_tol,
+      threshold_mode = "rel",
+      min_lr     = min_lr,
+      verbose    = FALSE
+    )
+
+    best_epoch_loss  <- Inf
+    best_alpha <- as.matrix(
+      alpha_fn(theta_torch)$detach()$cpu())            # (n, ka)
+    best_W     <- NULL                                   # n × m R matrix
+    epoch_losses     <- numeric(max_epochs)
+    lr_history       <- numeric(max_epochs)
+    last_grad_norm   <- NA_real_
+    step_counter     <- 0L
+    epoch            <- 0L
+
+    # Convergence tracking
+    patience_counter <- 0L
+    converged        <- FALSE
+
+    grad_history <- numeric(max_epochs)
+
+    for (epoch in seq_len(max_epochs)) {
+
+      # --- Full-data gradient step ---
+      # Column normalization requires all n tracts for column sums,
+      # so the forward pass is O(ka*n*m) regardless of batch size.
+      # Using full-data loss gives exact gradients at the same cost.
+      optimizer$zero_grad()
+
+      alpha_all <- alpha_fn(theta_torch)              # (n, ka)
+      log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
+        log_t_torch$unsqueeze(1L)                     # (ka, n, m)
+
+      # Column normalization in log-space
+      log_col_sum_full <- torch::torch_logsumexp(
+        log_K_3d_full, dim = 2L)                      # (ka, m)
+      log_W_3d <- log_K_3d_full -
+        log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
+
+      # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
+      log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
+      V_hat_all <- torch::torch_exp(
+        torch::torch_logsumexp(
+          log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
+
+      # Full-data loss (exact, no scaling needed)
+      data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
+
+      # Capture epoch loss before adding barrier
+      epoch_loss_val <- as.numeric(data_loss$item())
+
+      # Log-barrier penalty on ALL tracts
+      if (barrier_mu > 0) {
+        V_hat_total <- V_hat_all$sum(dim = 2L)        # (n,)
+        barrier <- -barrier_mu *
+          torch::torch_log(
+            torch::torch_clamp(V_hat_total, min = 1e-30))$sum()
+        loss <- data_loss + barrier
+      } else {
+        loss <- data_loss
+      }
+
+      loss$backward()
+
+      # Capture pre-clip gradient norm, then clip
+      last_grad_norm <- tryCatch(
+        as.numeric(theta_torch$grad$norm()$cpu()),
+        error = function(e) NA_real_
+      )
+      torch::nn_utils_clip_grad_norm_(
+        list(theta_torch), max_norm = 1.0)
+
+      optimizer$step()
+      step_counter <- step_counter + 1L
+
+      # Extract W and alpha candidates (no extra forward pass needed)
+      torch::with_no_grad({
+        log_T_cn <- log_W_3d$detach() + log_c_3d     # (ka, n, m)
+        log_c_agg_cn <- torch::torch_logsumexp(
+          log_V_b_torch, dim = 1L)                    # (m,)
+        log_T_agg_cn <- torch::torch_logsumexp(
+          log_T_cn, dim = 1L)                         # (n, m)
+        W_candidate <- as.matrix(torch::torch_exp(
+          log_T_agg_cn - log_c_agg_cn$unsqueeze(1L))$cpu())
+        alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
+      })
+
+      epoch_losses[epoch] <- epoch_loss_val
+
+      # Step the LR scheduler with the true epoch loss
+      scheduler$step(epoch_loss_val)
+
+      grad_history[epoch] <- last_grad_norm
+      lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+
+      # --- Convergence check ---
+      # Converge when LR has been reduced to min_lr AND no improvement
+      # for `patience` consecutive epochs at that LR.
+      # NOTE: must check BEFORE updating best_epoch_loss, otherwise the
+      # comparison (epoch_loss_val < best_epoch_loss - tol*|best|) is
+      # always false after a best-loss update.
+      current_lr <- optimizer$param_groups[[1]]$lr
+      lr_at_min  <- (current_lr <= min_lr * 1.01)
+
+      if (is.finite(epoch_loss_val) && epoch >= 5L) {
+        if (epoch_loss_val < best_epoch_loss -
+              convergence_tol * abs(best_epoch_loss)) {
+          patience_counter <- 0L
+        } else {
+          patience_counter <- patience_counter + 1L
+        }
+
+        if (lr_at_min && patience_counter >= patience) {
+          converged <- TRUE
+          if (verbose) {
+            message(sprintf(paste0(
+              "  Converged at epoch %d (loss=%s, lr=%.1e, ",
+              "no improvement for %d epochs)"),
+              epoch,
+              format(round(epoch_loss_val), big.mark = ","),
+              current_lr, patience))
+          }
+          break
+        }
+      }
+
+      # Track best alpha by true epoch loss (after convergence check)
+      if (is.finite(epoch_loss_val) &&
+          epoch_loss_val < best_epoch_loss) {
+        best_epoch_loss <- epoch_loss_val
+        best_alpha <- alpha_candidate
+        best_W <- W_candidate
+      }
+
+      if (verbose &&
+          (epoch == 1L || epoch %% report_every == 0L)) {
+        message(sprintf(paste0(
+          "  Epoch %3d/%d: loss=%s, grad=%.2e, lr=%.1e, ",
+          "alpha=[%.2f, %.2f, %.2f]"),
+          epoch, max_epochs,
+          format(round(epoch_loss_val), big.mark = ","),
+          last_grad_norm,
+          optimizer$param_groups[[1]]$lr,
+          min(alpha_candidate), stats::median(alpha_candidate),
+          max(alpha_candidate)
+        ))
+      }
+    }  # end epoch loop
+
+    list(
+      alpha           = best_alpha,   # n × ka matrix
+      active_brackets = active,       # which brackets are active
+      W               = best_W,       # n × m weight matrix
+      value           = best_epoch_loss,
+      method          = paste0("pb_sgd_colnorm_", device),
+      convergence     = if (converged) 0L else 1L,
+      epochs          = epoch,
+      steps           = step_counter,
+      message         = sprintf(paste0(
+        "PB-SGD colnorm on %s (%s), %d epochs (%d steps), ",
+        "%d brackets, full-data gradient"),
+        device, dtype, epoch, step_counter, ka),
+      history             = epoch_losses[seq_len(epoch)],
+      grad_norm_final     = last_grad_norm,
+      grad_history        = grad_history[seq_len(epoch)],
+      lr_history          = lr_history[seq_len(epoch)]
+    )
+  }, error = function(e) {
+    stop(sprintf(
+      "Torch optimization failed on device '%s': %s",
+      device, e$message
+    ), call. = FALSE)
+  })
+
+  result
 }

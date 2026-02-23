@@ -17,6 +17,16 @@ utils::globalVariables(".data")
 # Avoid R CMD check NOTE about ggplot2 NSE columns in plot methods
 utils::globalVariables(c(".plot_value", "value", ".facet_var"))
 
+# Avoid R CMD check NOTE about diagnostic plot NSE columns
+utils::globalVariables(c(
+  "epoch", "panel", "bracket", "alpha_value", "residual",
+  "fitted", "observed", "rate", "time", "station", "tract",
+  ".alpha_summary", ".resid_summary", ".travel_time",
+  ".turnout_rate", ".lisa_cluster", ".ln_renda", ".vote_share",
+  ".share", "share1", "share2", "lag_residual", "lag_value",
+  "renda", "ln_renda"
+))
+
 # Avoid R CMD check NOTE about data.table NSE symbols and bundled data
 utils::globalVariables(c(
   ":=", ".SD",

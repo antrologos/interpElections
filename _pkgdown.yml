@@ -21,6 +21,8 @@ navbar:
         - text: "Advanced"
         - text: Working with Results
           href: articles/working-with-results.html
+        - text: Diagnostics & Validation
+          href: articles/diagnostics.html
 
 articles:
   - title: Getting Started
@@ -35,66 +37,72 @@ articles:
   - title: Advanced
     contents:
       - working-with-results
+      - diagnostics
 
 reference:
-  - title: Core Engine
-    desc: Build weights and optimize decay parameters.
+  - title: Interpolation
+    desc: High-level wrappers and core optimization engine.
     contents:
-      - compute_weight_matrix
-      - optimize_alpha
-
-  - title: High-Level Wrappers
-    desc: One-call interpolation from sf objects.
-    contents:
-      - interpolate_election
       - interpolate_election_br
+      - interpolate_election
+      - reinterpolate
+      - optimize_alpha
+      - compute_weight_matrix
+      - compute_travel_times
 
-  - title: Result Methods
-    desc: S3 methods for inspecting and exporting interpElections_result objects.
+  - title: Control Objects
+    desc: Group tuning parameters for optimization and routing.
+    contents:
+      - optim_control
+      - routing_control
+
+  - title: Results
+    desc: S3 methods for inspecting, plotting, and exporting results.
     contents:
       - summary.interpElections_result
       - plot.interpElections_result
+      - autoplot.interpElections_result
+      - plot_interactive
       - coef.interpElections_result
       - residuals.interpElections_result
       - as.data.frame.interpElections_result
-      - plot_interactive
 
-  - title: Brazilian Data Helpers
-    desc: Download and prepare census, electoral, and geographic data for Brazil.
+  - title: Diagnostics
+    desc: Model validation, residual analysis, and weight matrix diagnostics.
     contents:
-      - br_prepare_population
-      - br_prepare_tracts
-      - br_prepare_electoral
-      - br_download_votes
-      - br_download_turnout
-      - br_download_geocode
-      - br_download_party_legends
-      - compute_travel_times
-      - compute_representative_points
-      - download_r5r_data
-      - muni_crosswalk
+      - diagnostics
+      - plot_convergence
+      - plot_alpha
+      - plot_residuals
+      - residual_summary
+      - plot_weights
+      - plot_connections
+      - weight_summary
+      - plot_travel_times
+      - plot_residual_autocorrelation
+      - plot_moran
+      - compare_baselines
+      - leave_one_out
+      - plot_income
+      - plot_turnout_rates
+      - plot_ecological
 
-  - title: Areal Aggregation
+  - title: Spatial Utilities
     desc: Reaggregate interpolated results into larger zones.
     contents:
       - areal_weights
       - areal_interpolate
 
-  - title: Setup and Diagnostics
-    desc: Configure GPU, Java, and routing dependencies.
+  - title: Setup
+    desc: Configure GPU, Java, and cache.
     contents:
-      - setup_torch
-      - check_torch
-      - use_gpu
       - setup_java
-      - set_java_memory
-      - check_r5r
-      - setup_osmium
-
-  - title: Cache Management
-    desc: Inspect and clean downloaded data caches.
-    contents:
-      - get_interpElections_cache_dir
-      - set_interpElections_cache_dir
+      - setup_torch
+      - use_gpu
       - interpElections_cache
-      - interpElections_cache_clean
+
+  - title: Data
+    desc: Bundled reference datasets.
+    contents:
+      - muni_crosswalk
+      - br_election_dates

@@ -20,11 +20,6 @@ Persists a custom cache directory path across R sessions. When \code{path}
 is \code{NULL}, resets to the default OS-appropriate location.
 }
 \seealso{
-\code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}, \code{\link[=interpElections_cache]{interpElections_cache()}}
-
-Other cache: 
-\code{\link{get_interpElections_cache_dir}()},
-\code{\link{interpElections_cache}()},
-\code{\link{interpElections_cache_clean}()}
+\code{\link[=interpElections_cache]{interpElections_cache()}}
 }
-\concept{cache}
+\keyword{internal}

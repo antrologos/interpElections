@@ -26,7 +26,7 @@ test_that("br_prepare_population works for a small municipality", {
   skip_if_not_installed("stringr")
 
   # Boa Vista, Roraima (small capital)
-  result <- br_prepare_population(1400100)
+  result <- interpElections:::br_prepare_population(1400100)
   expect_true("code_tract" %in% names(result))
   expect_true("code_muni" %in% names(result))
   expect_true("pop_18_20" %in% names(result))

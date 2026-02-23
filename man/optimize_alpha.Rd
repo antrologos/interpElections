@@ -9,18 +9,10 @@ optimize_alpha(
   pop_matrix,
   source_matrix,
   row_targets = NULL,
-  alpha_init = NULL,
-  max_epochs = 2000L,
-  lr_init = 0.05,
-  use_gpu = NULL,
-  device = NULL,
-  dtype = "float32",
-  convergence_tol = 1e-04,
-  patience = 50L,
-  barrier_mu = 10,
-  alpha_min = 1,
+  optim = optim_control(),
   offset = 1,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 )
 }
 \arguments{
@@ -38,51 +30,21 @@ for balancing. Each element specifies how much weight a zone should
 attract, proportional to its share of total population. If NULL
 (default), auto-computed as \code{rowSums(pop_matrix) / sum(pop_matrix) * m}.}
 
-\item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
-Initial guess for alpha. A scalar is recycled to all n tracts and k
-brackets. A vector of length n is recycled across brackets. Default: 1.}
-
-\item{max_epochs}{Integer. Maximum number of epochs (full passes through
-all tracts). The optimizer may stop earlier if convergence is detected.
-Each epoch is a single gradient step (~0.1s for 5000 tracts
-on GPU), so 2000 epochs is typically under 4 minutes. Default: 2000.}
-
-\item{lr_init}{Numeric. Initial ADAM learning rate. Reduced automatically
-via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.}
-
-\item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
-\code{FALSE}, use CPU. If \code{NULL} (default), reads the package option
-\code{interpElections.use_gpu} (set via \code{\link[=use_gpu]{use_gpu()}}).}
-
-\item{device}{Character or NULL. Torch device: \code{"cuda"}, \code{"mps"}, or
-\code{"cpu"}. Only used when GPU is enabled. Default: NULL (auto-detect).}
-
-\item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
-\code{"float32"}. Float32 halves memory usage with negligible precision loss.}
-
-\item{convergence_tol}{Numeric. Relative change in epoch loss below which
-the optimizer considers the solution converged. Default: 1e-4.}
-
-\item{patience}{Integer. Number of consecutive epochs with no improvement
-(at minimum learning rate) before early stopping. The LR scheduler
-uses \code{2 * patience} as its own patience. Default: 50.}
-
-\item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
-prevents any census tract from receiving zero predicted voters. The
-penalty term is \code{-barrier_mu * sum(log(V_hat_total))}. Set to 0 to
-disable. Default: 10.}
-
-\item{alpha_min}{Numeric. Lower bound for alpha values. The
-reparameterization becomes \code{alpha = alpha_min + softplus(theta)},
-ensuring all alpha values are at least \code{alpha_min}. Default: 1,
-which restricts decay to linear or steeper (alpha >= 1 matches
-physical travel-time behavior in urban settings). Set to 0 to
-remove the lower bound, or to 2 for inverse-square minimum.}
+\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters
+(max_epochs, lr_init, convergence_tol, patience, barrier_mu,
+alpha_init, alpha_min, use_gpu, device, dtype). Default:
+\code{optim_control()}.}
 
 \item{offset}{Numeric. Value added to travel times before exponentiation.
 Default: 1.}
 
 \item{verbose}{Logical. Print progress messages? Default: TRUE.}
+
+\item{...}{\strong{Deprecated}. Old-style individual parameters
+(\code{alpha_init}, \code{max_epochs}, \code{lr_init}, \code{use_gpu}, \code{device}, \code{dtype},
+\code{convergence_tol}, \code{patience}, \code{barrier_mu}, \code{alpha_min}) are still
+accepted via \code{...} for backward compatibility, but will be removed
+in a future release. Use \code{optim = optim_control(...)} instead.}
 }
 \value{
 A list of class \code{"interpElections_optim"} with components:
@@ -152,10 +114,16 @@ pop <- matrix(c(100, 200), nrow = 2)
 src <- matrix(c(80, 120, 100), nrow = 3)
 result <- optimize_alpha(tt, pop, src, verbose = FALSE)
 result$alpha
+
+# With custom control
+result <- optimize_alpha(tt, pop, src,
+  optim = optim_control(use_gpu = TRUE, max_epochs = 5000),
+  verbose = FALSE)
 }
 
 }
 \seealso{
+\code{\link[=optim_control]{optim_control()}} for tuning parameters,
 \code{\link[=use_gpu]{use_gpu()}} to toggle GPU globally, \code{\link[=compute_weight_matrix]{compute_weight_matrix()}}
 to rebuild the weight matrix from pre-computed alpha,
 \code{\link[=setup_torch]{setup_torch()}} to install torch.

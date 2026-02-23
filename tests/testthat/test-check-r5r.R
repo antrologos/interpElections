@@ -39,10 +39,10 @@ test_that(".detect_platform returns valid os and arch", {
 })
 
 
-# --- check_r5r() -------------------------------------------------------------
+# --- interpElections:::check_r5r() -------------------------------------------------------------
 
 test_that("check_r5r returns expected structure", {
-  result <- check_r5r()
+  result <- interpElections:::check_r5r()
   expect_type(result, "list")
   expect_named(result, c(
     "r5r_installed", "java_found", "java_version",
@@ -55,7 +55,7 @@ test_that("check_r5r returns expected structure", {
 })
 
 test_that("check_r5r ready flag is consistent with sub-checks", {
-  result <- check_r5r()
+  result <- interpElections:::check_r5r()
   if (result$ready) {
     expect_true(result$r5r_installed)
     expect_true(result$java_found)
@@ -87,23 +87,23 @@ test_that(".get_java_memory detects options(java.parameters)", {
 })
 
 
-# --- set_java_memory() -------------------------------------------------------
+# --- interpElections:::set_java_memory() -------------------------------------------------------
 
 test_that("set_java_memory sets java.parameters option", {
   old <- getOption("java.parameters")
   on.exit(options(java.parameters = old))
 
-  set_java_memory("2g", persist = FALSE)
+  interpElections:::set_java_memory("2g", persist = FALSE)
   expect_equal(getOption("java.parameters"), "-Xmx2g")
 
-  set_java_memory("512m", persist = FALSE)
+  interpElections:::set_java_memory("512m", persist = FALSE)
   expect_equal(getOption("java.parameters"), "-Xmx512m")
 })
 
 test_that("set_java_memory validates input", {
-  expect_error(set_java_memory("abc"), "number followed by")
-  expect_error(set_java_memory("4"), "number followed by")
-  expect_error(set_java_memory("g4"), "number followed by")
+  expect_error(interpElections:::set_java_memory("abc"), "number followed by")
+  expect_error(interpElections:::set_java_memory("4"), "number followed by")
+  expect_error(interpElections:::set_java_memory("g4"), "number followed by")
 })
 
 test_that("set_java_memory returns previous value invisibly", {
@@ -111,7 +111,7 @@ test_that("set_java_memory returns previous value invisibly", {
   on.exit(options(java.parameters = old))
 
   options(java.parameters = "-Xmx1g")
-  prev <- set_java_memory("2g", persist = FALSE)
+  prev <- interpElections:::set_java_memory("2g", persist = FALSE)
   expect_equal(prev, "-Xmx1g")
 })
 

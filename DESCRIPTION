@@ -51,7 +51,11 @@ Suggests:
     testthat (>= 3.0.0),
     knitr (>= 1.40),
     rmarkdown (>= 2.20),
-    numDeriv (>= 2016.8.1.1)
+    numDeriv (>= 2016.8.1.1),
+    RColorBrewer,
+    rJava,
+    spdep (>= 1.2.0),
+    patchwork (>= 1.1.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 LazyData: true

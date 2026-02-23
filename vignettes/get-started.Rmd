@@ -8,12 +8,14 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+VIGNETTE_EVAL <- dir.exists("figures")
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
   fig.height = 5,
-  out.width = "100%"
+  out.width = "100%",
+  eval = VIGNETTE_EVAL
 )
 library(interpElections)
 ```
@@ -31,7 +33,6 @@ ensuring that source totals are conserved.
 ```r
 setup_torch()     # GPU optimization (CUDA, MPS, or CPU fallback)
 setup_java()      # Java 21 for r5r travel-time routing
-setup_osmium()    # OSM data clipping (recommended)
 ```
 
 ## Example 1: Varginha (MG)
@@ -246,17 +247,18 @@ Other useful parameters:
 
 ## What's Happening Under the Hood
 
-The wrapper `interpolate_election_br()` calls these steps in sequence:
+The wrapper `interpolate_election_br()` calls these internal steps in
+sequence (you don't need to call them directly):
 
 ```{r pipeline, eval = FALSE}
-# 1. Census population by age bracket
-pop_data <- br_prepare_population("Varginha", year = 2022)
+# 1. Census population by age bracket (internal)
+pop_data <- interpElections:::br_prepare_population("Varginha", year = 2022)
 
-# 2. Census tract geometries with population columns
-tracts_sf <- br_prepare_tracts(3170701, pop_data)
+# 2. Census tract geometries with population columns (internal)
+tracts_sf <- interpElections:::br_prepare_tracts(3170701, pop_data)
 
-# 3. Electoral data at polling stations
-electoral <- br_prepare_electoral(
+# 3. Electoral data at polling stations (internal)
+electoral <- interpElections:::br_prepare_electoral(
   code_muni_ibge = "3170701", code_muni_tse = "54135",
   uf = "MG", year = 2022, cargo = "presidente",
   what = c("candidates", "turnout")
@@ -281,7 +283,7 @@ equations, visualizations, and worked examples using real data.
 interpElections works with any point-to-polygon disaggregation, not just
 Brazilian elections. Here is a synthetic example:
 
-```{r custom-example, eval = torch::torch_is_installed()}
+```{r custom-example, eval = (VIGNETTE_EVAL && torch::torch_is_installed())}
 library(interpElections)
 
 # Synthetic data: 5 zones, 3 sources, 2 calibration variables
@@ -339,7 +341,7 @@ Conservation: the interpolated total matches the source total exactly.
 
 For full control, use the core functions directly:
 
-```{r core, eval = torch::torch_is_installed()}
+```{r core, eval = (VIGNETTE_EVAL && torch::torch_is_installed())}
 # Load bundled example data
 tt  <- readRDS(system.file("extdata/example_tt_matrix.rds",
                             package = "interpElections"))

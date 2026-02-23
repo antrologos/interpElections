@@ -33,10 +33,15 @@ test_that(".apply_offset rejects invalid offset", {
   expect_error(interpElections:::.apply_offset(mat, c(1, 2)), "single")
 })
 
-test_that(".extract_args filters to target function formals", {
-  dots <- list(alpha_init = 1, bad_arg = 2, max_epochs = 10L)
-  result <- interpElections:::.extract_args(dots, interpElections::optimize_alpha)
-  expect_true("alpha_init" %in% names(result))
-  expect_true("max_epochs" %in% names(result))
-  expect_false("bad_arg" %in% names(result))
+test_that("optim_control() and routing_control() create classed lists", {
+  oc <- optim_control()
+  expect_s3_class(oc, "interpElections_optim_control")
+  expect_equal(oc$alpha_init, 2)
+  expect_equal(oc$alpha_min, 1)
+
+  rc <- routing_control()
+  expect_s3_class(rc, "interpElections_routing_control")
+  expect_equal(rc$mode, "WALK")
+  expect_equal(rc$point_method, "pop_weighted")
+  expect_equal(rc$max_trip_duration, 300L)
 })

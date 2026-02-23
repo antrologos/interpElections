@@ -13,14 +13,8 @@ Character. Path to the cache directory.
 Returns the path to the directory where interpElections stores cached
 downloaded files (TSE data, Hidalgo geocoding, travel time matrices, etc.).
 The default location is OS-appropriate (via \code{\link[tools:userdir]{tools::R_user_dir()}}).
-A custom path can be set with \code{\link[=set_interpElections_cache_dir]{set_interpElections_cache_dir()}}.
 }
 \seealso{
-\code{\link[=set_interpElections_cache_dir]{set_interpElections_cache_dir()}}, \code{\link[=interpElections_cache]{interpElections_cache()}}
-
-Other cache: 
-\code{\link{interpElections_cache}()},
-\code{\link{interpElections_cache_clean}()},
-\code{\link{set_interpElections_cache_dir}()}
+\code{\link[=interpElections_cache]{interpElections_cache()}}
 }
-\concept{cache}
+\keyword{internal}

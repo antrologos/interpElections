@@ -86,3 +86,4 @@ Other spatial:
 \code{\link{compute_travel_times}()}
 }
 \concept{spatial}
+\keyword{internal}

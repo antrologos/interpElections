@@ -1,4 +1,4 @@
-# Tests for compute_representative_points()
+# Tests for interpElections:::compute_representative_points()
 
 # Helper: create mock sf polygon layer
 .mock_tracts <- function(n, seed = 42) {
@@ -22,7 +22,7 @@ test_that("method = 'centroid' matches sf::st_centroid()", {
   skip_if_not_installed("sf")
 
   tracts <- .mock_tracts(5)
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, method = "centroid", tract_id = "id", verbose = FALSE
   )
 
@@ -54,7 +54,7 @@ test_that("method = 'point_on_surface' produces points inside polygons", {
     geometry = sf::st_sfc(concave, crs = 4326)
   )
 
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, method = "point_on_surface", tract_id = "id", verbose = FALSE
   )
 
@@ -69,7 +69,7 @@ test_that("point_on_surface is the default method", {
   skip_if_not_installed("sf")
 
   tracts <- .mock_tracts(3)
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, tract_id = "id", verbose = FALSE
   )
 
@@ -83,7 +83,7 @@ test_that("returns sf POINT with correct columns and CRS", {
   skip_if_not_installed("sf")
 
   tracts <- .mock_tracts(8)
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, method = "point_on_surface", tract_id = "id", verbose = FALSE
   )
 
@@ -103,7 +103,7 @@ test_that("preserves tract IDs in correct order", {
 
   tracts <- .mock_tracts(6)
   for (method in c("centroid", "point_on_surface")) {
-    pts <- compute_representative_points(
+    pts <- interpElections:::compute_representative_points(
       tracts, method = method, tract_id = "id", verbose = FALSE
     )
     expect_equal(pts$id, tracts$id)
@@ -118,7 +118,7 @@ test_that("errors on missing tract_id column", {
 
   tracts <- .mock_tracts(3)
   expect_error(
-    compute_representative_points(
+    interpElections:::compute_representative_points(
       tracts, tract_id = "nonexistent", verbose = FALSE
     ),
     "not found"
@@ -132,7 +132,7 @@ test_that("pop_weighted errors informatively without terra", {
 
   tracts <- .mock_tracts(3)
   expect_error(
-    compute_representative_points(
+    interpElections:::compute_representative_points(
       tracts, method = "pop_weighted", tract_id = "id",
       verbose = FALSE
     ),
@@ -168,7 +168,7 @@ test_that("pop_weighted uses area threshold correctly", {
   terra::values(r) <- 0
   r[1, 1] <- 100  # top-left corner has the most population
 
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, method = "pop_weighted",
     pop_raster = r,
     min_area_for_pop_weight = 1,  # 1 km2 threshold
@@ -209,7 +209,7 @@ test_that("pop_weighted attaches pop_raster attribute", {
   )
   terra::values(r) <- runif(terra::ncell(r))
 
-  pts <- compute_representative_points(
+  pts <- interpElections:::compute_representative_points(
     tracts, method = "pop_weighted",
     pop_raster = r,
     min_area_for_pop_weight = 0,  # force raster for all

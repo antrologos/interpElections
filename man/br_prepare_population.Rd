@@ -52,3 +52,4 @@ Other Brazil helpers:
 \code{\link{br_prepare_tracts}()}
 }
 \concept{Brazil helpers}
+\keyword{internal}

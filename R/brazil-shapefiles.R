@@ -32,7 +32,7 @@
 #' @seealso [br_prepare_population()] to generate `pop_data`.
 #'
 #' @family Brazil helpers
-#' @export
+#' @keywords internal
 br_prepare_tracts <- function(
     code_muni,
     pop_data,

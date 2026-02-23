@@ -11,6 +11,7 @@ reinterpolate(
   parties = NULL,
   cargo = NULL,
   turno = NULL,
+  optim = optim_control(),
   keep = NULL,
   verbose = TRUE,
   ...
@@ -34,6 +35,9 @@ See \code{\link[=interpolate_election_br]{interpolate_election_br()}}.}
 
 \item{turno}{Integer or NULL. Override the election round (1 or 2).}
 
+\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
+Default: \code{optim_control()}.}
+
 \item{keep}{Character vector or NULL. Heavy objects to include in result.
 See \code{\link[=interpolate_election_br]{interpolate_election_br()}}.}
 
@@ -54,6 +58,9 @@ parties, \code{what} types, or election rounds without recomputing travel times.
 \details{
 The previous result must contain a \code{time_matrix} (always kept
 by default since v0.2).
+
+\strong{Note}: Alpha is re-optimized (which can take minutes). Only the
+travel-time computation is skipped.
 }
 \examples{
 \dontrun{

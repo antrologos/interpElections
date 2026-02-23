@@ -49,3 +49,4 @@ setup_osmium(method = "download")  # Windows only
 \seealso{
 \code{\link[=download_r5r_data]{download_r5r_data()}} which uses osmium for clipping.
 }
+\keyword{internal}

@@ -1,0 +1,3 @@
+Convergence value: 0 
+Residual RMSE: 11.16139 
+Pop-voter gap (%): 19.04388 

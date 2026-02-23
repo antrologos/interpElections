@@ -38,3 +38,7 @@ Rplots.pdf
 
 # pkgdown site (built by GitHub Actions)
 /docs/
+
+# Claude Code
+CLAUDE.md
+.claude/

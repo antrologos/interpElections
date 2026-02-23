@@ -26,7 +26,7 @@ If provided, filters results to this municipality only.}
 Default: FALSE.}
 
 \item{cache}{Logical. If TRUE (default), downloaded files are stored
-persistently. See \code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}.}
+persistently. See \code{\link[=interpElections_cache]{interpElections_cache()}}.}
 
 \item{verbose}{Logical. Default: TRUE.}
 }
@@ -76,3 +76,4 @@ Other Brazil downloads:
 \code{\link{br_download_votes}()}
 }
 \concept{Brazil downloads}
+\keyword{internal}

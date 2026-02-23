@@ -123,7 +123,7 @@ polling station coordinates (columns: \code{nr_zona},
 obtained from TSE and Danny Hidalgo's geocoding project.}
 
 \item{cache}{Logical. If TRUE (default), downloaded files are stored
-persistently. See \code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}.}
+persistently. See \code{\link[=interpElections_cache]{interpElections_cache()}}.}
 
 \item{force}{Logical. Re-download even if cached file exists.
 Default: FALSE.}
@@ -259,3 +259,4 @@ Other Brazil helpers:
 \code{\link{br_prepare_tracts}()}
 }
 \concept{Brazil helpers}
+\keyword{internal}

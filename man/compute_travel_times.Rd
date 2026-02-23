@@ -10,16 +10,9 @@ compute_travel_times(
   network_path,
   tract_id = "id",
   point_id = "id",
-  point_method = "point_on_surface",
-  pop_raster = NULL,
-  min_area_for_pop_weight = 1,
-  mode = "WALK",
-  max_trip_duration = 300L,
-  fill_missing = max_trip_duration,
-  n_threads = 4L,
-  departure_datetime = NULL,
-  gtfs_zip_path = NULL,
-  verbose = TRUE
+  routing = routing_control(),
+  verbose = TRUE,
+  ...
 )
 }
 \arguments{
@@ -37,37 +30,19 @@ Default: \code{"id"}.}
 \item{point_id}{Character. Name of the ID column in \code{points_sf}.
 Default: \code{"id"}.}
 
-\item{point_method}{Character. Method for computing representative points
-for census tracts. One of \code{"point_on_surface"} (default),
-\code{"centroid"}, or \code{"pop_weighted"}. See \code{\link[=compute_representative_points]{compute_representative_points()}}
-for details.}
-
-\item{pop_raster}{A \link[terra:SpatRaster-class]{terra::SpatRaster} object, a file path to a GeoTIFF,
-or \code{NULL}. Population density raster for \code{point_method = "pop_weighted"}.
-If \code{NULL}, WorldPop data is auto-downloaded. Ignored for other methods.}
-
-\item{min_area_for_pop_weight}{Numeric. Minimum tract area in km² for applying the
-population-weighted method. Default: 1.}
-
-\item{mode}{Character. Routing mode. Default: \code{"WALK"}.}
-
-\item{max_trip_duration}{Integer. Maximum trip duration in minutes.
-Default: 300.}
-
-\item{fill_missing}{Numeric. Value to fill for unreachable
-origin-destination pairs. Default: same as \code{max_trip_duration}.}
-
-\item{n_threads}{Integer. Number of r5r routing threads. Default: 4.}
-
-\item{departure_datetime}{POSIXct or NULL. Departure time for
-transit-based routing. Required when \code{mode} includes transit
-components. Default: NULL (ignored for WALK/BICYCLE modes).}
-
-\item{gtfs_zip_path}{Character or NULL. Path to a GTFS \code{.zip} file for
-transit routing. When provided, the file is copied into \code{network_path}
-so that r5r can auto-detect it. Default: NULL.}
+\item{routing}{A \code{\link[=routing_control]{routing_control()}} object with routing parameters
+(mode, point_method, max_trip_duration, n_threads, gtfs_zip_path,
+departure_datetime, pop_raster, min_area_for_pop_weight,
+osm_buffer_km, fill_missing). Default: \code{routing_control()}.}
 
 \item{verbose}{Logical. Default: TRUE.}
+
+\item{...}{\strong{Deprecated}. Old-style individual parameters
+(\code{point_method}, \code{pop_raster}, \code{min_area_for_pop_weight}, \code{mode},
+\code{max_trip_duration}, \code{fill_missing}, \code{n_threads},
+\code{departure_datetime}, \code{gtfs_zip_path}) are still accepted via
+\code{...} for backward compatibility but will be removed in a future
+release. Use \code{routing = routing_control(...)} instead.}
 }
 \value{
 A numeric matrix [n_tracts x n_points]. Travel times in minutes.
@@ -90,10 +65,22 @@ tt <- compute_travel_times(
   network_path = "path/to/osm_data",
   tract_id = "code_tract", point_id = "id"
 )
+
+# Transit mode with GTFS
+tt <- compute_travel_times(
+  tracts_sf = tracts, points_sf = stations,
+  network_path = "path/to/osm_data",
+  routing = routing_control(
+    mode = c("WALK", "TRANSIT"),
+    gtfs_zip_path = "sptrans.zip",
+    departure_datetime = as.POSIXct("2022-10-02 10:00:00")
+  )
+)
 }
 
 }
 \seealso{
+\code{\link[=routing_control]{routing_control()}} for routing parameters,
 \code{\link[=download_r5r_data]{download_r5r_data()}} to download OSM and elevation data.
 
 Other spatial: 

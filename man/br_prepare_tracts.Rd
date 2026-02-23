@@ -59,3 +59,4 @@ Other Brazil helpers:
 \code{\link{br_prepare_population}()}
 }
 \concept{Brazil helpers}
+\keyword{internal}

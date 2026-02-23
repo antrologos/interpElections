@@ -13,28 +13,17 @@
 #'   Default: `"id"`.
 #' @param point_id Character. Name of the ID column in `points_sf`.
 #'   Default: `"id"`.
-#' @param point_method Character. Method for computing representative points
-#'   for census tracts. One of `"point_on_surface"` (default),
-#'   `"centroid"`, or `"pop_weighted"`. See [compute_representative_points()]
-#'   for details.
-#' @param pop_raster A [terra::SpatRaster] object, a file path to a GeoTIFF,
-#'   or `NULL`. Population density raster for `point_method = "pop_weighted"`.
-#'   If `NULL`, WorldPop data is auto-downloaded. Ignored for other methods.
-#' @param min_area_for_pop_weight Numeric. Minimum tract area in km² for applying the
-#'   population-weighted method. Default: 1.
-#' @param mode Character. Routing mode. Default: `"WALK"`.
-#' @param max_trip_duration Integer. Maximum trip duration in minutes.
-#'   Default: 300.
-#' @param fill_missing Numeric. Value to fill for unreachable
-#'   origin-destination pairs. Default: same as `max_trip_duration`.
-#' @param n_threads Integer. Number of r5r routing threads. Default: 4.
-#' @param departure_datetime POSIXct or NULL. Departure time for
-#'   transit-based routing. Required when `mode` includes transit
-#'   components. Default: NULL (ignored for WALK/BICYCLE modes).
-#' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
-#'   transit routing. When provided, the file is copied into `network_path`
-#'   so that r5r can auto-detect it. Default: NULL.
+#' @param routing A [routing_control()] object with routing parameters
+#'   (mode, point_method, max_trip_duration, n_threads, gtfs_zip_path,
+#'   departure_datetime, pop_raster, min_area_for_pop_weight,
+#'   osm_buffer_km, fill_missing). Default: `routing_control()`.
 #' @param verbose Logical. Default: TRUE.
+#' @param ... **Deprecated**. Old-style individual parameters
+#'   (`point_method`, `pop_raster`, `min_area_for_pop_weight`, `mode`,
+#'   `max_trip_duration`, `fill_missing`, `n_threads`,
+#'   `departure_datetime`, `gtfs_zip_path`) are still accepted via
+#'   `...` for backward compatibility but will be removed in a future
+#'   release. Use `routing = routing_control(...)` instead.
 #'
 #' @return A numeric matrix \[n_tracts x n_points\]. Travel times in minutes.
 #'   Row names = census tract IDs, column names = point IDs. Unreachable
@@ -51,11 +40,23 @@
 #'   network_path = "path/to/osm_data",
 #'   tract_id = "code_tract", point_id = "id"
 #' )
+#'
+#' # Transit mode with GTFS
+#' tt <- compute_travel_times(
+#'   tracts_sf = tracts, points_sf = stations,
+#'   network_path = "path/to/osm_data",
+#'   routing = routing_control(
+#'     mode = c("WALK", "TRANSIT"),
+#'     gtfs_zip_path = "sptrans.zip",
+#'     departure_datetime = as.POSIXct("2022-10-02 10:00:00")
+#'   )
+#' )
 #' }
 #'
 #' @family spatial
 #'
-#' @seealso [download_r5r_data()] to download OSM and elevation data.
+#' @seealso [routing_control()] for routing parameters,
+#'   [download_r5r_data()] to download OSM and elevation data.
 #'
 #' @export
 compute_travel_times <- function(
@@ -64,17 +65,40 @@ compute_travel_times <- function(
     network_path,
     tract_id = "id",
     point_id = "id",
-    point_method = "point_on_surface",
-    pop_raster = NULL,
-    min_area_for_pop_weight = 1,
-    mode = "WALK",
-    max_trip_duration = 300L,
-    fill_missing = max_trip_duration,
-    n_threads = 4L,
-    departure_datetime = NULL,
-    gtfs_zip_path = NULL,
-    verbose = TRUE
+    routing = routing_control(),
+    verbose = TRUE,
+    ...
 ) {
+  # --- Backward compatibility: detect old-style params in ... ---
+  dots <- list(...)
+  routing_param_names <- c("point_method", "pop_raster",
+                           "min_area_for_pop_weight", "mode",
+                           "max_trip_duration", "fill_missing",
+                           "n_threads", "departure_datetime",
+                           "gtfs_zip_path", "osm_buffer_km")
+  old_params <- intersect(names(dots), routing_param_names)
+  if (length(old_params) > 0) {
+    warning(
+      "Passing routing parameters directly is deprecated.\n",
+      "Use routing = routing_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_params, collapse = ", "),
+      call. = FALSE
+    )
+    ctrl_list <- unclass(routing)
+    ctrl_list[old_params] <- dots[old_params]
+    routing <- do.call(routing_control, ctrl_list)
+  }
+
+  # Extract from control object
+  point_method            <- routing$point_method
+  pop_raster              <- routing$pop_raster
+  min_area_for_pop_weight <- routing$min_area_for_pop_weight
+  mode                    <- routing$mode
+  max_trip_duration       <- routing$max_trip_duration
+  fill_missing            <- routing$fill_missing
+  n_threads               <- routing$n_threads
+  departure_datetime      <- routing$departure_datetime
+  gtfs_zip_path           <- routing$gtfs_zip_path
   if (!requireNamespace("r5r", quietly = TRUE)) {
     stop("The 'r5r' package is required for compute_travel_times()",
          call. = FALSE)

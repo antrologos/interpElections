@@ -34,7 +34,7 @@ Default: FALSE.}
 
 \item{cache}{Logical. If TRUE (default), downloaded files are stored
 in a persistent cross-session cache directory (see
-\code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}}). If FALSE, files are stored in a
+\code{\link[=interpElections_cache]{interpElections_cache()}}). If FALSE, files are stored in a
 temporary directory and lost when R restarts.}
 
 \item{verbose}{Logical. Default: TRUE.}
@@ -83,3 +83,4 @@ Other Brazil downloads:
 \code{\link{br_download_turnout}()}
 }
 \concept{Brazil downloads}
+\keyword{internal}

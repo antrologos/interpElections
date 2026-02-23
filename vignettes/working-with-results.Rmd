@@ -8,12 +8,14 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+VIGNETTE_EVAL <- dir.exists("figures")
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
   fig.height = 5,
-  out.width = "100%"
+  out.width = "100%",
+  eval = VIGNETTE_EVAL
 )
 library(interpElections)
 ```
@@ -32,14 +34,14 @@ result_nit <- interpolate_election_br(
   "Niteroi", year = 2022, cargo = "presidente",
   what = c("candidates", "parties", "turnout", "demographics"),
   keep = "electoral_sf",
-  use_gpu = TRUE
+  optim = optim_control(use_gpu = TRUE)
 )
 
 result_bh <- interpolate_election_br(
   "Belo Horizonte", year = 2022, cargo = "presidente",
   what = c("candidates", "turnout"),
   keep = "electoral_sf",
-  use_gpu = TRUE
+  optim = optim_control(use_gpu = TRUE)
 )
 ```
 

@@ -17,14 +17,9 @@ interpolate_election_br(
   clip_tracts_sf = NULL,
   min_tract_pop = 1,
   time_matrix = NULL,
-  max_epochs = 2000L,
-  alpha_min = 1,
-  mode = "WALK",
-  gtfs_zip_path = NULL,
-  max_trip_duration = 300L,
-  point_method = "pop_weighted",
-  min_area_for_pop_weight = 1,
-  use_gpu = NULL,
+  optim = optim_control(),
+  routing = routing_control(),
+  offset = 1,
   force = FALSE,
   keep = NULL,
   verbose = TRUE,
@@ -71,33 +66,15 @@ it. Tracts below this are dropped. Default: 1.}
 \item{time_matrix}{Pre-computed travel time matrix [n x m], or NULL.
 If provided, skips routing (no r5r, no OSM download).}
 
-\item{max_epochs}{Maximum optimizer epochs. Default: 2000.
-See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
+Default: \code{optim_control()}.}
 
-\item{alpha_min}{Lower bound for decay parameters. Default: 1.
-See \code{\link[=optimize_alpha]{optimize_alpha()}}.}
+\item{routing}{A \code{\link[=routing_control]{routing_control()}} object with routing parameters.
+Default: \code{routing_control()}. When \code{gtfs_zip_path} is set but
+\code{departure_datetime} is NULL, the departure is auto-set to election
+day at 10 AM.}
 
-\item{mode}{Routing mode: \code{"WALK"} (default), \code{"BICYCLE"}, \code{"CAR"},
-or transit combos like \code{"WALK;TRANSIT"}. See r5r docs.}
-
-\item{gtfs_zip_path}{Path to a GTFS .zip file for transit routing,
-or NULL. When provided and \code{departure_datetime} is not set, the
-departure is auto-set to election day at 10 AM.}
-
-\item{max_trip_duration}{Maximum trip duration in minutes. Also used
-as fill value for unreachable pairs. Default: 300 (5h walking).}
-
-\item{point_method}{Method for tract representative points:
-\code{"pop_weighted"} (default, uses WorldPop raster),
-\code{"point_on_surface"}, or \code{"centroid"}.
-See \code{\link[=compute_representative_points]{compute_representative_points()}}.}
-
-\item{min_area_for_pop_weight}{Minimum tract area in km2 for the
-pop_weighted method. Smaller tracts fall back to point_on_surface.
-Default: 1.}
-
-\item{use_gpu}{TRUE/FALSE or NULL. If NULL (default), reads the
-global option set via \code{\link[=use_gpu]{use_gpu()}}.}
+\item{offset}{Numeric. Travel time offset. Default: 1.}
 
 \item{force}{Re-download all cached data. Default: FALSE.}
 
@@ -107,9 +84,11 @@ Options: \code{"electoral_sf"}, \code{"pop_raster"}, \code{"rep_points"}.}
 
 \item{verbose}{Print progress messages. Default: TRUE.}
 
-\item{...}{Advanced tuning. See \link{interpElections-passthrough}.
-Common: \code{network_path}, \code{cache} (default TRUE),
-\code{osm_buffer_km} (default 10), \code{offset} (default 1).}
+\item{...}{Advanced arguments. \code{network_path} (character),
+\code{cache} (logical, default TRUE), \code{osm_provider} (character),
+\code{comparecimento_path}, \code{votacao_path}, \code{geocode_path},
+\code{interp_sources}. Also accepts \strong{deprecated} old-style
+parameters for backward compatibility.}
 }
 \value{
 An \code{interpElections_result} list. Key fields:
@@ -142,16 +121,17 @@ result2 <- reinterpolate(result, what = "parties")
 }
 }
 
-\section{Advanced tuning via \code{...}}{
+\section{Advanced tuning}{
 
-See \code{\link{interpElections-passthrough}} for all options.
+Use \code{\link[=optim_control]{optim_control()}} to adjust optimization parameters (epochs,
+learning rate, GPU, etc.) and \code{\link[=routing_control]{routing_control()}} for travel-time
+computation (mode, GTFS, representative points, etc.).
 }
 
 \seealso{
+\code{\link[=optim_control]{optim_control()}}, \code{\link[=routing_control]{routing_control()}},
 \code{\link[=interpolate_election]{interpolate_election()}} for the general-purpose wrapper,
-\code{\link[=reinterpolate]{reinterpolate()}} for quick re-runs,
-\code{\link[=br_prepare_population]{br_prepare_population()}}, \code{\link[=br_prepare_electoral]{br_prepare_electoral()}},
-\code{\link[=br_prepare_tracts]{br_prepare_tracts()}}.
+\code{\link[=reinterpolate]{reinterpolate()}} for quick re-runs.
 
 Other wrappers: 
 \code{\link{interpolate_election}()}

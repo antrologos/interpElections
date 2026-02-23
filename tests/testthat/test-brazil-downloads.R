@@ -1,4 +1,4 @@
-# Tests for br_download_votes() and br_download_turnout()
+# Tests for interpElections:::br_download_votes() and br_download_turnout()
 
 test_that("br_download_votes has correct signature", {
   expect_true(is.function(br_download_votes))
@@ -43,7 +43,7 @@ test_that("br_download_votes downloads Boa Vista 2008 data", {
   skip_if_not_installed("stringr")
 
   # Boa Vista TSE code is 03018 (not 03611)
-  result <- br_download_votes(
+  result <- interpElections:::br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
     cache = FALSE, verbose = FALSE
@@ -68,14 +68,14 @@ test_that("br_download_votes caches ZIP file", {
   skip_if_not_installed("stringr")
 
   # First call downloads
-  result1 <- br_download_votes(
+  result1 <- interpElections:::br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
     verbose = FALSE
   )
 
   # Second call uses cache (faster)
-  result2 <- br_download_votes(
+  result2 <- interpElections:::br_download_votes(
     year = 2008, uf = "RR", code_muni_tse = "03018",
     cargo = 13, turno = 1,
     verbose = FALSE
@@ -93,7 +93,7 @@ test_that("interpolate_election_br has turno parameter", {
   expect_true("turno" %in% names(formals(interpolate_election_br)))
 })
 
-# --- Tests for br_download_geocode() ---
+# --- Tests for interpElections:::br_download_geocode() ---
 
 test_that("br_download_geocode has correct signature", {
   expect_true(is.function(br_download_geocode))
@@ -113,7 +113,7 @@ test_that("br_download_geocode requires data.table", {
 test_that("br_download_geocode returns NULL for 2008 (no TSE data)", {
   skip_on_cran()
   skip_if_offline()
-  result <- br_download_geocode(
+  result <- interpElections:::br_download_geocode(
     year = 2008, uf = "RR",
     cache = FALSE, verbose = FALSE
   )
@@ -126,7 +126,7 @@ test_that("br_download_geocode downloads 2020 RR data", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("stringr")
 
-  result <- br_download_geocode(
+  result <- interpElections:::br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
     cache = FALSE, verbose = FALSE
   )
@@ -157,13 +157,13 @@ test_that("br_download_geocode caches ZIP file", {
   skip_if_not_installed("stringr")
 
   # First call downloads (may already be cached from previous test)
-  result1 <- br_download_geocode(
+  result1 <- interpElections:::br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
     verbose = FALSE
   )
 
   # Second call uses cache
-  result2 <- br_download_geocode(
+  result2 <- interpElections:::br_download_geocode(
     year = 2020, uf = "RR", code_muni_tse = "03018",
     verbose = FALSE
   )

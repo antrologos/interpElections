@@ -14,3 +14,6 @@
 ^vignettes/precompute\.R$
 ^scripts$
 ^Rplots\.pdf$
+^_run_doctest\.R$
+^CLAUDE\.md$
+^\.claude$

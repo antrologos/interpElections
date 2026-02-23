@@ -16,7 +16,7 @@
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
 #'   in a persistent cross-session cache directory (see
-#'   [get_interpElections_cache_dir()]). If FALSE, files are stored in a
+#'   [interpElections_cache()]). If FALSE, files are stored in a
 #'   temporary directory and lost when R restarts.
 #' @param verbose Logical. Default: TRUE.
 #'
@@ -52,7 +52,7 @@
 #'   [interpElections_cache()] to manage cached downloads.
 #'
 #' @family Brazil downloads
-#' @export
+#' @keywords internal
 br_download_votes <- function(
     year,
     uf,
@@ -172,7 +172,7 @@ br_download_votes <- function(
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
-#'   persistently. See [get_interpElections_cache_dir()].
+#'   persistently. See [interpElections_cache()].
 #' @param verbose Logical. Default: TRUE.
 #'
 #' @return A data frame with one row per section per office, using the
@@ -200,7 +200,7 @@ br_download_votes <- function(
 #'   [br_prepare_electoral()] which can use this function internally,
 #'   [interpElections_cache()] to manage cached downloads.
 #'
-#' @export
+#' @keywords internal
 br_download_turnout <- function(
     year,
     uf = NULL,
@@ -319,7 +319,7 @@ br_download_turnout <- function(
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
-#'   persistently. See [get_interpElections_cache_dir()].
+#'   persistently. See [interpElections_cache()].
 #' @param verbose Logical. Default: TRUE.
 #'
 #' @return A data frame with TSE party/coalition data. Key columns:
@@ -343,7 +343,7 @@ br_download_turnout <- function(
 #'   [br_prepare_electoral()] which uses this function internally,
 #'   [interpElections_cache()] to manage cached downloads.
 #'
-#' @export
+#' @keywords internal
 br_download_party_legends <- function(
     year,
     force = FALSE,
@@ -429,7 +429,7 @@ br_download_party_legends <- function(
 #' @param force Logical. Re-download even if cached file exists.
 #'   Default: FALSE.
 #' @param cache Logical. If TRUE (default), downloaded files are stored
-#'   persistently. See [get_interpElections_cache_dir()].
+#'   persistently. See [interpElections_cache()].
 #' @param verbose Logical. Default: TRUE.
 #'
 #' @return A data frame with one row per section per round, using the
@@ -462,7 +462,7 @@ br_download_party_legends <- function(
 #'   to geocode polling stations (with Hidalgo fallback for missing
 #'   coordinates), [interpElections_cache()] to manage cached downloads.
 #'
-#' @export
+#' @keywords internal
 br_download_geocode <- function(
     year,
     uf              = NULL,

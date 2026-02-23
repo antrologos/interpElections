@@ -10,7 +10,7 @@
   had_config <- file.exists(config_file)
   old_config <- if (had_config) readLines(config_file, n = 1L) else NULL
 
-  set_interpElections_cache_dir(tmp, verbose = FALSE)
+  interpElections_cache("set_dir", path = tmp, verbose = FALSE)
 
   withr::defer({
     if (!is.null(old_config)) {
@@ -25,13 +25,13 @@
 }
 
 
-test_that("get_interpElections_cache_dir returns a valid path", {
-  dir <- get_interpElections_cache_dir()
+test_that("interpElections_cache('dir') returns a valid path", {
+  dir <- interpElections_cache("dir")
   expect_type(dir, "character")
   expect_true(nzchar(dir))
 })
 
-test_that("set_interpElections_cache_dir sets and reads custom dir", {
+test_that("interpElections_cache('set_dir') sets and reads custom dir", {
   tmp <- tempfile("interpElections_test_cache_")
   dir.create(tmp)
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
@@ -48,14 +48,14 @@ test_that("set_interpElections_cache_dir sets and reads custom dir", {
     }
   }, add = TRUE)
 
-  set_interpElections_cache_dir(tmp, verbose = FALSE)
-  expect_equal(normalizePath(get_interpElections_cache_dir()),
+  interpElections_cache("set_dir", path = tmp, verbose = FALSE)
+  expect_equal(normalizePath(interpElections_cache("dir")),
                normalizePath(tmp))
 
   # Reset
-  set_interpElections_cache_dir(NULL, verbose = FALSE)
+  interpElections_cache("set_dir", path = NULL, verbose = FALSE)
   default <- tools::R_user_dir("interpElections", which = "cache")
-  expect_equal(get_interpElections_cache_dir(), default)
+  expect_equal(interpElections_cache("dir"), default)
 })
 
 
@@ -84,7 +84,7 @@ test_that("interpElections_cache lists files using new subdirs", {
   dir.create(votes_dir, recursive = TRUE)
   writeLines("test", file.path(votes_dir, "testfile.zip"))
 
-  files <- interpElections_cache(list_files = TRUE, verbose = FALSE)
+  files <- interpElections_cache(verbose = FALSE)
   expect_length(files, 1)
   expect_true(grepl("testfile\\.zip$", files[1]))
 })
@@ -102,7 +102,7 @@ test_that("interpElections_cache shows per-category breakdown", {
   writeLines("tract data", file.path(tracts_dir, "tracts_001.rds"))
 
   out <- capture.output(
-    interpElections_cache(list_files = TRUE, verbose = TRUE),
+    interpElections_cache(verbose = TRUE),
     type = "message"
   )
   combined <- paste(out, collapse = "\n")
@@ -156,9 +156,9 @@ test_that("interpElections_cache delete_file='all' clears everything", {
 })
 
 
-# --- interpElections_cache_clean() ---
+# --- interpElections_cache("clean") ---
 
-test_that("interpElections_cache_clean deletes by category", {
+test_that("interpElections_cache('clean') deletes by category", {
   tmp <- .with_temp_cache()
 
   # Create files in two categories
@@ -171,12 +171,12 @@ test_that("interpElections_cache_clean deletes by category", {
   writeLines("t", file.path(tracts_dir, "tracts.rds"))
 
   # Clean only votes
-  interpElections_cache_clean("votes", verbose = FALSE)
+  interpElections_cache("clean", category = "votes", verbose = FALSE)
   expect_false(dir.exists(votes_dir))
   expect_true(file.exists(file.path(tracts_dir, "tracts.rds")))
 })
 
-test_that("interpElections_cache_clean 'downloads' clears all download subdirs", {
+test_that("interpElections_cache('clean') 'downloads' clears all download subdirs", {
   tmp <- .with_temp_cache()
 
   for (sub in c("votes", "turnout", "geocode")) {
@@ -189,29 +189,29 @@ test_that("interpElections_cache_clean 'downloads' clears all download subdirs",
   dir.create(pd, recursive = TRUE)
   writeLines("y", file.path(pd, "data.rds"))
 
-  interpElections_cache_clean("downloads", verbose = FALSE)
+  interpElections_cache("clean", category = "downloads", verbose = FALSE)
   expect_false(dir.exists(file.path(tmp, "downloads")))
   expect_true(file.exists(file.path(pd, "data.rds")))
 })
 
-test_that("interpElections_cache_clean 'all' clears everything", {
+test_that("interpElections_cache('clean') 'all' clears everything", {
   tmp <- .with_temp_cache()
 
   votes_dir <- file.path(tmp, "downloads", "votes")
   dir.create(votes_dir, recursive = TRUE)
   writeLines("x", file.path(votes_dir, "test.zip"))
 
-  interpElections_cache_clean("all", verbose = FALSE)
+  interpElections_cache("clean", category = "all", verbose = FALSE)
   expect_true(dir.exists(tmp))
   expect_length(list.files(tmp, recursive = TRUE), 0)
 })
 
-test_that("interpElections_cache_clean on empty category is silent", {
+test_that("interpElections_cache('clean') on empty category is silent", {
   tmp <- .with_temp_cache()
 
   # No files exist — should not error
   out <- capture.output(
-    interpElections_cache_clean("votes", verbose = TRUE),
+    interpElections_cache("clean", category = "votes", verbose = TRUE),
     type = "message"
   )
   expect_true(any(grepl("No cached data", out)))

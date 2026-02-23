@@ -56,7 +56,7 @@
 #' @seealso [compute_travel_times()] to use the downloaded data,
 #'   [setup_osmium()] to install the required clipping tool.
 #'
-#' @export
+#' @keywords internal
 download_r5r_data <- function(
     area_sf,
     output_dir,
@@ -430,7 +430,7 @@ download_r5r_data <- function(
 #'
 #' @seealso [download_r5r_data()] which uses osmium for clipping.
 #'
-#' @export
+#' @keywords internal
 setup_osmium <- function(method = NULL, verbose = TRUE) {
   # Check if already available
   osmium <- .find_tool("osmium")

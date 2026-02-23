@@ -5,38 +5,63 @@
 \title{Manage the interpElections download cache}
 \usage{
 interpElections_cache(
-  list_files = TRUE,
+  action = c("list", "clean", "dir", "set_dir"),
+  category = NULL,
+  path = NULL,
   delete_file = NULL,
   details = FALSE,
   verbose = TRUE
 )
 }
 \arguments{
-\item{list_files}{Logical. If TRUE (default), prints a per-category
-summary and returns cached file paths.}
+\item{action}{Character. One of:
+\describe{
+\item{\code{"list"}}{(Default) Print a per-category size breakdown and
+return cached file paths. Supports \code{delete_file} and \code{details}.}
+\item{\code{"clean"}}{Delete cached files by \code{category}.}
+\item{\code{"dir"}}{Return the current cache directory path.}
+\item{\code{"set_dir"}}{Set a custom cache directory via \code{path}.
+Pass \code{path = NULL} to reset to the OS default.}
+}}
 
-\item{delete_file}{Character or NULL. A pattern to match files for
-deletion (matched against relative paths via \code{grepl()}), or
-\code{"all"} to delete the entire cache. For targeted deletion by
-category, see \code{\link[=interpElections_cache_clean]{interpElections_cache_clean()}}.}
+\item{category}{Character (for \code{action = "clean"}). Which category to
+clear. One of: \code{"all"}, \code{"downloads"}, \code{"processed"}, \code{"networks"},
+\code{"travel_times"}, \code{"pop_raster"}, \code{"votes"}, \code{"turnout"}, \code{"geocode"},
+\code{"profile"}, \code{"hidalgo"}, \code{"osm"}, \code{"electoral"}, \code{"tracts"}, \code{"r5r"}.
+Default: \code{"all"}.}
 
-\item{details}{Logical. If TRUE, also prints individual filenames
-within each category. Default: FALSE.}
+\item{path}{Character or NULL (for \code{action = "set_dir"}). Directory
+path for cached files. Created if it does not exist. \code{NULL} resets to
+the default.}
+
+\item{delete_file}{Character or NULL (for \code{action = "list"}). A pattern
+to match files for deletion (via \code{grepl()}), or \code{"all"} to delete
+the entire cache.}
+
+\item{details}{Logical (for \code{action = "list"}). If TRUE, also prints
+individual filenames within each category. Default: FALSE.}
 
 \item{verbose}{Logical. Print messages. Default: TRUE.}
 }
 \value{
-Invisibly returns a character vector of cached file paths
-(before any deletion).
+Depends on \code{action}:
+\describe{
+\item{\code{"list"}}{Invisibly returns a character vector of cached file
+paths (before any deletion).}
+\item{\code{"clean"}}{Invisibly returns the path(s) that were deleted.}
+\item{\code{"dir"}}{Character string: path to the cache directory.}
+\item{\code{"set_dir"}}{Invisibly returns the (new) cache directory path.}
+}
 }
 \description{
-Lists or deletes cached files. By default shows a per-category size
-breakdown. Use \code{details = TRUE} to see individual files.
-Use \code{delete_file = "all"} to clear the entire cache.
+Unified interface for cache management. The \code{action} parameter selects
+one of four operations: list contents (\code{"list"}, the default), clean by
+category (\code{"clean"}), query the cache directory path (\code{"dir"}), or set a
+custom cache directory (\code{"set_dir"}).
 }
 \examples{
 \dontrun{
-# Per-category summary
+# Per-category summary (default action)
 interpElections_cache()
 
 # Detailed listing (every file)
@@ -47,17 +72,21 @@ interpElections_cache(delete_file = "2020")
 
 # Delete everything
 interpElections_cache(delete_file = "all")
+
+# Get cache directory
+interpElections_cache("dir")
+
+# Set custom cache directory
+interpElections_cache("set_dir", path = "/tmp/my_cache")
+
+# Reset to default directory
+interpElections_cache("set_dir", path = NULL)
+
+# Clean by category
+interpElections_cache("clean", category = "votes")
+
+# Clean everything
+interpElections_cache("clean", category = "all")
 }
 
 }
-\seealso{
-\code{\link[=get_interpElections_cache_dir]{get_interpElections_cache_dir()}},
-\code{\link[=set_interpElections_cache_dir]{set_interpElections_cache_dir()}},
-\code{\link[=interpElections_cache_clean]{interpElections_cache_clean()}}
-
-Other cache: 
-\code{\link{get_interpElections_cache_dir}()},
-\code{\link{interpElections_cache_clean}()},
-\code{\link{set_interpElections_cache_dir}()}
-}
-\concept{cache}

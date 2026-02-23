@@ -67,3 +67,4 @@ pts_pop <- compute_representative_points(tracts, method = "pop_weighted")
 }
 
 }
+\keyword{internal}

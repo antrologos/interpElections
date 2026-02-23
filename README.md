@@ -21,25 +21,34 @@ remotes::install_github("antrologos/interpElections")
 ```
 
 Optional: `setup_torch()` for GPU optimization, `setup_java()` for r5r
-travel-time routing, `setup_osmium()` for OSM data clipping.
+travel-time routing.
 
-## Quick example: Brazilian election
+## Quick start
 
 ```r
 library(interpElections)
 
-result <- interpolate_election_br("Varginha", year = 2022,
-  cargo = "presidente", what = c("candidates", "turnout"))
-
-summary(result)
-plot(result, variable = "Lula")
+result <- interpolate_election_br(3550308, 2022)
+plot(result)
 ```
 
 Three lines: downloads census data, electoral results, and road
 networks; computes travel times; optimizes per-tract decay; interpolates
 all variables into census tracts.
 
-## Quick example: Custom data
+## Advanced usage
+
+Control objects group tuning parameters for optimization and routing:
+
+```r
+result <- interpolate_election_br(3550308, 2022,
+  optim = optim_control(use_gpu = TRUE, max_epochs = 1000),
+  routing = routing_control(mode = c("WALK", "TRANSIT"),
+                            gtfs_zip_path = "sptrans.zip")
+)
+```
+
+## Custom data
 
 ```r
 result <- interpolate_election(
@@ -76,19 +85,21 @@ demographics via **torch ADAM** with a log-barrier penalty.
 
 | Category | Functions |
 |---|---|
-| **Core Engine** | `compute_weight_matrix()`, `optimize_alpha()` |
-| **Wrappers** | `interpolate_election()`, `interpolate_election_br()` |
-| **Results** | `summary()`, `plot()`, `coef()`, `residuals()`, `as.data.frame()`, `plot_interactive()` |
-| **Brazilian Data** | `br_prepare_population()`, `br_prepare_tracts()`, `br_prepare_electoral()`, `compute_travel_times()` |
-| **Areal Aggregation** | `areal_weights()`, `areal_interpolate()` |
-| **Setup** | `setup_torch()`, `check_torch()`, `use_gpu()`, `setup_java()`, `check_r5r()`, `setup_osmium()` |
-| **Cache** | `get_interpElections_cache_dir()`, `interpElections_cache()`, `interpElections_cache_clean()` |
+| **Interpolation** | `interpolate_election_br()`, `interpolate_election()`, `reinterpolate()`, `optimize_alpha()`, `compute_weight_matrix()`, `compute_travel_times()` |
+| **Control** | `optim_control()`, `routing_control()` |
+| **Results** | `summary()`, `plot()`, `autoplot()`, `coef()`, `residuals()`, `as.data.frame()`, `plot_interactive()` |
+| **Spatial** | `areal_weights()`, `areal_interpolate()` |
+| **Setup** | `setup_torch()`, `use_gpu()`, `setup_java()`, `interpElections_cache()` |
 
 ## GPU acceleration
 
 ```r
 setup_torch()     # one-time installation
 use_gpu(TRUE)     # enable globally
+
+# Or per-call via control objects:
+result <- interpolate_election_br(3550308, 2022,
+  optim = optim_control(use_gpu = TRUE))
 ```
 
 GPU (CUDA/MPS) is recommended for municipalities with >1,000 census

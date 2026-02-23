@@ -36,7 +36,7 @@
 #' }
 #'
 #' @family Brazil helpers
-#' @export
+#' @keywords internal
 br_prepare_population <- function(code_muni, year = 2010) {
   for (pkg in c("censobr", "dplyr", "tidyr")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {

@@ -8,6 +8,9 @@
 #' The previous result must contain a `time_matrix` (always kept
 #' by default since v0.2).
 #'
+#' **Note**: Alpha is re-optimized (which can take minutes). Only the
+#' travel-time computation is skipped.
+#'
 #' @param result An `interpElections_result` object from
 #'   [interpolate_election_br()].
 #' @param what Character vector. Controls what information is interpolated.
@@ -19,6 +22,8 @@
 #' @param cargo Integer, character, or NULL. Override the electoral office.
 #'   See [interpolate_election_br()].
 #' @param turno Integer or NULL. Override the election round (1 or 2).
+#' @param optim An [optim_control()] object with optimization parameters.
+#'   Default: `optim_control()`.
 #' @param keep Character vector or NULL. Heavy objects to include in result.
 #'   See [interpolate_election_br()].
 #' @param verbose Logical. Print progress messages. Default: TRUE.
@@ -55,6 +60,7 @@ reinterpolate <- function(
     parties    = NULL,
     cargo      = NULL,
     turno      = NULL,
+    optim      = optim_control(),
     keep       = NULL,
     verbose    = TRUE,
     ...
@@ -89,6 +95,7 @@ reinterpolate <- function(
     candidates   = candidates,
     parties      = parties,
     time_matrix  = result$time_matrix,
+    optim        = optim,
     keep         = keep,
     verbose      = verbose,
     ...

@@ -1,0 +1,40 @@
+interpElections result summary
+-------------------------------------------------- 
+Municipality: IGREJINHA (RS) -- IBGE: 4310108, TSE: 87033
+Election: 2022 | Census: 2022 | Turno: 1 | Cargo: PRESIDENTE 
+Census tracts: 84 | Sources: 17 | Variables: 28
+
+Calibration: gender x 7 age brackets (14 pairs)
+
+Optimization: pb_sgd_colnorm_cpu | Objective: 671.9874 | Convergence: 0
+  Alpha: min=1.000, Q1=1.197, median=1.369, Q3=1.714, max=8.692
+
+Candidates (13):
+  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=      7124  mean=    84.8  [3.5, 229.5]
+  CAND_12                  CIRO FERREIRA GOMES (PDT) total=       465  mean=     5.5  [0.2, 14.5]
+  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=       130  mean=     1.5  [0.1, 4.9]
+  CAND_22                  JAIR MESSIAS BOLSONARO (PL) total=     13294  mean=   158.3  [6.5, 412.4]
+  ... 9 more -- View(result$dictionary)
+
+Turnout (1):
+  QT_COMPARECIMENTO        turnout                total=     22786  mean=   271.3  [11.1, 694.4]
+
+Calibration (14):
+  vot_hom_18_19            calibration            total=       289  mean=     3.4  [0.1, 8.4]
+  vot_hom_20_24            calibration            total=      1162  mean=    13.8  [0.6, 34.8]
+  vot_hom_25_29            calibration            total=      1314  mean=    15.6  [0.6, 42.5]
+  vot_hom_30_39            calibration            total=      2825  mean=    33.6  [1.4, 86.2]
+  vot_hom_40_49            calibration            total=      2626  mean=    31.3  [1.3, 80.5]
+  vot_hom_50_59            calibration            total=      2396  mean=    28.5  [1.2, 75.1]
+  vot_hom_60_69            calibration            total=      1547  mean=    18.4  [0.8, 55.8]
+  vot_mul_18_19            calibration            total=       306  mean=     3.6  [0.2, 9.9]
+  vot_mul_20_24            calibration            total=      1218  mean=    14.5  [0.6, 37.4]
+  vot_mul_25_29            calibration            total=      1432  mean=    17.0  [0.7, 50.0]
+  vot_mul_30_39            calibration            total=      2967  mean=    35.3  [1.5, 90.5]
+  vot_mul_40_49            calibration            total=      2738  mean=    32.6  [1.3, 86.2]
+  vot_mul_50_59            calibration            total=      2539  mean=    30.2  [1.2, 76.8]
+  vot_mul_60_69            calibration            total=      1678  mean=    20.0  [0.8, 52.4]
+
+
+Object size: 180.5 MB
+Neighborhoods: 365

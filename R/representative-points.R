@@ -47,7 +47,7 @@
 #' pts_pop <- compute_representative_points(tracts, method = "pop_weighted")
 #' }
 #'
-#' @export
+#' @keywords internal
 compute_representative_points <- function(
     tracts_sf,
     method = c("point_on_surface", "centroid", "pop_weighted"),

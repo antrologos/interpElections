@@ -27,13 +27,11 @@
 #' Returns the path to the directory where interpElections stores cached
 #' downloaded files (TSE data, Hidalgo geocoding, travel time matrices, etc.).
 #' The default location is OS-appropriate (via [tools::R_user_dir()]).
-#' A custom path can be set with [set_interpElections_cache_dir()].
 #'
 #' @return Character. Path to the cache directory.
 #'
-#' @family cache
-#' @seealso [set_interpElections_cache_dir()], [interpElections_cache()]
-#' @export
+#' @seealso [interpElections_cache()]
+#' @keywords internal
 get_interpElections_cache_dir <- function() {
   config_dir <- tools::R_user_dir("interpElections", which = "config")
   config_file <- file.path(config_dir, "cache_dir")
@@ -58,9 +56,8 @@ get_interpElections_cache_dir <- function() {
 #'
 #' @return Invisibly returns the cache directory path.
 #'
-#' @family cache
-#' @seealso [get_interpElections_cache_dir()], [interpElections_cache()]
-#' @export
+#' @seealso [interpElections_cache()]
+#' @keywords internal
 set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
   config_dir <- tools::R_user_dir("interpElections", which = "config")
   config_file <- file.path(config_dir, "cache_dir")
@@ -93,26 +90,47 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 
 #' Manage the interpElections download cache
 #'
-#' Lists or deletes cached files. By default shows a per-category size
-#' breakdown. Use `details = TRUE` to see individual files.
-#' Use `delete_file = "all"` to clear the entire cache.
+#' Unified interface for cache management. The `action` parameter selects
+#' one of four operations: list contents (`"list"`, the default), clean by
+#' category (`"clean"`), query the cache directory path (`"dir"`), or set a
+#' custom cache directory (`"set_dir"`).
 #'
-#' @param list_files Logical. If TRUE (default), prints a per-category
-#'   summary and returns cached file paths.
-#' @param delete_file Character or NULL. A pattern to match files for
-#'   deletion (matched against relative paths via `grepl()`), or
-#'   `"all"` to delete the entire cache. For targeted deletion by
-#'   category, see [interpElections_cache_clean()].
-#' @param details Logical. If TRUE, also prints individual filenames
-#'   within each category. Default: FALSE.
+#' @param action Character. One of:
+#'   \describe{
+#'     \item{`"list"`}{(Default) Print a per-category size breakdown and
+#'       return cached file paths. Supports `delete_file` and `details`.}
+#'     \item{`"clean"`}{Delete cached files by `category`.}
+#'     \item{`"dir"`}{Return the current cache directory path.}
+#'     \item{`"set_dir"`}{Set a custom cache directory via `path`.
+#'       Pass `path = NULL` to reset to the OS default.}
+#'   }
+#' @param category Character (for `action = "clean"`). Which category to
+#'   clear. One of: `"all"`, `"downloads"`, `"processed"`, `"networks"`,
+#'   `"travel_times"`, `"pop_raster"`, `"votes"`, `"turnout"`, `"geocode"`,
+#'   `"profile"`, `"hidalgo"`, `"osm"`, `"electoral"`, `"tracts"`, `"r5r"`.
+#'   Default: `"all"`.
+#' @param path Character or NULL (for `action = "set_dir"`). Directory
+#'   path for cached files. Created if it does not exist. `NULL` resets to
+#'   the default.
+#' @param delete_file Character or NULL (for `action = "list"`). A pattern
+#'   to match files for deletion (via `grepl()`), or `"all"` to delete
+#'   the entire cache.
+#' @param details Logical (for `action = "list"`). If TRUE, also prints
+#'   individual filenames within each category. Default: FALSE.
 #' @param verbose Logical. Print messages. Default: TRUE.
 #'
-#' @return Invisibly returns a character vector of cached file paths
-#'   (before any deletion).
+#' @return Depends on `action`:
+#' \describe{
+#'   \item{`"list"`}{Invisibly returns a character vector of cached file
+#'     paths (before any deletion).}
+#'   \item{`"clean"`}{Invisibly returns the path(s) that were deleted.}
+#'   \item{`"dir"`}{Character string: path to the cache directory.}
+#'   \item{`"set_dir"`}{Invisibly returns the (new) cache directory path.}
+#' }
 #'
 #' @examples
 #' \dontrun{
-#' # Per-category summary
+#' # Per-category summary (default action)
 #' interpElections_cache()
 #'
 #' # Detailed listing (every file)
@@ -123,15 +141,51 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 #'
 #' # Delete everything
 #' interpElections_cache(delete_file = "all")
+#'
+#' # Get cache directory
+#' interpElections_cache("dir")
+#'
+#' # Set custom cache directory
+#' interpElections_cache("set_dir", path = "/tmp/my_cache")
+#'
+#' # Reset to default directory
+#' interpElections_cache("set_dir", path = NULL)
+#'
+#' # Clean by category
+#' interpElections_cache("clean", category = "votes")
+#'
+#' # Clean everything
+#' interpElections_cache("clean", category = "all")
 #' }
 #'
-#' @family cache
-#' @seealso [get_interpElections_cache_dir()],
-#'   [set_interpElections_cache_dir()],
-#'   [interpElections_cache_clean()]
 #' @export
 interpElections_cache <- function(
-    list_files  = TRUE,
+    action      = c("list", "clean", "dir", "set_dir"),
+    category    = NULL,
+    path        = NULL,
+    delete_file = NULL,
+    details     = FALSE,
+    verbose     = TRUE
+) {
+  action <- match.arg(action)
+  switch(action,
+    "list"    = .cache_list_files(
+                    delete_file = delete_file,
+                    details     = details,
+                    verbose     = verbose),
+    "clean"   = interpElections_cache_clean(
+                    category = category %||% "all",
+                    verbose  = verbose),
+    "dir"     = get_interpElections_cache_dir(),
+    "set_dir" = set_interpElections_cache_dir(
+                    path    = path,
+                    verbose = verbose)
+  )
+}
+
+
+#' @noRd
+.cache_list_files <- function(
     delete_file = NULL,
     details     = FALSE,
     verbose     = TRUE
@@ -145,7 +199,7 @@ interpElections_cache <- function(
 
   files <- list.files(cache_dir, recursive = TRUE, full.names = TRUE)
 
-  if (list_files && verbose) {
+  if (verbose) {
     if (length(files) == 0) {
       message("Cache is empty.")
     } else {
@@ -161,14 +215,14 @@ interpElections_cache <- function(
 
       # Group by top 2 directory levels
       dir_parts <- strsplit(rel, "/")
-      category <- vapply(dir_parts, function(p) {
+      cat_labels <- vapply(dir_parts, function(p) {
         paste(utils::head(p, min(length(p) - 1L, 2L)), collapse = "/")
       }, character(1))
       # Files at root level
-      category[category == ""] <- "."
+      cat_labels[cat_labels == ""] <- "."
 
-      for (cat in sort(unique(category))) {
-        mask <- category == cat
+      for (cat in sort(unique(cat_labels))) {
+        mask <- cat_labels == cat
         cat_mb <- sum(sizes[mask], na.rm = TRUE) / 1e6
         cat_n <- sum(mask)
         label <- if (cat == ".") "(root)" else paste0(cat, "/")
@@ -183,7 +237,6 @@ interpElections_cache <- function(
           }
         }
       }
-
     }
   }
 
@@ -216,45 +269,17 @@ interpElections_cache <- function(
 
 #' Delete cached files by category
 #'
-#' Convenience function for clearing specific categories of cached data.
-#' More discoverable than [interpElections_cache()] with `delete_file`.
+#' Internal workhorse for `interpElections_cache("clean", ...)`.
+#' Use `interpElections_cache("clean", category = "votes")` instead
+#' of calling this directly.
 #'
-#' @param category Character. Which category to clear. One of:
-#'   \describe{
-#'     \item{`"all"`}{Delete the entire cache}
-#'     \item{`"downloads"`}{All raw downloads (votes, turnout, geocode, profile, hidalgo, osm)}
-#'     \item{`"processed"`}{All processed/cached results (electoral, tracts)}
-#'     \item{`"networks"`}{All r5r network indices}
-#'     \item{`"travel_times"`}{Cached travel time matrices}
-#'     \item{`"votes"`}{TSE vote data ZIPs}
-#'     \item{`"turnout"`}{TSE turnout data ZIPs}
-#'     \item{`"geocode"`}{TSE polling station location ZIPs}
-#'     \item{`"profile"`}{TSE voter profile ZIPs}
-#'     \item{`"hidalgo"`}{Hidalgo geocoding fallback data}
-#'     \item{`"osm"`}{OpenStreetMap road network extracts}
-#'     \item{`"electoral"`}{Processed electoral data (br_prepare_electoral output)}
-#'     \item{`"tracts"`}{Cached census tract geometries}
-#'     \item{`"r5r"`}{r5r routing network indices}
-#'   }
+#' @param category Character. Which category to clear.
 #' @param verbose Logical. Print messages. Default: TRUE.
 #'
 #' @return Invisibly returns the path(s) that were deleted.
 #'
-#' @examples
-#' \dontrun{
-#' # Clear only processed electoral data (forces re-computation next run)
-#' interpElections_cache_clean("electoral")
-#'
-#' # Clear all raw downloads
-#' interpElections_cache_clean("downloads")
-#'
-#' # Clear everything
-#' interpElections_cache_clean("all")
-#' }
-#'
-#' @family cache
 #' @seealso [interpElections_cache()]
-#' @export
+#' @keywords internal
 interpElections_cache_clean <- function(
     category = c("all", "downloads", "processed", "networks",
                  "travel_times", "pop_raster", "votes", "turnout",

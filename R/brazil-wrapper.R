@@ -32,34 +32,23 @@
 #'   it. Tracts below this are dropped. Default: 1.
 #' @param time_matrix Pre-computed travel time matrix \[n x m\], or NULL.
 #'   If provided, skips routing (no r5r, no OSM download).
-#' @param max_epochs Maximum optimizer epochs. Default: 2000.
-#'   See [optimize_alpha()].
-#' @param alpha_min Lower bound for decay parameters. Default: 1.
-#'   See [optimize_alpha()].
-#' @param mode Routing mode: `"WALK"` (default), `"BICYCLE"`, `"CAR"`,
-#'   or transit combos like `"WALK;TRANSIT"`. See r5r docs.
-#' @param gtfs_zip_path Path to a GTFS .zip file for transit routing,
-#'   or NULL. When provided and `departure_datetime` is not set, the
-#'   departure is auto-set to election day at 10 AM.
-#' @param max_trip_duration Maximum trip duration in minutes. Also used
-#'   as fill value for unreachable pairs. Default: 300 (5h walking).
-#' @param point_method Method for tract representative points:
-#'   `"pop_weighted"` (default, uses WorldPop raster),
-#'   `"point_on_surface"`, or `"centroid"`.
-#'   See [compute_representative_points()].
-#' @param min_area_for_pop_weight Minimum tract area in km2 for the
-#'   pop_weighted method. Smaller tracts fall back to point_on_surface.
-#'   Default: 1.
-#' @param use_gpu TRUE/FALSE or NULL. If NULL (default), reads the
-#'   global option set via [use_gpu()].
+#' @param optim An [optim_control()] object with optimization parameters.
+#'   Default: `optim_control()`.
+#' @param routing A [routing_control()] object with routing parameters.
+#'   Default: `routing_control()`. When `gtfs_zip_path` is set but
+#'   `departure_datetime` is NULL, the departure is auto-set to election
+#'   day at 10 AM.
+#' @param offset Numeric. Travel time offset. Default: 1.
 #' @param force Re-download all cached data. Default: FALSE.
 #' @param keep Character vector of extra objects to include in the
 #'   result. `weights` and `time_matrix` are always kept.
 #'   Options: `"electoral_sf"`, `"pop_raster"`, `"rep_points"`.
 #' @param verbose Print progress messages. Default: TRUE.
-#' @param ... Advanced tuning. See [interpElections-passthrough].
-#'   Common: `network_path`, `cache` (default TRUE),
-#'   `osm_buffer_km` (default 10), `offset` (default 1).
+#' @param ... Advanced arguments. `network_path` (character),
+#'   `cache` (logical, default TRUE), `osm_provider` (character),
+#'   `comparecimento_path`, `votacao_path`, `geocode_path`,
+#'   `interp_sources`. Also accepts **deprecated** old-style
+#'   parameters for backward compatibility.
 #'
 #' @return An `interpElections_result` list. Key fields:
 #'   `$tracts_sf` (sf with interpolated columns),
@@ -81,15 +70,16 @@
 #' result2 <- reinterpolate(result, what = "parties")
 #' }
 #'
-#' @section Advanced tuning via \code{...}:
-#' See \code{\link{interpElections-passthrough}} for all options.
+#' @section Advanced tuning:
+#' Use [optim_control()] to adjust optimization parameters (epochs,
+#' learning rate, GPU, etc.) and [routing_control()] for travel-time
+#' computation (mode, GTFS, representative points, etc.).
 #'
 #' @family wrappers
 #'
-#' @seealso [interpolate_election()] for the general-purpose wrapper,
-#'   [reinterpolate()] for quick re-runs,
-#'   [br_prepare_population()], [br_prepare_electoral()],
-#'   [br_prepare_tracts()].
+#' @seealso [optim_control()], [routing_control()],
+#'   [interpolate_election()] for the general-purpose wrapper,
+#'   [reinterpolate()] for quick re-runs.
 #'
 #' @export
 interpolate_election_br <- function(
@@ -108,17 +98,10 @@ interpolate_election_br <- function(
     min_tract_pop      = 1,
     # -- Pre-computed input --
     time_matrix        = NULL,
-    # -- Optimization --
-    max_epochs         = 2000L,
-    alpha_min          = 1,
-    # -- Routing --
-    mode               = "WALK",
-    gtfs_zip_path      = NULL,
-    max_trip_duration  = 300L,
-    point_method       = "pop_weighted",
-    min_area_for_pop_weight = 1,
     # -- Control --
-    use_gpu            = NULL,
+    optim              = optim_control(),
+    routing            = routing_control(),
+    offset             = 1,
     force              = FALSE,
     keep               = NULL,
     verbose            = TRUE,
@@ -127,16 +110,50 @@ interpolate_election_br <- function(
   cl <- match.call()
   code_muni <- as.character(municipality)
 
-  # Extract demoted args from dots
+  # --- Backward compatibility: detect old-style params in ... ---
   dots <- list(...)
+  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
+                         "device", "dtype", "convergence_tol", "patience",
+                         "barrier_mu", "alpha_min")
+  routing_param_names <- c("point_method", "pop_raster",
+                           "min_area_for_pop_weight", "mode",
+                           "max_trip_duration", "fill_missing",
+                           "n_threads", "departure_datetime",
+                           "gtfs_zip_path", "osm_buffer_km")
+  old_optim <- intersect(names(dots), optim_param_names)
+  old_routing <- intersect(names(dots), routing_param_names)
+  if (length(old_optim) > 0) {
+    warning(
+      "Passing optimization parameters directly is deprecated.\n",
+      "Use optim = optim_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_optim, collapse = ", "),
+      call. = FALSE
+    )
+    ctrl_list <- unclass(optim)
+    ctrl_list[old_optim] <- dots[old_optim]
+    optim <- do.call(optim_control, ctrl_list)
+  }
+  if (length(old_routing) > 0) {
+    warning(
+      "Passing routing parameters directly is deprecated.\n",
+      "Use routing = routing_control(...) instead.\n",
+      "Deprecated parameters: ", paste(old_routing, collapse = ", "),
+      call. = FALSE
+    )
+    ctrl_list <- unclass(routing)
+    ctrl_list[old_routing] <- dots[old_routing]
+    routing <- do.call(routing_control, ctrl_list)
+  }
+
+  # Extract from control objects
+  gtfs_zip_path <- routing$gtfs_zip_path
+
+  # Extract advanced args from dots
   network_path        <- dots$network_path
   comparecimento_path <- dots$comparecimento_path
   votacao_path        <- dots$votacao_path
   interp_sources      <- dots$interp_sources
-  osm_buffer_km       <- dots$osm_buffer_km %||% 10
   osm_provider        <- dots$osm_provider %||% "openstreetmap_fr"
-  pop_raster          <- dots$pop_raster
-  offset              <- dots$offset %||% 1
   cache               <- dots$cache %||% TRUE
   geocode_path        <- dots$geocode_path
 
@@ -340,8 +357,7 @@ interpolate_election_br <- function(
   }
 
   # Auto-derive departure_datetime for GTFS transit routing
-  departure_datetime <- dots$departure_datetime
-  if (!is.null(gtfs_zip_path) && is.null(departure_datetime)) {
+  if (!is.null(gtfs_zip_path) && is.null(routing$departure_datetime)) {
     election_date <- br_election_dates$date[
       br_election_dates$year == year & br_election_dates$turno == turno
     ]
@@ -351,12 +367,13 @@ interpolate_election_br <- function(
       wday <- as.integer(format(oct1, "%u"))  # 1=Mon .. 7=Sun
       election_date <- oct1 + ((7L - wday) %% 7L)
     }
-    departure_datetime <- as.POSIXct(
+    routing$departure_datetime <- as.POSIXct(
       paste(as.character(election_date[1]), "10:00:00"),
       tz = "America/Sao_Paulo"
     )
     if (verbose) {
-      message(sprintf("  GTFS departure: %s", format(departure_datetime)))
+      message(sprintf("  GTFS departure: %s",
+                      format(routing$departure_datetime)))
     }
   }
 
@@ -369,24 +386,15 @@ interpolate_election_br <- function(
     calib_sources = calib$calib_sources,
     interp_sources = interp_sources,
     time_matrix = time_matrix,
-    max_epochs = max_epochs,
-    alpha_min = alpha_min,
-    mode = mode,
-    gtfs_zip_path = gtfs_zip_path,
-    max_trip_duration = max_trip_duration,
-    point_method = point_method,
-    min_area_for_pop_weight = min_area_for_pop_weight,
-    min_tract_pop = 0,  # already filtered via br_prepare_tracts
+    optim = optim,
+    routing = routing,
+    min_tract_pop = 1,
     offset = offset,
     keep = keep,
-    use_gpu = use_gpu,
     verbose = verbose,
     network_path = network_path,
-    osm_buffer_km = osm_buffer_km,
     osm_provider = osm_provider,
     osm_url = osm_url,
-    pop_raster = pop_raster,
-    departure_datetime = departure_datetime,
     .progress = list(offset = .outer_steps, total = .total_steps)
   )
 
