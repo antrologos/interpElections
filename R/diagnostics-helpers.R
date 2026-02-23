@@ -107,13 +107,19 @@
 
 #' Get station coordinates from result
 #'
-#' Extracts point coordinates from electoral_sf or sources.
-#' Returns a matrix with columns x, y.
+#' Extracts point coordinates from electoral_sf, transformed to match
+#' the CRS of tracts_sf so that raw XY values are consistent with
+#' geom_sf panels. Returns a matrix with columns x, y.
 #' @noRd
 .get_station_coords <- function(result) {
   if (!is.null(result$electoral_sf) &&
       requireNamespace("sf", quietly = TRUE)) {
-    coords <- sf::st_coordinates(result$electoral_sf)
+    esf <- result$electoral_sf
+    # Transform to tracts CRS so coordinates match geom_sf panel
+    if (!is.null(result$tracts_sf)) {
+      esf <- sf::st_transform(esf, sf::st_crs(result$tracts_sf))
+    }
+    coords <- sf::st_coordinates(esf)
     return(coords[, 1:2, drop = FALSE])
   }
   NULL
