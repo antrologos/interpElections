@@ -1,6 +1,5 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://antrologos.github.io/interpElections/404.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/LICENSE-text.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/articles/diagnostics.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/articles/get-started.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/articles/index.html</loc></url>
@@ -8,6 +7,7 @@
 <url><loc>https://antrologos.github.io/interpElections/articles/working-with-results.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/authors.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/index.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/LICENSE-text.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/areal_interpolate.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/areal_weights.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/as.data.frame.interpElections_result.html</loc></url>
@@ -37,8 +37,8 @@
 <url><loc>https://antrologos.github.io/interpElections/reference/interpolate_election_br.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/leave_one_out.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/muni_crosswalk.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/reference/optim_control.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/optimize_alpha.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/reference/optim_control.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot.interpElections_result.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_alpha.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_connections.html</loc></url>
@@ -47,21 +47,21 @@
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_income.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_interactive.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_moran.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/reference/plot_residual_autocorrelation.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_residuals.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/reference/plot_residual_autocorrelation.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_travel_times.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_turnout_rates.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/plot_weights.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/print.interpElections_diagnostics.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/reinterpolate.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/reference/residual_summary.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/residuals.interpElections_result.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/reference/residual_summary.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/routing_control.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/reference/set_interpElections_cache_dir.html</loc></url>
-<url><loc>https://antrologos.github.io/interpElections/reference/set_java_memory.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/setup_java.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/setup_osmium.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/setup_torch.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/reference/set_interpElections_cache_dir.html</loc></url>
+<url><loc>https://antrologos.github.io/interpElections/reference/set_java_memory.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/summary.interpElections_result.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/use_gpu.html</loc></url>
 <url><loc>https://antrologos.github.io/interpElections/reference/weight_summary.html</loc></url>

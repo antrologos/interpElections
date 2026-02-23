@@ -65,7 +65,7 @@
       <h1>Get Started with interpElections</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/get-started.Rmd" class="external-link"><code>vignettes/get-started.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/get-started.Rmd" class="external-link"><code>vignettes/get-started.Rmd</code></a></small>
       <div class="d-none name"><code>get-started.Rmd</code></div>
     </div>
 
@@ -138,11 +138,11 @@ Done.</code></pre>
 parameters, and interpolated all vote counts into 279 census tracts.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/gs-vga-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/gs-vga-lula.png" alt="" width="100%"></p>
 <p>Compare two candidates side by side:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Lula"</span>, <span class="st">"Bolsonaro"</span><span class="op">)</span>, type <span class="op">=</span> <span class="st">"pct_tract"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/gs-vga-lula-bolsonaro.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/gs-vga-lula-bolsonaro.png" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="example-2-igrejinha-rs">Example 2: Igrejinha (RS)<a class="anchor" aria-label="anchor" href="#example-2-igrejinha-rs"></a>
@@ -170,7 +170,7 @@ parameters, and interpolated all vote counts into 279 census tracts.</p>
   Alpha:     85 x 14 matrix [0.010, 15.682] (mean 4.089)</code></pre>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result_igr</span>, variable <span class="op">=</span> <span class="st">"Lula"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/gs-igr-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/gs-igr-lula.png" alt="" width="100%"></p>
 <p>Different city, different spatial patterns, same three-line
 workflow.</p>
 </div>
@@ -327,7 +327,14 @@ just Brazilian elections. Here is a synthetic example:</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimized alpha (5 x 2 matrix):\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Optimized alpha (5 x 2 matrix):</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">optim_result</span><span class="op">$</span><span class="va">alpha</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;      [,1] [,2]</span></span>
+<span><span class="co">#&gt; [1,] 2.69 2.62</span></span>
+<span><span class="co">#&gt; [2,] 1.89 1.85</span></span>
+<span><span class="co">#&gt; [3,] 1.90 1.88</span></span>
+<span><span class="co">#&gt; [4,] 1.68 1.59</span></span>
+<span><span class="co">#&gt; [5,] 1.66 1.57</span></span>
 <span></span>
 <span><span class="co"># Use weight matrix from optimization</span></span>
 <span><span class="va">W</span> <span class="op">&lt;-</span> <span class="va">optim_result</span><span class="op">$</span><span class="va">W</span></span>
@@ -337,8 +344,11 @@ just Brazilian elections. Here is a synthetic example:</p>
 <span><span class="va">interpolated_revenue</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">revenue</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Source total:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">revenue</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Source total: 19500</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Interpolated total:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">interpolated_revenue</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-zone:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">interpolated_revenue</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co">#&gt; Interpolated total: 19500</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-zone:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">interpolated_revenue</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Per-zone: 1965 5867 2865 3969 4835</span></span></code></pre></div>
 <p>Conservation: the interpolated total matches the source total
 exactly.</p>
 </div>
@@ -358,13 +368,24 @@ exactly.</p>
 <span><span class="co"># Optimize</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/optimize_alpha.html">optimize_alpha</a></span><span class="op">(</span><span class="va">tt</span>, <span class="va">pop</span>, <span class="va">src</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">result</span></span>
+<span><span class="co">#&gt; interpElections optimization result</span></span>
+<span><span class="co">#&gt;   Method:      pb_sgd_colnorm_cpu</span></span>
+<span><span class="co">#&gt;   Loss fn:     poisson</span></span>
+<span><span class="co">#&gt;   Objective:   11.5241</span></span>
+<span><span class="co">#&gt;   Convergence: 0</span></span>
+<span><span class="co">#&gt;   Alpha:       20 x 3 matrix (tracts x brackets)</span></span>
+<span><span class="co">#&gt;   Alpha range: [1.308, 3.763]</span></span>
+<span><span class="co">#&gt;   Epochs:      1252</span></span>
+<span><span class="co">#&gt;   Elapsed:     8.6 secs</span></span>
 <span></span>
 <span><span class="co"># Weight matrix is returned from optimization</span></span>
 <span><span class="va">W</span> <span class="op">&lt;-</span> <span class="va">result</span><span class="op">$</span><span class="va">W</span></span>
 <span></span>
 <span><span class="co"># Verify conservation</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Column sums (should be ~1):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colSums</a></span><span class="op">(</span><span class="va">W</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Row sum range:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/range.html" class="external-link">range</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">rowSums</a></span><span class="op">(</span><span class="va">W</span><span class="op">)</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co">#&gt; Column sums (should be ~1): 1 1 1 1 1 1 1 1</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Row sum range:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/range.html" class="external-link">range</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">rowSums</a></span><span class="op">(</span><span class="va">W</span><span class="op">)</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Row sum range: 0.3503 0.4517</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="next-steps">Next Steps<a class="anchor" aria-label="anchor" href="#next-steps"></a>
@@ -391,7 +412,7 @@ Horizonte examples</li>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>
