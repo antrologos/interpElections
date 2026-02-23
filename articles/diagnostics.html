@@ -65,7 +65,7 @@
       <h1>Diagnostics and Validation</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/diagnostics.Rmd" class="external-link"><code>vignettes/diagnostics.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/diagnostics.Rmd" class="external-link"><code>vignettes/diagnostics.Rmd</code></a></small>
       <div class="d-none name"><code>diagnostics.Rmd</code></div>
     </div>
 
@@ -409,7 +409,7 @@ where
 = fitted population from the model.</li>
 <li>
 <strong>Gradient norm</strong>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="prefix">∥</mo><msub><mi>∇</mi><mi>α</mi></msub><mi>L</mi><msub><mo stretchy="false" form="postfix">∥</mo><mn>2</mn></msub></mrow><annotation encoding="application/x-tex">\lVert \nabla_\alpha L \rVert_2</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mrow><mo stretchy="true" form="prefix">‖</mo><msub><mi>∇</mi><mi>α</mi></msub><mi>L</mi><mo stretchy="true" form="postfix">‖</mo></mrow><mn>2</mn></msub><annotation encoding="application/x-tex">\lVert \nabla_\alpha L \rVert_2</annotation></semantics></math>,
 the Euclidean norm of the gradient of the loss with respect to all alpha
 parameters.</li>
 <li>
@@ -423,20 +423,20 @@ decay over epochs via cosine annealing or other schedules.</li>
 <p>All three panels (loss, gradient, learning rate):</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_convergence.html">plot_convergence</a></span><span class="op">(</span><span class="va">result_vga</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s2-conv-vga-all.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s2-conv-vga-all.png" alt="" width="100%"></p>
 <p>Comparing with a GPU-optimized large city:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_convergence.html">plot_convergence</a></span><span class="op">(</span><span class="va">result_bh</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s2-conv-bh-all.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s2-conv-bh-all.png" alt="" width="100%"></p>
 <p>Show only the loss panel:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_convergence.html">plot_convergence</a></span><span class="op">(</span><span class="va">result_vga</span>, which <span class="op">=</span> <span class="st">"loss"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s2-conv-vga-loss.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s2-conv-vga-loss.png" alt="" width="100%"></p>
 <p>Log scale for loss and gradient (useful when the values span orders
 of magnitude):</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_convergence.html">plot_convergence</a></span><span class="op">(</span><span class="va">result_vga</span>, which <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"loss"</span>, <span class="st">"gradient"</span><span class="op">)</span>, log_y <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s2-conv-vga-log.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s2-conv-vga-log.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="interpretation-1">Interpretation<a class="anchor" aria-label="anchor" href="#interpretation-1"></a>
@@ -479,7 +479,7 @@ still contribute).</p>
 <p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
 is a <strong>matrix</strong> with one row per tract and one column per
 demographic bracket (14 brackets = 7 age groups
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>×</mo><annotation encoding="application/x-tex">\times</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>×</mi><annotation encoding="application/x-tex">\times</annotation></semantics></math>
 2 genders). Different brackets may have different decay patterns (e.g.,
 young voters may travel farther to vote).</p>
 </div>
@@ -487,7 +487,7 @@ young voters may travel farther to vote).</p>
 <h3 id="formal-definition-2">Formal definition<a class="anchor" aria-label="anchor" href="#formal-definition-2"></a>
 </h3>
 <p>The weight before column normalization is:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 <p>where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">t_{ij}</annotation></semantics></math>
 is the travel time (in minutes) from tract
@@ -508,17 +508,17 @@ choice — different summaries answer different questions.</p>
 brackets:</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"median"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-vga-map-median.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-vga-map-median.png" alt="" width="100%"></p>
 <p><strong>Mean</strong> — sensitive to extreme values in any
 bracket:</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"mean"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-vga-map-mean.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-vga-map-mean.png" alt="" width="100%"></p>
 <p><strong>Population-weighted</strong> — weights each bracket by the
 tract’s population in that bracket:</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"pop_weighted"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-vga-map-popwt.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-vga-map-popwt.png" alt="" width="100%"></p>
 <p><strong>Range</strong>
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>max</mo><mo>−</mo><mo>min</mo></mrow><annotation encoding="application/x-tex">\max - \min</annotation></semantics></math>)
 — measures how much
@@ -526,15 +526,15 @@ tract’s population in that bracket:</p>
 varies across brackets within each tract:</p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"range"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-vga-map-range.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-vga-map-range.png" alt="" width="100%"></p>
 <p><strong>Single bracket</strong> (e.g., bracket 1 = Male 18–20):</p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-vga-map-bracket1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-vga-map-bracket1.png" alt="" width="100%"></p>
 <p><strong>Large city comparison</strong> (Belo Horizonte):</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"median"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-bh-map-median.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-bh-map-median.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-histogram-mode">Applied examples: Histogram mode<a class="anchor" aria-label="anchor" href="#applied-examples-histogram-mode"></a>
@@ -543,15 +543,15 @@ varies across brackets within each tract:</p>
 grid, you can compare age groups and genders at a glance.</p>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-nit-hist-all.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-nit-hist-all.png" alt="" width="100%"></p>
 <p>Select specific brackets:</p>
 <div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"histogram"</span>, brackets <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">7</span>, <span class="fl">8</span>, <span class="fl">14</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-nit-hist-sel.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-nit-hist-sel.png" alt="" width="100%"></p>
 <p>Small city (narrower distributions due to fewer tracts):</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_igr</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-igr-hist-all.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-igr-hist-all.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-bracket-boxplot">Applied examples: Bracket boxplot<a class="anchor" aria-label="anchor" href="#applied-examples-bracket-boxplot"></a>
@@ -560,11 +560,11 @@ grid, you can compare age groups and genders at a glance.</p>
 panel:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"bracket"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-bh-bracket.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-bh-bracket.png" alt="" width="100%"></p>
 <p>Male brackets only:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_alpha.html">plot_alpha</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"bracket"</span>, brackets <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">7</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s3-alpha-nit-bracket-male.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s3-alpha-nit-bracket-male.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="interpretation-2">Interpretation<a class="anchor" aria-label="anchor" href="#interpretation-2"></a>
@@ -601,7 +601,7 @@ the closest station has non-negligible weight.</li>
 <h3 id="intuition-3">Intuition<a class="anchor" aria-label="anchor" href="#intuition-3"></a>
 </h3>
 <p>The model calibrates against known census demographics (population by
-age<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>×</mo><annotation encoding="application/x-tex">\times</annotation></semantics></math>gender
+age<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>×</mi><annotation encoding="application/x-tex">\times</annotation></semantics></math>gender
 bracket). Residuals measure how well the model reproduces these known
 quantities. Small residuals mean the model’s spatial allocation of
 voters closely matches census demographics — giving confidence that the
@@ -636,58 +636,58 @@ a single value per tract.</p>
 <p><strong>RMSE</strong> (default) — magnitude of misfit:</p>
 <div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-vga-map-rmse.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-vga-map-rmse.png" alt="" width="100%"></p>
 <p><strong>Mean</strong> — directional bias (positive = over-prediction,
 negative = under-prediction):</p>
 <div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"mean"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-vga-map-mean.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-vga-map-mean.png" alt="" width="100%"></p>
 <p><strong>Pearson residuals</strong> (standardized):</p>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, residual_type <span class="op">=</span> <span class="st">"pearson"</span>,</span>
 <span>               summary_fn <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-vga-map-pearson.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-vga-map-pearson.png" alt="" width="100%"></p>
 <p><strong>Large city</strong> (Belo Horizonte):</p>
 <div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-bh-map-rmse.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-bh-map-rmse.png" alt="" width="100%"></p>
 <p><strong>Single bracket</strong>:</p>
 <div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, summary_fn <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-vga-map-bracket1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-vga-map-bracket1.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-histogram-mode-1">Applied examples: Histogram mode<a class="anchor" aria-label="anchor" href="#applied-examples-histogram-mode-1"></a>
 </h3>
 <div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-nit-hist-raw.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-nit-hist-raw.png" alt="" width="100%"></p>
 <p>Compare with Pearson residuals:</p>
 <div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"histogram"</span>, residual_type <span class="op">=</span> <span class="st">"pearson"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-nit-hist-pearson.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-nit-hist-pearson.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-bracket-boxplot-1">Applied examples: Bracket boxplot<a class="anchor" aria-label="anchor" href="#applied-examples-bracket-boxplot-1"></a>
 </h3>
 <div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"bracket"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-bh-bracket-raw.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-bh-bracket-raw.png" alt="" width="100%"></p>
 <p>Deviance scale:</p>
 <div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"bracket"</span>, residual_type <span class="op">=</span> <span class="st">"deviance"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-bh-bracket-dev.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-bh-bracket-dev.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-scatter-fitted-vs-observed">Applied examples: Scatter (fitted vs observed)<a class="anchor" aria-label="anchor" href="#applied-examples-scatter-fitted-vs-observed"></a>
 </h3>
 <div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_igr</span>, type <span class="op">=</span> <span class="st">"scatter"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-igr-scatter.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-igr-scatter.png" alt="" width="100%"></p>
 <p>Selected brackets:</p>
 <div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residuals.html">plot_residuals</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"scatter"</span>, brackets <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">14</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s4-resid-vga-scatter-sel.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s4-resid-vga-scatter-sel.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="tabular-summary-residual_summary">Tabular summary: <code>residual_summary()</code><a class="anchor" aria-label="anchor" href="#tabular-summary-residual_summary"></a>
@@ -1013,7 +1013,7 @@ residual of 10 means different things in a tract with 50 people vs
 5,000. Use Pearson or deviance for fair comparison.</li>
 <li>
 <strong>Pearson residuals</strong>: Standardized — values around
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>±</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">\pm 2</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>±</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">\pm 2</annotation></semantics></math>
 are typical. Values
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>&gt;</mo><mn>3</mn></mrow><annotation encoding="application/x-tex">&gt; 3</annotation></semantics></math>
 are outliers under the Poisson assumption.</li>
@@ -1038,7 +1038,7 @@ the 45-degree line. Systematic departures indicate bias.</li>
 (dimensions
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>×</mo><mi>m</mi></mrow><annotation encoding="application/x-tex">n \times m</annotation></semantics></math>,
 tracts
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>×</mo><annotation encoding="application/x-tex">\times</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>×</mi><annotation encoding="application/x-tex">\times</annotation></semantics></math>
 sources) is the heart of the interpolation. It determines how voters
 from each station are allocated to each tract. Understanding the
 structure of
@@ -1068,7 +1068,7 @@ the row sums are NOT 1. For concentration measures, we row-normalize:
 <ul>
 <li>
 <strong>Shannon entropy</strong>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mo>−</mo><msub><mo>∑</mo><mi>j</mi></msub><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>ln</mo><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">H_i = -\sum_j p_{ij} \ln p_{ij}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mi>−</mi><msub><mo>∑</mo><mi>j</mi></msub><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>ln</mo><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">H_i = -\sum_j p_{ij} \ln p_{ij}</annotation></semantics></math>
 </li>
 <li>
 <strong>Effective number of sources</strong>:
@@ -1143,11 +1143,11 @@ the row sums are NOT 1. For concentration measures, we row-normalize:
 </h3>
 <div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"entropy"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-vga-entropy.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-vga-entropy.png" alt="" width="100%"></p>
 <p>Large city comparison:</p>
 <div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"entropy"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-bh-entropy.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-bh-entropy.png" alt="" width="100%"></p>
 <p>Interactive version (click tracts to see weight summary stats):</p>
 <div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"entropy"</span>, interactive <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
@@ -1160,10 +1160,10 @@ the row sums are NOT 1. For concentration measures, we row-normalize:
 </h3>
 <div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"dominant"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-vga-dominant.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-vga-dominant.png" alt="" width="100%"></p>
 <div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"dominant"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-nit-dominant.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-nit-dominant.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="catchment-mode-plot_weightstype-catchment">Catchment mode: <code>plot_weights(type = "catchment")</code><a class="anchor" aria-label="anchor" href="#catchment-mode-plot_weightstype-catchment"></a>
@@ -1171,12 +1171,12 @@ the row sums are NOT 1. For concentration measures, we row-normalize:
 <p>Auto-selects the tract with highest effective number of sources:</p>
 <div class="sourceCode" id="cb44"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"catchment"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-vga-catchment-auto.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-vga-catchment-auto.png" alt="" width="100%"></p>
 <p>Filtered view with <code>top_k</code> and <code>threshold</code>:</p>
 <div class="sourceCode" id="cb45"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_weights.html">plot_weights</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"catchment"</span>, tract <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>             top_k <span class="op">=</span> <span class="fl">3</span>, threshold <span class="op">=</span> <span class="fl">0.05</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-wt-vga-catchment-filt.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-wt-vga-catchment-filt.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="connections-plot_connections">Connections: <code>plot_connections()</code><a class="anchor" aria-label="anchor" href="#connections-plot_connections"></a>
@@ -1184,11 +1184,11 @@ the row sums are NOT 1. For concentration measures, we row-normalize:
 <p>Overview — one spoke per tract to its dominant station:</p>
 <div class="sourceCode" id="cb46"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_connections.html">plot_connections</a></span><span class="op">(</span><span class="va">result_vga</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-conn-vga-overview.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-conn-vga-overview.png" alt="" width="100%"></p>
 <p>Large city:</p>
 <div class="sourceCode" id="cb47"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_connections.html">plot_connections</a></span><span class="op">(</span><span class="va">result_bh</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-conn-bh-overview.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-conn-bh-overview.png" alt="" width="100%"></p>
 <p>Interactive version for BH (click tracts and stations for detailed
 weight tables):</p>
 <iframe src="figures/diag-s5-conn-bh-interactive.html" width="100%" height="600px" style="border: none;">
@@ -1196,7 +1196,7 @@ weight tables):</p>
 <p>Detail for a specific tract:</p>
 <div class="sourceCode" id="cb48"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_connections.html">plot_connections</a></span><span class="op">(</span><span class="va">result_vga</span>, tract <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s5-conn-vga-detail1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s5-conn-vga-detail1.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="interactive-exploration">Interactive exploration<a class="anchor" aria-label="anchor" href="#interactive-exploration"></a>
@@ -1269,22 +1269,22 @@ networks) directly degrades interpolation quality.</p>
 travel times:</p>
 <div class="sourceCode" id="cb51"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_travel_times.html">plot_travel_times</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s6-tt-vga-hist.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s6-tt-vga-hist.png" alt="" width="100%"></p>
 <p>Large city:</p>
 <div class="sourceCode" id="cb52"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_travel_times.html">plot_travel_times</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s6-tt-bh-hist.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s6-tt-bh-hist.png" alt="" width="100%"></p>
 <p><strong>Heatmap</strong> — rows = tracts (ordered by latitude),
 columns = stations. Block-diagonal structure reveals spatial
 locality:</p>
 <div class="sourceCode" id="cb53"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_travel_times.html">plot_travel_times</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"heatmap"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s6-tt-vga-heatmap.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s6-tt-vga-heatmap.png" alt="" width="100%"></p>
 <p><strong>Map</strong> — station points colored by travel time for a
 specific tract:</p>
 <div class="sourceCode" id="cb54"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_travel_times.html">plot_travel_times</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"map"</span>, tract <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s6-tt-vga-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s6-tt-vga-map.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="the-fill_missing-parameter">The <code>fill_missing</code> parameter<a class="anchor" aria-label="anchor" href="#the-fill_missing-parameter"></a>
@@ -1297,11 +1297,11 @@ sentinel value (e.g.,
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mn>6</mn></msup><annotation encoding="application/x-tex">10^6</annotation></semantics></math>
 minutes). This gives these unreachable pairs an effective weight of
 zero:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mn>6</mn></msup><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><mi>α</mi></mrow></msup><mo>≈</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">K_{ij} = (10^6 + 1)^{-\alpha} \approx 0</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msup><mn>10</mn><mn>6</mn></msup><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><mi>α</mi></mrow></msup><mo>≈</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">K_{ij} = (10^6 + 1)^{-\alpha} \approx 0</annotation></semantics></math></p>
 <p>Previous versions used <code>fill_missing = max_trip_duration</code>
 (typically 300 minutes), which gave unreachable pairs a non-negligible
 weight of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mrow><mo stretchy="true" form="prefix">(</mo><mn>301</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><mi>α</mi></mrow></msup><annotation encoding="application/x-tex">(301)^{-\alpha}</annotation></semantics></math>.
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mrow><mo stretchy="true" form="prefix">(</mo><mn>301</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><mi>α</mi></mrow></msup><annotation encoding="application/x-tex">(301)^{-\alpha}</annotation></semantics></math>.
 In dense cities with many unreachable pairs, this created a uniform
 background weight that inflated the effective number of sources. To
 restore the old behavior:</p>
@@ -1352,7 +1352,7 @@ political geography.</p>
 <p>where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>w</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">w_{ij}</annotation></semantics></math>
 are spatial weights (queen contiguity). Range:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mo>−</mo><mn>1</mn><mo>,</mo><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[-1, +1]</annotation></semantics></math>.
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>−</mi><mn>1</mn><mo>,</mo><mi>+</mi><mn>1</mn><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[-1, +1]</annotation></semantics></math>.
 Positive = clustering,
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>≈</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\approx 0</annotation></semantics></math>
 = random, negative = dispersion.</p>
@@ -1366,30 +1366,30 @@ surrounded by low), LH (low surrounded by high).</p>
 </h3>
 <div class="sourceCode" id="cb56"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residual_autocorrelation.html">plot_residual_autocorrelation</a></span><span class="op">(</span><span class="va">result_vga</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-moran-resid-vga.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-moran-resid-vga.png" alt="" width="100%"></p>
 <p>Pearson residuals:</p>
 <div class="sourceCode" id="cb57"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_residual_autocorrelation.html">plot_residual_autocorrelation</a></span><span class="op">(</span><span class="va">result_vga</span>, residual_type <span class="op">=</span> <span class="st">"pearson"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-moran-resid-vga-pear.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-moran-resid-vga-pear.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="applied-examples-lisa-cluster-maps">Applied examples: LISA cluster maps<a class="anchor" aria-label="anchor" href="#applied-examples-lisa-cluster-maps"></a>
 </h3>
 <div class="sourceCode" id="cb58"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_moran.html">plot_moran</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"lisa"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-lisa-vga-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-lisa-vga-lula.png" alt="" width="100%"></p>
 <p>Moran scatterplot:</p>
 <div class="sourceCode" id="cb59"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_moran.html">plot_moran</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"moran"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-moran-vga-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-moran-vga-lula.png" alt="" width="100%"></p>
 <p>Large city:</p>
 <div class="sourceCode" id="cb60"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_moran.html">plot_moran</a></span><span class="op">(</span><span class="va">result_bh</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"lisa"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-lisa-bh-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-lisa-bh-lula.png" alt="" width="100%"></p>
 <p>By party:</p>
 <div class="sourceCode" id="cb61"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_moran.html">plot_moran</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="st">"PT"</span>, type <span class="op">=</span> <span class="st">"lisa"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s7-lisa-nit-pt.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s7-lisa-nit-pt.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="interpretation-6">Interpretation<a class="anchor" aria-label="anchor" href="#interpretation-6"></a>
@@ -1569,18 +1569,18 @@ or registration mismatches.</p>
 <p>Bracket boxplot:</p>
 <div class="sourceCode" id="cb70"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_turnout_rates.html">plot_turnout_rates</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"bracket"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-turnout-vga-bracket.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-turnout-vga-bracket.png" alt="" width="100%"></p>
 <div class="sourceCode" id="cb71"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_turnout_rates.html">plot_turnout_rates</a></span><span class="op">(</span><span class="va">result_nit</span>, type <span class="op">=</span> <span class="st">"bracket"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-turnout-nit-bracket.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-turnout-nit-bracket.png" alt="" width="100%"></p>
 <p>Spatial pattern:</p>
 <div class="sourceCode" id="cb72"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_turnout_rates.html">plot_turnout_rates</a></span><span class="op">(</span><span class="va">result_bh</span>, type <span class="op">=</span> <span class="st">"map"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-turnout-bh-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-turnout-bh-map.png" alt="" width="100%"></p>
 <p>Faceted histogram:</p>
 <div class="sourceCode" id="cb73"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_turnout_rates.html">plot_turnout_rates</a></span><span class="op">(</span><span class="va">result_vga</span>, type <span class="op">=</span> <span class="st">"histogram"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-turnout-vga-hist.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-turnout-vga-hist.png" alt="" width="100%"></p>
 </div>
 <div class="section level4">
 <h4 id="interpretation-8">Interpretation<a class="anchor" aria-label="anchor" href="#interpretation-8"></a>
@@ -1620,19 +1620,19 @@ within a single census year, the correlation is scale-invariant.</p>
 <p>Lula (PT) vs income — expect negative correlation:</p>
 <div class="sourceCode" id="cb74"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_income.html">plot_income</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"scatter"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-income-vga-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-income-vga-lula.png" alt="" width="100%"></p>
 <p>Bolsonaro (PL) vs income — expect positive correlation:</p>
 <div class="sourceCode" id="cb75"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_income.html">plot_income</a></span><span class="op">(</span><span class="va">result_vga</span>, variable <span class="op">=</span> <span class="fl">22</span>, type <span class="op">=</span> <span class="st">"scatter"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-income-vga-bolso.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-income-vga-bolso.png" alt="" width="100%"></p>
 <p>Larger city:</p>
 <div class="sourceCode" id="cb76"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_income.html">plot_income</a></span><span class="op">(</span><span class="va">result_bh</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"scatter"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-income-bh-lula.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-income-bh-lula.png" alt="" width="100%"></p>
 <p>Side-by-side maps:</p>
 <div class="sourceCode" id="cb77"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_income.html">plot_income</a></span><span class="op">(</span><span class="va">result_nit</span>, variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"map"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-income-nit-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-income-nit-map.png" alt="" width="100%"></p>
 </div>
 </div>
 <div class="section level3">
@@ -1653,12 +1653,12 @@ spatial patterns.</p>
 <div class="sourceCode" id="cb78"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_ecological.html">plot_ecological</a></span><span class="op">(</span><span class="va">result_vga</span>, <span class="va">result_vga2</span>,</span>
 <span>                variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"scatter"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-ecol-vga-scatter.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-ecol-vga-scatter.png" alt="" width="100%"></p>
 <p>Side-by-side maps:</p>
 <div class="sourceCode" id="cb79"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_ecological.html">plot_ecological</a></span><span class="op">(</span><span class="va">result_vga</span>, <span class="va">result_vga2</span>,</span>
 <span>                variable <span class="op">=</span> <span class="st">"Lula"</span>, type <span class="op">=</span> <span class="st">"map"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/diag-s9-ecol-vga-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/diag-s9-ecol-vga-map.png" alt="" width="100%"></p>
 </div>
 <div class="section level4">
 <h4 id="interpretation-9">Interpretation<a class="anchor" aria-label="anchor" href="#interpretation-9"></a>
@@ -1830,7 +1830,7 @@ travel time data or optimization is causing problems.</li>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>
