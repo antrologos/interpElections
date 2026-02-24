@@ -69,7 +69,7 @@
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"antrologos/interpElections"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"antrologos/interpElections"</span><span class="op">)</span></span></code></pre></div>
 <p>Optional: <code><a href="reference/setup_torch.html">setup_torch()</a></code> for GPU optimization, <code><a href="reference/setup_java.html">setup_java()</a></code> for r5r travel-time routing.</p>
 </div>
 <div class="section level2">
@@ -111,7 +111,7 @@
 <h2 id="how-it-works">How it works<a class="anchor" aria-label="anchor" href="#how-it-works"></a>
 </h2>
 <p>For each tract <em>i</em> and source <em>j</em>, the IDW kernel is:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 <p>Weights are <strong>column-normalized</strong> so that column sums equal 1 (each source distributes exactly 100% of its data). The optimal alpha is found by minimizing the Poisson deviance between interpolated and census demographics via <strong>torch ADAM</strong> with a log-barrier penalty.</p>
 </div>
 <div class="section level2">
@@ -122,20 +122,20 @@
 <col width="50%">
 <col width="50%">
 </colgroup>
-<thead><tr>
+<thead><tr class="header">
 <th>Vignette</th>
 <th>Description</th>
 </tr></thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><a href="https://antrologos.github.io/interpElections/articles/get-started.html">Get Started</a></td>
 <td>Brazilian examples (Varginha + Igrejinha), general case, core functions</td>
 </tr>
-<tr>
+<tr class="even">
 <td><a href="https://antrologos.github.io/interpElections/articles/methodology.html">Methodology</a></td>
 <td>Full pipeline walkthrough with equations, visualizations, and real data</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><a href="https://antrologos.github.io/interpElections/articles/working-with-results.html">Working with Results</a></td>
 <td>S3 methods, plotting, validation, areal aggregation</td>
 </tr>
@@ -150,36 +150,36 @@
 <col width="50%">
 <col width="50%">
 </colgroup>
-<thead><tr>
+<thead><tr class="header">
 <th>Category</th>
 <th>Functions</th>
 </tr></thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><strong>Interpolation</strong></td>
 <td>
 <code><a href="reference/interpolate_election_br.html">interpolate_election_br()</a></code>, <code><a href="reference/interpolate_election.html">interpolate_election()</a></code>, <code><a href="reference/reinterpolate.html">reinterpolate()</a></code>, <code><a href="reference/optimize_alpha.html">optimize_alpha()</a></code>, <code><a href="reference/compute_weight_matrix.html">compute_weight_matrix()</a></code>, <code><a href="reference/compute_travel_times.html">compute_travel_times()</a></code>
 </td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Control</strong></td>
 <td>
 <code><a href="reference/optim_control.html">optim_control()</a></code>, <code><a href="reference/routing_control.html">routing_control()</a></code>
 </td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Results</strong></td>
 <td>
 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>, <code>autoplot()</code>, <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code>, <code><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals()</a></code>, <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code>, <code><a href="reference/plot_interactive.html">plot_interactive()</a></code>
 </td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Spatial</strong></td>
 <td>
 <code><a href="reference/areal_weights.html">areal_weights()</a></code>, <code><a href="reference/areal_interpolate.html">areal_interpolate()</a></code>
 </td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Setup</strong></td>
 <td>
 <code><a href="reference/setup_torch.html">setup_torch()</a></code>, <code><a href="reference/use_gpu.html">use_gpu()</a></code>, <code><a href="reference/setup_java.html">setup_java()</a></code>, <code><a href="reference/interpElections_cache.html">interpElections_cache()</a></code>
@@ -264,7 +264,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer>
