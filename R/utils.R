@@ -81,21 +81,29 @@ if (!exists("%||%", baseenv())) {
 # Input validation helpers
 
 # Check a single matrix is numeric, non-empty, and contains only finite values
-.check_matrix <- function(mat, name) {
+.check_matrix <- function(mat, name, allow_na = FALSE) {
   if (!is.matrix(mat) || !is.numeric(mat)) {
     stop(name, " must be a numeric matrix", call. = FALSE)
   }
   if (nrow(mat) == 0 || ncol(mat) == 0) {
     stop(name, " must not be empty", call. = FALSE)
   }
-  if (anyNA(mat) || any(!is.finite(mat))) {
-    stop(name, " must not contain NA, NaN, or Inf values", call. = FALSE)
+  if (allow_na) {
+    non_na <- !is.na(mat)
+    if (any(!is.finite(mat[non_na]))) {
+      stop(name, " must not contain NaN or Inf values (NA is allowed)",
+           call. = FALSE)
+    }
+  } else {
+    if (anyNA(mat) || any(!is.finite(mat))) {
+      stop(name, " must not contain NA, NaN, or Inf values", call. = FALSE)
+    }
   }
 }
 
 .validate_matrices <- function(time_matrix, pop_matrix, source_matrix,
                                alpha = NULL) {
-  .check_matrix(time_matrix, "time_matrix")
+  .check_matrix(time_matrix, "time_matrix", allow_na = TRUE)
   .check_matrix(pop_matrix, "pop_matrix")
   .check_matrix(source_matrix, "source_matrix")
 
@@ -122,11 +130,11 @@ if (!exists("%||%", baseenv())) {
     ), call. = FALSE)
   }
 
-  # time_matrix must be strictly positive (required for t^(-alpha))
-  if (any(time_matrix <= 0)) {
+  # time_matrix must be strictly positive where not NA (required for t^(-alpha))
+  if (any(time_matrix <= 0, na.rm = TRUE)) {
     stop(
-      "time_matrix must contain only positive values ",
-      "(apply offset before validation if needed)",
+      "time_matrix must contain only positive values (where not NA). ",
+      "Apply offset before validation if needed.",
       call. = FALSE
     )
   }

@@ -10,12 +10,20 @@
       stop("Bracket index must be between 1 and ", ncol(alpha), call. = FALSE)
     return(alpha[, idx])
   }
+  # Helper: apply summary, returning NA for all-NA rows
+  .safe_apply <- function(mat, fn) {
+    apply(mat, 1, function(x) {
+      x <- x[!is.na(x)]
+      if (length(x) == 0L) return(NA_real_)
+      fn(x)
+    })
+  }
   switch(summary_fn,
-    median = apply(alpha, 1, stats::median),
-    mean   = rowMeans(alpha),
-    min    = apply(alpha, 1, min),
-    max    = apply(alpha, 1, max),
-    range  = apply(alpha, 1, function(x) diff(range(x))),
+    median = .safe_apply(alpha, stats::median),
+    mean   = .safe_apply(alpha, mean),
+    min    = .safe_apply(alpha, min),
+    max    = .safe_apply(alpha, max),
+    range  = .safe_apply(alpha, function(x) diff(range(x))),
     pop_weighted = {
       if (is.null(pop_matrix))
         stop("pop_matrix required for pop_weighted summary", call. = FALSE)

@@ -43,5 +43,6 @@ test_that("optim_control() and routing_control() create classed lists", {
   expect_s3_class(rc, "interpElections_routing_control")
   expect_equal(rc$mode, "WALK")
   expect_equal(rc$point_method, "pop_weighted")
-  expect_equal(rc$max_trip_duration, 300L)
+  expect_equal(rc$max_trip_duration, 180L)
+  expect_true(is.na(rc$fill_missing))
 })

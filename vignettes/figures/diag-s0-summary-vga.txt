@@ -6,34 +6,34 @@ Census tracts: 279 | Sources: 37 | Variables: 28
 
 Calibration: gender x 7 age brackets (14 pairs)
 
-Optimization: pb_sgd_colnorm_cpu | Objective: 5270.4629 | Convergence: 0
-  Alpha: min=1.000, Q1=2.831, median=3.574, Q3=4.718, max=15.888
+Optimization: pb_sgd_colnorm_cpu | Objective: 4670.4370 | Convergence: 0
+  Alpha: min=1.000, Q1=1.604, median=1.870, Q3=2.227, max=11.836
 
 Candidates (13):
-  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=       908  mean=     3.3  [0.1, 7.9]
-  CAND_44                  SORAYA VIEIRA THRONICKE (UNIÃO) total=       385  mean=     1.4  [0.0, 3.2]
-  CAND_12                  CIRO FERREIRA GOMES (PDT) total=      1835  mean=     6.6  [0.2, 14.9]
-  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=     24380  mean=    87.4  [2.0, 193.6]
+  CAND_30                  LUIZ FELIPE CHAVES D AVILA (NOVO) total=        NA  mean=      NA  [NA, NA]
+  CAND_44                  SORAYA VIEIRA THRONICKE (UNIÃO) total=        NA  mean=      NA  [NA, NA]
+  CAND_12                  CIRO FERREIRA GOMES (PDT) total=        NA  mean=      NA  [NA, NA]
+  CAND_13                  LUIZ INÁCIO LULA DA SILVA (PT) total=        NA  mean=      NA  [NA, NA]
   ... 9 more -- View(result$dictionary)
 
 Turnout (1):
-  QT_COMPARECIMENTO        turnout                total=     71308  mean=   255.6  [6.0, 553.1]
+  QT_COMPARECIMENTO        turnout                total=        NA  mean=      NA  [NA, NA]
 
 Calibration (14):
-  vot_hom_18_19            calibration            total=       917  mean=     3.3  [0.0, 20.0]
-  vot_hom_20_24            calibration            total=      3551  mean=    12.7  [0.1, 56.0]
-  vot_hom_25_29            calibration            total=      4033  mean=    14.5  [0.6, 51.3]
-  vot_hom_30_39            calibration            total=      8291  mean=    29.7  [1.1, 76.5]
-  vot_hom_40_49            calibration            total=      8164  mean=    29.3  [0.7, 77.1]
-  vot_hom_50_59            calibration            total=      6975  mean=    25.0  [0.5, 97.1]
-  vot_hom_60_69            calibration            total=      5737  mean=    20.6  [0.3, 47.1]
-  vot_mul_18_19            calibration            total=      1189  mean=     4.3  [0.0, 16.7]
-  vot_mul_20_24            calibration            total=      3699  mean=    13.3  [0.1, 63.7]
-  vot_mul_25_29            calibration            total=      4167  mean=    14.9  [0.6, 37.1]
-  vot_mul_30_39            calibration            total=      8661  mean=    31.0  [1.2, 86.2]
-  vot_mul_40_49            calibration            total=      8960  mean=    32.1  [0.9, 79.2]
-  vot_mul_50_59            calibration            total=      7639  mean=    27.4  [0.7, 62.7]
-  vot_mul_60_69            calibration            total=      6406  mean=    23.0  [0.4, 50.6]
+  vot_hom_18_19            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_20_24            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_25_29            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_30_39            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_40_49            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_50_59            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_hom_60_69            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_18_19            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_20_24            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_25_29            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_30_39            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_40_49            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_50_59            calibration            total=        NA  mean=      NA  [NA, NA]
+  vot_mul_60_69            calibration            total=        NA  mean=      NA  [NA, NA]
 
 
 Object size: 181.3 MB

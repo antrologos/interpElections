@@ -492,7 +492,7 @@ times in minutes, using the r5r routing engine on OpenStreetMap data.
 - **Origins**: representative points (from Section 8)
 - **Destinations**: polling station coordinates
 - **Mode**: walking (default), configurable
-- **Max trip duration**: 300 minutes; unreachable pairs get this value
+- **Max trip duration**: 180 minutes (default); pairs beyond this threshold are `NA` (unreachable) and receive exactly zero weight
 
 The OSM data is downloaded via `download_r5r_data()`, which fetches
 state-level `.pbf` files and clips them to the municipality bounding box

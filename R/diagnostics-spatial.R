@@ -141,14 +141,27 @@ plot_moran <- function(result, variable = NULL,
 
   values <- result$interpolated[, col]
 
+  # Filter out NA observations (unreachable tracts) before spatial analysis
+  valid <- !is.na(values)
+  if (sum(valid) < 3L) {
+    message("Too few non-NA tracts for spatial autocorrelation analysis.")
+    return(invisible(NULL))
+  }
+  result_sub <- result
+  if (any(!valid)) {
+    result_sub$tracts_sf <- result$tracts_sf[valid, ]
+    result_sub$interpolated <- result$interpolated[valid, , drop = FALSE]
+    values <- values[valid]
+  }
+
   # Spatial weights
-  nb <- spdep::poly2nb(result$tracts_sf, queen = TRUE)
+  nb <- spdep::poly2nb(result_sub$tracts_sf, queen = TRUE)
   lw <- spdep::nb2listw(nb, style = "W", zero.policy = TRUE)
 
   if (type == "moran") {
-    p <- .moran_scatter(values, lw, col, result)
+    p <- .moran_scatter(values, lw, col, result_sub)
   } else {
-    p <- .lisa_map(values, lw, col, result, significance, nsim)
+    p <- .lisa_map(values, lw, col, result_sub, significance, nsim)
   }
 
   if (!is.null(p)) print(p)

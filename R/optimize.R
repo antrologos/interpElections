@@ -494,9 +494,21 @@ print.interpElections_optim <- function(x, ...) {
   }, add = TRUE)
 
   result <- tryCatch({
+    # Detect unreachable pairs (NA in time_matrix) and create mask
+    na_mask <- is.na(time_matrix)
+    has_na <- any(na_mask)
+    if (has_na) time_matrix[na_mask] <- 1  # safe placeholder for log
+
     # Transfer to tensors
     log_t_torch <- torch::torch_log(torch::torch_tensor(
       time_matrix, device = device, dtype = torch_dtype))
+
+    # Mask tensor for unreachable pairs (TRUE = reachable)
+    if (has_na) {
+      mask_torch <- torch::torch_tensor(
+        !na_mask, device = device, dtype = torch::torch_bool())
+      gpu_tensors$mask <- mask_torch
+    }
 
     # --- Pre-computations ---
     p_mat_active <- P_cpu[, active, drop = FALSE]   # n × ka
@@ -613,11 +625,28 @@ print.interpElections_optim <- function(x, ...) {
       log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
         log_t_torch$unsqueeze(1L)                     # (ka, n, m)
 
+      # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
+      if (has_na) {
+        log_K_3d_full <- torch::torch_where(
+          mask_torch$unsqueeze(1L), log_K_3d_full,
+          torch::torch_tensor(-Inf, device = device,
+                              dtype = torch_dtype))
+      }
+
       # Column normalization in log-space
       log_col_sum_full <- torch::torch_logsumexp(
         log_K_3d_full, dim = 2L)                      # (ka, m)
       log_W_3d <- log_K_3d_full -
         log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
+
+      # Handle all-unreachable columns: -Inf - (-Inf) = NaN -> -Inf
+      if (has_na) {
+        log_W_3d <- torch::torch_where(
+          torch::torch_isnan(log_W_3d),
+          torch::torch_tensor(-Inf, device = device,
+                              dtype = torch_dtype),
+          log_W_3d)
+      }
 
       # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
       log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)

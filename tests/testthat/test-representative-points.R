@@ -224,17 +224,16 @@ test_that("pop_weighted attaches pop_raster attribute", {
 
 # --- Unreachable tracts diagnostic ---
 
-test_that("all-fill_missing rows are detected correctly", {
+test_that("all-NA rows are detected correctly", {
   # Pure matrix logic test (no r5r needed)
-  # Row 3 has ALL values = 300 (simulating an unreachable tract)
+  # Row 3 has ALL values = NA (simulating an unreachable tract)
   mat <- matrix(
     c(10, 20, 30,
       15, 25, 35,
-      300, 300, 300),
+      NA, NA, NA),
     nrow = 3, byrow = TRUE
   )
-  fill_val <- 300
-  all_filled <- rowSums(mat == fill_val) == ncol(mat)
-  expect_equal(which(all_filled), 3L)
-  expect_equal(sum(all_filled), 1L)
+  all_na <- rowSums(!is.na(mat)) == 0L
+  expect_equal(which(all_na), 3L)
+  expect_equal(sum(all_na), 1L)
 })

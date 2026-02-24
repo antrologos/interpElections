@@ -109,8 +109,13 @@ compare_baselines <- function(result,
   if (method == "nearest") {
     # Each tract assigned to nearest station
     W <- matrix(0, n, m)
-    nearest <- apply(tt, 1, which.min)
-    for (i in seq_len(n)) W[i, nearest[i]] <- 1
+    nearest <- apply(tt, 1, function(x) {
+      idx <- which.min(x)
+      if (length(idx) == 0L) NA_integer_ else idx
+    })
+    for (i in seq_len(n)) {
+      if (!is.na(nearest[i])) W[i, nearest[i]] <- 1
+    }
     # Column-normalize
     cs <- colSums(W)
     cs[cs == 0] <- 1
@@ -228,7 +233,7 @@ leave_one_out <- function(result, max_stations = 30L,
 
     # Simple IDW weights with median alpha from the full result
     alpha_med <- if (is.matrix(result$alpha)) {
-      apply(result$alpha, 1, stats::median)
+      apply(result$alpha, 1, stats::median, na.rm = TRUE)
     } else {
       result$alpha
     }

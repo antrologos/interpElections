@@ -66,10 +66,10 @@ summary.interpElections_result <- function(object, ...) {
   }
 
   # Alpha distribution (always shown)
-  q <- stats::quantile(x$alpha, c(0.25, 0.5, 0.75))
+  q <- stats::quantile(x$alpha, c(0.25, 0.5, 0.75), na.rm = TRUE)
   cat(sprintf(
     "  Alpha: min=%.3f, Q1=%.3f, median=%.3f, Q3=%.3f, max=%.3f\n\n",
-    min(x$alpha), q[1], q[2], q[3], max(x$alpha)
+    min(x$alpha, na.rm = TRUE), q[1], q[2], q[3], max(x$alpha, na.rm = TRUE)
   ))
 
   # Per-variable summary grouped by type

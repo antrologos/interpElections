@@ -275,8 +275,8 @@ compute_travel_times <- function(
   if (n_valid == 0) {
     warning(
       "r5r returned no usable travel times. ",
-      "The entire matrix is filled with fill_missing (", fill_missing, ").\n",
-      "This will produce constant interpolation weights. ",
+      "The entire matrix is NA (unreachable). ",
+      "All interpolation weights will be zero. ",
       "Check that the OSM network covers the study area and that ",
       "origins/destinations snap to the street network.",
       call. = FALSE
@@ -295,37 +295,28 @@ compute_travel_times <- function(
       tt_values[valid]
   }
 
-  # Replace any remaining NA with fill_missing
-  mat[is.na(mat)] <- fill_missing
+  # Replace any remaining NA with fill_missing (if fill_missing is not NA)
+  if (!is.na(fill_missing)) {
+    mat[is.na(mat)] <- fill_missing
+  }
 
-  # Replace Inf with a large finite sentinel to avoid 0/0 in column
-
-  # normalization.  K = (sentinel + offset)^(-alpha) ~ 0 for any
-  # practical alpha, but remains numerically stable.
+  # Convert any Inf to NA (supports legacy fill_missing = Inf)
   if (any(is.infinite(mat))) {
-    finite_max <- max(mat[is.finite(mat)], na.rm = TRUE)
-    sentinel <- max(finite_max * 100, 1e6)
-    mat[is.infinite(mat)] <- sentinel
-    attr(mat, "fill_sentinel") <- sentinel
+    mat[is.infinite(mat)] <- NA_real_
   }
 
-  # Diagnostic: detect tracts where ALL travel times equal fill_missing
-  # (or sentinel).  Use the sentinel if present, otherwise fill_missing.
-  fill_val <- if (!is.null(attr(mat, "fill_sentinel"))) {
-    attr(mat, "fill_sentinel")
-  } else {
-    fill_missing
-  }
-  all_filled <- rowSums(mat == fill_val) == ncol(mat)
-  n_unreachable <- sum(all_filled)
+  # Diagnostic: detect tracts where ALL travel times are NA
+  all_na <- rowSums(!is.na(mat)) == 0L
+  n_unreachable <- sum(all_na)
   if (n_unreachable > 0) {
-    unreachable_ids <- tract_ids[all_filled]
+    unreachable_ids <- tract_ids[all_na]
     warning(
       sprintf(
-        "%d tract(s) have ALL travel times equal to fill_missing (%g min). ",
-        n_unreachable, fill_missing
+        "%d tract(s) have no reachable stations (all travel times are NA). ",
+        n_unreachable
       ),
-      "These tracts will receive near-zero interpolation weight. ",
+      "These tracts will receive zero interpolation weight and will be ",
+      "excluded from optimization. ",
       "This usually means their representative point is not routable ",
       "(e.g., falls in a park, river, or area without OSM road coverage). ",
       "Consider using point_method = 'pop_weighted' or 'point_on_surface'.",
@@ -347,8 +338,14 @@ compute_travel_times <- function(
 
   if (verbose) {
     pct <- 100 * n_valid / n_total
-    message(sprintf("  Travel time matrix: %d x %d (%d/%d = %.1f%% actual values)",
-                    nrow(mat), ncol(mat), n_valid, n_total, pct))
+    n_na <- sum(is.na(mat))
+    msg <- sprintf(
+      "  Travel time matrix: %d x %d (%d/%d = %.1f%% actual values)",
+      nrow(mat), ncol(mat), n_valid, n_total, pct)
+    if (n_na > 0) {
+      msg <- sprintf("%s, %d NA (unreachable)", msg, n_na)
+    }
+    message(msg)
   }
 
   mat

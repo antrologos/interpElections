@@ -105,10 +105,11 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
                  ncol(source_matrix), k), call. = FALSE)
   }
 
-  # Apply offset
+  # Apply offset (NA + offset = NA, safe)
   t_adj <- time_matrix + offset
-  if (any(t_adj <= 0)) {
-    stop("time_matrix + offset must be strictly positive", call. = FALSE)
+  if (any(t_adj <= 0, na.rm = TRUE)) {
+    stop("time_matrix + offset must be strictly positive (where not NA)",
+         call. = FALSE)
   }
 
   if (!requireNamespace("torch", quietly = TRUE)) {
@@ -204,8 +205,19 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   # Torch tensors
   on.exit(torch::cuda_empty_cache(), add = TRUE)
 
+  # Detect unreachable pairs (NA in t_adj) and create mask
+  na_mask <- is.na(t_adj)
+  has_na <- any(na_mask)
+  if (has_na) t_adj[na_mask] <- 1  # safe placeholder for log
+
   log_t_torch <- torch::torch_log(torch::torch_tensor(
     t_adj, device = device, dtype = torch_dtype))
+
+  # Mask tensor for unreachable pairs (TRUE = reachable)
+  if (has_na) {
+    mask_torch <- torch::torch_tensor(
+      !na_mask, device = device, dtype = torch::torch_bool())
+  }
 
   alpha_torch <- torch::torch_tensor(
     alpha_active, device = device, dtype = torch_dtype)
@@ -218,12 +230,29 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   log_K_3d <- -alpha_torch$t()$unsqueeze(3L) *
     log_t_torch$unsqueeze(1L)                      # (ka, n, m)
 
+  # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
+  if (has_na) {
+    log_K_3d <- torch::torch_where(
+      mask_torch$unsqueeze(1L), log_K_3d,
+      torch::torch_tensor(-Inf, device = device,
+                          dtype = torch_dtype))
+  }
+
   # Column normalization
   torch::with_no_grad({
     log_col_sum <- torch::torch_logsumexp(
       log_K_3d, dim = 2L)                         # (ka, m)
     log_W_3d <- log_K_3d -
       log_col_sum$unsqueeze(2L)                   # (ka, n, m)
+
+    # Handle all-unreachable columns: -Inf - (-Inf) = NaN -> -Inf
+    if (has_na) {
+      log_W_3d <- torch::torch_where(
+        torch::torch_isnan(log_W_3d),
+        torch::torch_tensor(-Inf, device = device,
+                            dtype = torch_dtype),
+        log_W_3d)
+    }
 
     # Aggregate: W[i,j] = sum_b (W^b[i,j] * c[b,j]) / sum_b c[b,j]
     log_T <- log_W_3d + log_V_b_torch$unsqueeze(2L)

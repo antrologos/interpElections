@@ -658,7 +658,7 @@ if (file.exists(html_file)) {
 
 ### Interpretation
 
-- **Effective number of sources**: This is the exponential of Shannon entropy on the row-normalized weights. A value of 1 means the tract depends on a single station; a value of 10 means the weights are equivalent to 10 equal-weight stations. High values (e.g., > 50) can indicate that the travel time ceiling is creating a uniform background weight across many distant stations. The `fill_missing = Inf` default (see Section 6) addresses this by zeroing out unreachable pairs.
+- **Effective number of sources**: This is the exponential of Shannon entropy on the row-normalized weights. A value of 1 means the tract depends on a single station; a value of 10 means the weights are equivalent to 10 equal-weight stations. High values (e.g., > 50) can indicate that distant stations are receiving non-negligible weight. The default `max_trip_duration = 180` (3 hours walking) and `fill_missing = NA` policy (see Section 6) address this by assigning exactly zero weight to unreachable and distant pairs.
 - **Low entropy tracts** (effective N close to 1): The interpolation for this tract depends almost entirely on a single station. If that station's data is atypical, the interpolated values may be unreliable.
 - **Dominant station map**: Produces a Voronoi-like partition. If catchment areas don't match geographic intuition, check the travel time matrix.
 - **Connections**: The spoke pattern should make geographic sense --- tracts should connect to nearby stations. Long-distance connections suggest routing issues.
@@ -712,21 +712,24 @@ plot_travel_times(result_vga, type = "map", tract = 1)
 knitr::include_graphics("figures/diag-s6-tt-vga-map.png")
 ```
 
-### The `fill_missing` parameter
+### Unreachable pairs and the `fill_missing` parameter
 
-When the routing engine cannot find a path between a tract and a station, the travel time is set to `fill_missing`. By default, `routing_control(fill_missing = NULL)` resolves to `Inf`, which is internally replaced by a large finite sentinel value (e.g., $10^6$ minutes). This gives these unreachable pairs an effective weight of zero:
+When the routing engine cannot find a path between a tract and a station within `max_trip_duration` minutes, the travel time is `NA`. By default, `routing_control(fill_missing = NULL)` resolves to `NA`, which means these unreachable pairs remain as `NA` in the travel time matrix and receive **exactly zero weight** --- they are completely excluded from both the optimization and the interpolation.
 
-$$K_{ij} = (10^6 + 1)^{-\alpha} \approx 0$$
+The default `max_trip_duration = 180` (3 hours walking) intentionally cuts distant links. Any tract--station pair beyond this threshold is treated as unreachable. This prevents distant stations from creating a uniform background weight that inflates the effective number of sources.
 
-Previous versions used `fill_missing = max_trip_duration` (typically 300 minutes), which gave unreachable pairs a non-negligible weight of $(301)^{-\alpha}$. In dense cities with many unreachable pairs, this created a uniform background weight that inflated the effective number of sources. To restore the old behavior:
+If a tract has no reachable stations at all (entire row is `NA`), it is excluded from optimization and receives `NA` interpolated values.
 
-```{r fill-missing-old, eval = FALSE}
-routing_control(fill_missing = 300)
+To assign a finite fill value instead (e.g., to ensure every pair has a travel time):
+
+```{r fill-missing-finite, eval = FALSE}
+routing_control(fill_missing = 300)  # fill unreachable with 300 min
 ```
 
 ### Interpretation
 
-- **Spike at sentinel value**: These are "fill" values for unreachable pairs. With `fill_missing = Inf`, these pairs receive zero weight and do not affect interpolation. A large number of unreachable pairs suggests poor OSM network coverage.
+- **NA pairs in histogram**: The subtitle reports how many pairs are unreachable (NA). A large number suggests poor OSM network coverage or a restrictive `max_trip_duration`.
+- **Grey cells in heatmap**: Represent `NA` (unreachable) pairs. These receive zero weight.
 - **Bimodal distribution**: May indicate disconnected graph components (e.g., separated by a river without bridge in the OSM network).
 - **Block-diagonal heatmap**: Expected --- nearby tracts have similar travel times to the same stations. Absence of block structure suggests the travel times lack spatial coherence.
 

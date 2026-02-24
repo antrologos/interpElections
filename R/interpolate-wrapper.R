@@ -423,6 +423,26 @@ interpolate_election <- function(
     step_num <- step_num + 1L
   }
 
+  # --- Filter tracts with no reachable stations (all-NA rows) ---
+  tracts_sf_original <- tracts_sf
+  time_matrix_original <- time_matrix
+  unreachable_idx <- integer(0)
+
+  if (anyNA(time_matrix)) {
+    all_na_rows <- rowSums(!is.na(time_matrix)) == 0L
+    if (any(all_na_rows)) {
+      unreachable_idx <- which(all_na_rows)
+      if (verbose) {
+        message(sprintf(
+          "  Excluding %d tract(s) with no reachable stations",
+          length(unreachable_idx)))
+      }
+      time_matrix <- time_matrix[!all_na_rows, , drop = FALSE]
+      tracts_sf <- tracts_sf[!all_na_rows, ]
+      tracts_df <- sf::st_drop_geometry(tracts_sf)
+    }
+  }
+
   # --- Step 2: Build calibration matrices ---
   pop_matrix <- as.matrix(tracts_df[, calib_tracts, drop = FALSE])
   storage.mode(pop_matrix) <- "double"
@@ -487,6 +507,30 @@ interpolate_election <- function(
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
     colnames(interpolated) <- colnames(interp_data)
+  }
+
+  # --- Re-insert excluded unreachable tracts ---
+  if (length(unreachable_idx) > 0) {
+    full_n <- nrow(tracts_sf_original)
+    reachable_idx <- setdiff(seq_len(full_n), unreachable_idx)
+
+    .expand_mat <- function(mat, fill) {
+      out <- matrix(fill, full_n, ncol(mat))
+      colnames(out) <- colnames(mat)
+      out[reachable_idx, ] <- mat
+      out
+    }
+    interpolated <- .expand_mat(interpolated, NA_real_)
+    alpha <- .expand_mat(alpha, NA_real_)
+    W <- .expand_mat(W, 0)
+
+    full_targets <- rep(0, full_n)
+    full_targets[reachable_idx] <- row_targets
+    row_targets <- full_targets
+
+    tracts_sf <- tracts_sf_original
+    tracts_df <- sf::st_drop_geometry(tracts_sf)
+    time_matrix <- time_matrix_original
   }
 
   # --- Build tracts_sf with interpolated columns joined ---
@@ -595,7 +639,8 @@ print.interpElections_result <- function(x, ...) {
     cat("  Optimizer: skipped (alpha provided)\n")
   }
   cat(sprintf("  Alpha:     [%.3f, %.3f] (mean %.3f)\n",
-              min(x$alpha), max(x$alpha), mean(x$alpha)))
+              min(x$alpha, na.rm = TRUE), max(x$alpha, na.rm = TRUE),
+              mean(x$alpha, na.rm = TRUE)))
 
   # Contents
   cat("\n  Contents:\n")

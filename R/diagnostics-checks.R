@@ -131,6 +131,7 @@ print.interpElections_diagnostics <- function(x, ...) {
 #' @noRd
 .diag_alpha_distribution <- function(result) {
   alpha_vec <- .collapse_alpha(result$alpha, summary_fn = "median")
+  alpha_vec <- alpha_vec[!is.na(alpha_vec)]
   med <- stats::median(alpha_vec)
   iqr <- stats::quantile(alpha_vec, c(0.25, 0.75))
   pct_high <- mean(alpha_vec > 15) * 100
@@ -311,24 +312,13 @@ print.interpElections_diagnostics <- function(x, ...) {
   }
 
   tt <- result$time_matrix
-  max_val <- max(tt, na.rm = TRUE)
-  # With fill_missing = Inf (new default), the sentinel value can be very
-
-  # large (e.g. 1e6).  Use a two-tier threshold: 95% of max for normal
-  # matrices, or 1e5 to catch large sentinel values.
-  sentinel <- attr(tt, "fill_sentinel")
-  if (!is.null(sentinel)) {
-    threshold <- sentinel * 0.95
-  } else {
-    threshold <- max_val * 0.95
-  }
   n_total <- length(tt)
-  n_at_max <- sum(tt >= threshold, na.rm = TRUE)
-  pct <- n_at_max / n_total * 100
+  n_na <- sum(is.na(tt))
+  pct <- n_na / n_total * 100
 
   detail <- sprintf(
-    "%.1f%% of pairs near max travel time (>= %.0f min)",
-    pct, threshold
+    "%.1f%% of pairs unreachable (%d / %d NA)",
+    pct, n_na, n_total
   )
 
   status <- if (pct > 10) {
@@ -351,6 +341,7 @@ print.interpElections_diagnostics <- function(x, ...) {
 #' @noRd
 .diag_alpha_spatial_cv <- function(result) {
   alpha_vec <- .collapse_alpha(result$alpha, summary_fn = "median")
+  alpha_vec <- alpha_vec[!is.na(alpha_vec)]
 
   if (length(alpha_vec) < 3) {
     return(list(

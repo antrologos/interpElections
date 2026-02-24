@@ -55,21 +55,18 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
   vals <- as.numeric(tt)
   n_total <- length(vals)
 
-  # Detect sentinel values (from fill_missing = Inf replacement)
-  sentinel <- attr(tt, "fill_sentinel")
-  if (!is.null(sentinel)) {
-    n_sentinel <- sum(vals >= sentinel * 0.95, na.rm = TRUE)
-    pct_sentinel <- n_sentinel / n_total * 100
-    # Filter out sentinel values for histogram display
-    vals_plot <- vals[vals < sentinel * 0.95]
-  } else {
-    n_sentinel <- 0L
-    pct_sentinel <- 0
-    vals_plot <- vals
+  # Count and exclude NAs (unreachable pairs)
+  n_na <- sum(is.na(vals))
+  pct_na <- n_na / n_total * 100
+  vals_plot <- vals[!is.na(vals)]
+
+  if (length(vals_plot) == 0) {
+    message("All travel times are NA. Cannot plot histogram.")
+    return(NULL)
   }
 
-  max_val <- max(vals_plot, na.rm = TRUE)
-  n_at_max <- sum(vals_plot >= max_val - 0.1, na.rm = TRUE)
+  max_val <- max(vals_plot)
+  n_at_max <- sum(vals_plot >= max_val - 0.1)
   pct_at_max <- n_at_max / n_total * 100
 
   df <- data.frame(time = vals_plot)
@@ -83,14 +80,13 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
                                        max_val, n_at_max, pct_at_max),
                        hjust = 1.1, vjust = 1.5, size = 3.5, color = "red")
 
-  # Add sentinel annotation if present
   sub_text <- sprintf("%d tracts x %d stations = %s pairs",
                       nrow(tt), ncol(tt),
                       format(n_total, big.mark = ","))
-  if (n_sentinel > 0) {
+  if (n_na > 0) {
     sub_text <- paste0(sub_text, sprintf(
-      "\n%d unreachable pairs (%.1f%%) excluded (fill_missing = Inf)",
-      n_sentinel, pct_sentinel))
+      "\n%d unreachable pairs (%.1f%%) excluded (NA)",
+      n_na, pct_na))
   }
 
   p <- p +
@@ -122,12 +118,7 @@ plot_travel_times <- function(result, type = c("histogram", "heatmap", "map"),
 
   tt_ordered <- tt[lat_order, , drop = FALSE]
 
-  # Cap sentinel values at finite max for color scale
-  sentinel <- attr(tt, "fill_sentinel")
-  if (!is.null(sentinel)) {
-    finite_max <- max(tt_ordered[tt_ordered < sentinel * 0.95], na.rm = TRUE)
-    tt_ordered[tt_ordered >= sentinel * 0.95] <- NA
-  }
+  # NAs display as na.value in the color scale
 
   # Build long data frame
   df <- data.frame(

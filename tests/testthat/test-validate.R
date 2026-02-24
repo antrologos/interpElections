@@ -24,9 +24,17 @@ test_that(".validate_matrices rejects empty matrices", {
   )
 })
 
-test_that(".validate_matrices rejects NA values", {
+test_that(".validate_matrices allows NA in time_matrix", {
   m <- matrix(c(1, NA, 3, 4), 2, 2)
   p <- matrix(1:4, 2, 2)
+  s <- matrix(1:4, 2, 2)
+
+  expect_true(interpElections:::.validate_matrices(m, p, s))
+})
+
+test_that(".validate_matrices rejects NA in pop_matrix", {
+  m <- matrix(1:4, 2, 2)
+  p <- matrix(c(1, NA, 3, 4), 2, 2)
   s <- matrix(1:4, 2, 2)
 
   expect_error(
@@ -35,14 +43,14 @@ test_that(".validate_matrices rejects NA values", {
   )
 })
 
-test_that(".validate_matrices rejects Inf values", {
+test_that(".validate_matrices rejects Inf in time_matrix", {
   m <- matrix(c(1, Inf, 3, 4), 2, 2)
   p <- matrix(1:4, 2, 2)
   s <- matrix(1:4, 2, 2)
 
   expect_error(
     interpElections:::.validate_matrices(m, p, s),
-    "NA, NaN, or Inf"
+    "NaN or Inf"
   )
 })
 

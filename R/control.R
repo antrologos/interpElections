@@ -128,8 +128,8 @@ optim_control <- function(
 #'   applying the pop_weighted method. Smaller tracts fall back to
 #'   point_on_surface. Default: 1.
 #' @param max_trip_duration Integer. Maximum trip duration in minutes.
-#'   Also used as fill value for unreachable pairs (unless `fill_missing`
-#'   is set). Default: 300 (5 hours walking).
+#'   Pairs beyond this threshold are not routed and receive zero weight.
+#'   Default: 180 (3 hours walking).
 #' @param n_threads Integer. Number of parallel threads for the r5r routing
 #'   engine. Default: 4.
 #' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
@@ -143,17 +143,17 @@ optim_control <- function(
 #'   WorldPop data is auto-downloaded. Default: NULL.
 #' @param osm_buffer_km Numeric. Buffer in km around the combined bounding
 #'   box of tracts and points when clipping OSM data. Default: 10.
-#' @param fill_missing Numeric, `Inf`, or NULL. Value for unreachable OD pairs.
-#'   `Inf` (default when NULL) effectively assigns zero weight to unreachable
-#'   pairs by replacing them internally with a large finite sentinel. Previous
-#'   versions used `max_trip_duration`, which gave non-negligible weight to
-#'   distant pairs. Set to `max_trip_duration` to restore old behavior.
+#' @param fill_missing Numeric, `NA`, or NULL. Value for unreachable OD pairs.
+#'   `NA` (default when NULL) leaves unreachable pairs as `NA` in the travel
+#'   time matrix, which maps to exactly zero weight in the weight matrix.
+#'   These pairs are immune to alpha optimization. Set to a numeric value
+#'   (e.g., `max_trip_duration`) to impute a travel time instead.
 #'
 #' @return A list of class `"interpElections_routing_control"` with one element
 #'   per parameter.
 #'
 #' @examples
-#' # Default settings (walking, 5h max)
+#' # Default settings (walking, 3h max)
 #' routing_control()
 #'
 #' # Transit mode with GTFS
@@ -173,7 +173,7 @@ routing_control <- function(
     mode                    = "WALK",
     point_method            = "pop_weighted",
     min_area_for_pop_weight = 1,
-    max_trip_duration       = 300L,
+    max_trip_duration       = 180L,
     n_threads               = 4L,
     gtfs_zip_path           = NULL,
     departure_datetime      = NULL,
@@ -222,14 +222,16 @@ routing_control <- function(
       osm_buffer_km < 0) {
     stop("`osm_buffer_km` must be a non-negative number", call. = FALSE)
   }
-  if (!is.null(fill_missing) &&
-      (!is.numeric(fill_missing) || length(fill_missing) != 1)) {
-    stop("`fill_missing` must be a single number or NULL", call. = FALSE)
+  if (!is.null(fill_missing)) {
+    if (length(fill_missing) != 1)
+      stop("`fill_missing` must be a single value or NULL", call. = FALSE)
+    if (!is.na(fill_missing) && !is.numeric(fill_missing))
+      stop("`fill_missing` must be a single number, NA, or NULL", call. = FALSE)
   }
 
   # Resolve fill_missing default
   fill_resolved <- if (is.null(fill_missing)) {
-    Inf
+    NA_real_
   } else {
     fill_missing
   }
