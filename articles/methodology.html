@@ -620,8 +620,9 @@ OpenStreetMap data.</p>
 <li>
 <strong>Mode</strong>: walking (default), configurable</li>
 <li>
-<strong>Max trip duration</strong>: 300 minutes; unreachable pairs
-get this value</li>
+<strong>Max trip duration</strong>: 180 minutes (default); pairs
+beyond this threshold are <code>NA</code> (unreachable) and receive
+exactly zero weight</li>
 </ul>
 <p>The OSM data is downloaded via <code><a href="../reference/download_r5r_data.html">download_r5r_data()</a></code>,
 which fetches state-level <code>.pbf</code> files and clips them to the
