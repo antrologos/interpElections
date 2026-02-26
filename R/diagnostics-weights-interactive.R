@@ -630,7 +630,7 @@ function(el, x) {
 
     # Mean weighted travel time
     tt_line <- if (!is.null(tt)) {
-      mean_tt <- sum(w * tt[i, ]) / max(sum(w), 1e-10)
+      mean_tt <- sum(w * tt[i, ], na.rm = TRUE) / max(sum(w, na.rm = TRUE), 1e-10)
       sprintf(
         paste0('<div class="wt-row">',
                '<span class="wt-label">Mean travel time:</span>',
@@ -724,8 +724,8 @@ function(el, x) {
     mean_tt <- if (!is.null(tt)) {
       connected <- w_col > 0
       if (any(connected)) {
-        sum(w_col[connected] * tt[connected, j]) /
-          max(sum(w_col[connected]), 1e-10)
+        sum(w_col[connected] * tt[connected, j], na.rm = TRUE) /
+          max(sum(w_col[connected], na.rm = TRUE), 1e-10)
       } else {
         NA_real_
       }
