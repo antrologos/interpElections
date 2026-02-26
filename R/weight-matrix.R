@@ -17,8 +17,11 @@
 #' @param source_matrix Numeric matrix \[m x k\]. Known counts at source
 #'   points per demographic bracket.
 #' @param offset Numeric scalar. Added to `time_matrix` before
-#'   exponentiation: \eqn{K^b_{ij} = (t_{ij} + \text{offset})^{-\alpha_{ib}}}.
-#'   Default: 1.
+#'   exponentiation for the power kernel:
+#'   \eqn{K^b_{ij} = (t_{ij} + \text{offset})^{-\alpha_{ib}}}.
+#'   Ignored when `kernel = "exponential"`. Default: 1.
+#' @param kernel Character. `"power"` (default) or `"exponential"`.
+#'   See [optim_control()] for details.
 #' @param use_gpu Logical or NULL. If TRUE, use GPU; if FALSE, use CPU;
 #'   if NULL (default), respect the global setting from [use_gpu()].
 #' @param verbose Logical. Print progress? Default: FALSE.
@@ -52,6 +55,7 @@
 #' @export
 compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
                                    source_matrix, offset = 1,
+                                   kernel = "power",
                                    use_gpu = NULL, verbose = FALSE) {
   # --- Input validation ---
   if (!is.matrix(time_matrix) || !is.numeric(time_matrix)) {
@@ -105,11 +109,21 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
                  ncol(source_matrix), k), call. = FALSE)
   }
 
-  # Apply offset (NA + offset = NA, safe)
-  t_adj <- time_matrix + offset
-  if (any(t_adj <= 0, na.rm = TRUE)) {
-    stop("time_matrix + offset must be strictly positive (where not NA)",
-         call. = FALSE)
+  kernel <- match.arg(kernel, c("power", "exponential"))
+
+  # Apply offset (only for power kernel)
+  if (kernel == "power") {
+    t_adj <- time_matrix + offset
+    if (any(t_adj <= 0, na.rm = TRUE)) {
+      stop("time_matrix + offset must be strictly positive (where not NA)",
+           call. = FALSE)
+    }
+  } else {
+    t_adj <- time_matrix  # no offset for exponential
+    if (any(t_adj < 0, na.rm = TRUE)) {
+      stop("time_matrix must contain only non-negative values for exponential kernel",
+           call. = FALSE)
+    }
   }
 
   if (!requireNamespace("torch", quietly = TRUE)) {
@@ -138,6 +152,7 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   .compute_W_subprocess(
     t_adj = t_adj, alpha = alpha,
     pop_matrix = pop_matrix, source_matrix = source_matrix,
+    kernel = kernel,
     device = device, dtype = dtype, verbose = verbose
   )
 }
@@ -145,7 +160,7 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
 
 # Internal: subprocess wrapper for compute_weight_matrix
 .compute_W_subprocess <- function(t_adj, alpha, pop_matrix, source_matrix,
-                                   device, dtype, verbose) {
+                                   kernel, device, dtype, verbose) {
 
   # RStudio subprocess delegation
   if (.is_rstudio() &&
@@ -157,7 +172,7 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
     if (verbose) message("  Running weight matrix computation in subprocess...")
     return(callr::r(
       function(t_adj, alpha, pop_matrix, source_matrix,
-               device, dtype, verbose, pkg_path) {
+               kernel, device, dtype, verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) &&
             file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -168,12 +183,14 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
         interpElections:::.compute_W_subprocess(
           t_adj = t_adj, alpha = alpha,
           pop_matrix = pop_matrix, source_matrix = source_matrix,
+          kernel = kernel,
           device = device, dtype = dtype, verbose = verbose
         )
       },
       args = list(
         t_adj = t_adj, alpha = alpha,
         pop_matrix = pop_matrix, source_matrix = source_matrix,
+        kernel = kernel,
         device = device, dtype = dtype, verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -208,10 +225,17 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   # Detect unreachable pairs (NA in t_adj) and create mask
   na_mask <- is.na(t_adj)
   has_na <- any(na_mask)
-  if (has_na) t_adj[na_mask] <- 1  # safe placeholder for log
 
-  log_t_torch <- torch::torch_log(torch::torch_tensor(
-    t_adj, device = device, dtype = torch_dtype))
+  # t_basis: quantity multiplied by -alpha to form log_K
+  if (kernel == "power") {
+    if (has_na) t_adj[na_mask] <- 1  # safe placeholder for log
+    t_basis <- torch::torch_log(torch::torch_tensor(
+      t_adj, device = device, dtype = torch_dtype))
+  } else {
+    if (has_na) t_adj[na_mask] <- 0  # safe placeholder
+    t_basis <- torch::torch_tensor(
+      t_adj, device = device, dtype = torch_dtype)
+  }
 
   # Mask tensor for unreachable pairs (TRUE = reachable)
   if (has_na) {
@@ -226,9 +250,9 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
     log(pmax(c_mat, 1e-30)),
     device = device, dtype = torch_dtype)
 
-  # Build 3D kernel: log_K_3d[b, i, j] = -alpha[i, b] * log_t[i, j]
+  # Build 3D kernel: log_K_3d[b, i, j] = -alpha[i, b] * t_basis[i, j]
   log_K_3d <- -alpha_torch$t()$unsqueeze(3L) *
-    log_t_torch$unsqueeze(1L)                      # (ka, n, m)
+    t_basis$unsqueeze(1L)                           # (ka, n, m)
 
   # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
   if (has_na) {

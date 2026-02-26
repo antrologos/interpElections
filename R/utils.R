@@ -102,7 +102,7 @@ if (!exists("%||%", baseenv())) {
 }
 
 .validate_matrices <- function(time_matrix, pop_matrix, source_matrix,
-                               alpha = NULL) {
+                               alpha = NULL, allow_zero_time = FALSE) {
   .check_matrix(time_matrix, "time_matrix", allow_na = TRUE)
   .check_matrix(pop_matrix, "pop_matrix")
   .check_matrix(source_matrix, "source_matrix")
@@ -130,13 +130,24 @@ if (!exists("%||%", baseenv())) {
     ), call. = FALSE)
   }
 
-  # time_matrix must be strictly positive where not NA (required for t^(-alpha))
-  if (any(time_matrix <= 0, na.rm = TRUE)) {
-    stop(
-      "time_matrix must contain only positive values (where not NA). ",
-      "Apply offset before validation if needed.",
-      call. = FALSE
-    )
+  # time_matrix positivity check:
+  # - Power kernel: strictly positive (required for t^(-alpha))
+  # - Exponential kernel: non-negative (t=0 is fine: exp(-alpha*0)=1)
+  if (allow_zero_time) {
+    if (any(time_matrix < 0, na.rm = TRUE)) {
+      stop(
+        "time_matrix must contain only non-negative values (where not NA).",
+        call. = FALSE
+      )
+    }
+  } else {
+    if (any(time_matrix <= 0, na.rm = TRUE)) {
+      stop(
+        "time_matrix must contain only positive values (where not NA). ",
+        "Apply offset before validation if needed.",
+        call. = FALSE
+      )
+    }
   }
 
   if (!is.null(alpha)) {

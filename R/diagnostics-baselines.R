@@ -238,7 +238,12 @@ leave_one_out <- function(result, max_stations = 30L,
       result$alpha
     }
 
-    K <- (tt_loo + result$offset) ^ (-alpha_med)
+    kernel <- result$kernel %||% "power"
+    if (kernel == "exponential") {
+      K <- exp(-alpha_med * tt_loo)
+    } else {
+      K <- (tt_loo + result$offset) ^ (-alpha_med)
+    }
     K[!is.finite(K)] <- 0
     cs <- colSums(K)
     cs[cs == 0] <- 1

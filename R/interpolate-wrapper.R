@@ -523,7 +523,8 @@ interpolate_election <- function(
       W <- optim_result$W
     } else {
       W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
-                                  offset = offset, use_gpu = optim$use_gpu)
+                                  offset = offset, kernel = optim$kernel %||% "power",
+                                  use_gpu = optim$use_gpu)
     }
   }
   interpolated <- W %*% interp_data
@@ -568,6 +569,7 @@ interpolate_election <- function(
     sources       = elec_df,
     optimization  = optim_result,
     offset        = offset,
+    kernel        = optim$kernel %||% "power",
     call          = cl,
     tract_id      = tract_id,
     point_id      = point_id,

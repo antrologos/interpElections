@@ -136,6 +136,19 @@ test_that("weight_summary mean_travel_time_weighted is NA without time_matrix", 
   expect_true(all(is.na(ws$mean_travel_time_weighted)))
 })
 
+test_that("weight_summary mean_travel_time_weighted handles NA in time_matrix", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  # Introduce NA into time_matrix (simulating unreachable pairs)
+  obj$time_matrix[1, 2] <- NA
+  obj$time_matrix[3, 4] <- NA
+  # Set corresponding weights to zero (as the kernel would)
+  obj$weights[1, 2] <- 0
+  obj$weights[3, 4] <- 0
+  ws <- weight_summary(obj)
+  expect_true(all(is.finite(ws$mean_travel_time_weighted)))
+})
+
 test_that("weight_summary errors without weights", {
   skip_if_not_installed("sf")
   obj <- .mock_weight_result()

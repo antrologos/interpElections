@@ -254,7 +254,8 @@ residuals.interpElections_result <- function(object, ...) {
   } else {
     W <- compute_weight_matrix(object$time_matrix, object$alpha,
                                 pop_mat, src_mat,
-                                offset = object$offset)
+                                offset = object$offset,
+                                kernel = object$kernel %||% "power")
   }
 
   # Fitted = W %*% source_matrix

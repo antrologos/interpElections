@@ -142,6 +142,7 @@ optimize_alpha <- function(
   patience        <- optim$patience
   barrier_mu      <- optim$barrier_mu
   alpha_min       <- optim$alpha_min
+  kernel          <- optim$kernel %||% "power"
   # --- Check torch is available ---
   if (!requireNamespace("torch", quietly = TRUE)) {
     stop(
@@ -156,11 +157,16 @@ optimize_alpha <- function(
   if (is.data.frame(pop_matrix))    pop_matrix    <- as.matrix(pop_matrix)
   if (is.data.frame(source_matrix)) source_matrix <- as.matrix(source_matrix)
 
-  # Apply offset first (needed for positivity in validate)
-  t_adj <- .apply_offset(time_matrix, offset)
+  # Apply offset (only needed for power kernel to avoid singularity)
+  if (kernel == "exponential") {
+    t_adj <- time_matrix  # no offset for exponential
+  } else {
+    t_adj <- .apply_offset(time_matrix, offset)
+  }
 
   # Validate offset-adjusted matrices
-  .validate_matrices(t_adj, pop_matrix, source_matrix)
+  .validate_matrices(t_adj, pop_matrix, source_matrix,
+                     allow_zero_time = (kernel == "exponential"))
 
   n <- nrow(t_adj)
   m <- ncol(t_adj)
@@ -260,6 +266,7 @@ optimize_alpha <- function(
     patience       = as.integer(patience),
     barrier_mu     = barrier_mu,
     alpha_min      = alpha_min,
+    kernel         = kernel,
     verbose        = verbose
   )
 
@@ -299,7 +306,8 @@ optimize_alpha <- function(
     lr_history          = raw$lr_history %||% NULL,
     row_targets         = row_targets,
     barrier_mu          = barrier_mu,
-    alpha_min           = alpha_min
+    alpha_min           = alpha_min,
+    kernel              = kernel
   )
   class(result) <- "interpElections_optim"
 
@@ -355,6 +363,7 @@ print.interpElections_optim <- function(x, ...) {
                              max_epochs, lr_init, device, dtype,
                              convergence_tol, patience,
                              barrier_mu, alpha_min,
+                             kernel,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -375,6 +384,7 @@ print.interpElections_optim <- function(x, ...) {
                device, dtype,
                convergence_tol, patience,
                barrier_mu, alpha_min,
+               kernel,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -392,6 +402,7 @@ print.interpElections_optim <- function(x, ...) {
           convergence_tol = convergence_tol, patience = patience,
           barrier_mu = barrier_mu,
           alpha_min = alpha_min,
+          kernel = kernel,
           verbose = verbose
         )
       },
@@ -405,6 +416,7 @@ print.interpElections_optim <- function(x, ...) {
         convergence_tol = convergence_tol, patience = patience,
         barrier_mu = barrier_mu,
         alpha_min = alpha_min,
+        kernel = kernel,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -477,9 +489,9 @@ print.interpElections_optim <- function(x, ...) {
 
   if (verbose) {
     message(sprintf(paste0(
-      "  PB-SGD colnorm (%s, %s): full-data gradient, barrier_mu=%.1f, ",
+      "  PB-SGD colnorm (%s, %s, %s kernel): full-data gradient, barrier_mu=%.1f, ",
       "loss=poisson, alpha_min=%.1f, max %d epochs"),
-      device, dtype, barrier_mu, alpha_min,
+      device, dtype, kernel, barrier_mu, alpha_min,
       max_epochs))
   }
 
@@ -497,11 +509,19 @@ print.interpElections_optim <- function(x, ...) {
     # Detect unreachable pairs (NA in time_matrix) and create mask
     na_mask <- is.na(time_matrix)
     has_na <- any(na_mask)
-    if (has_na) time_matrix[na_mask] <- 1  # safe placeholder for log
 
-    # Transfer to tensors
-    log_t_torch <- torch::torch_log(torch::torch_tensor(
-      time_matrix, device = device, dtype = torch_dtype))
+    # t_basis: the quantity multiplied by -alpha to form log_K.
+    # Power:       t_basis = log(t_adj)  =>  log_K = -alpha * log(t) = log(t^(-alpha))
+    # Exponential: t_basis = t_adj       =>  log_K = -alpha * t      = log(exp(-alpha*t))
+    if (kernel == "power") {
+      if (has_na) time_matrix[na_mask] <- 1  # safe placeholder for log
+      t_basis <- torch::torch_log(torch::torch_tensor(
+        time_matrix, device = device, dtype = torch_dtype))
+    } else {
+      if (has_na) time_matrix[na_mask] <- 0  # safe placeholder (exp(-alpha*0)=1, masked later)
+      t_basis <- torch::torch_tensor(
+        time_matrix, device = device, dtype = torch_dtype)
+    }
 
     # Mask tensor for unreachable pairs (TRUE = reachable)
     if (has_na) {
@@ -578,7 +598,7 @@ print.interpElections_optim <- function(x, ...) {
       dev$sum() * scale_factor
     }
 
-    gpu_tensors$log_t   <- log_t_torch
+    gpu_tensors$t_basis <- t_basis
     gpu_tensors$p_act   <- p_active_torch
     gpu_tensors$theta   <- theta_torch
     gpu_tensors$log_V_b <- log_V_b_torch
@@ -623,7 +643,7 @@ print.interpElections_optim <- function(x, ...) {
 
       alpha_all <- alpha_fn(theta_torch)              # (n, ka)
       log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
-        log_t_torch$unsqueeze(1L)                     # (ka, n, m)
+        t_basis$unsqueeze(1L)                          # (ka, n, m)
 
       # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
       if (has_na) {

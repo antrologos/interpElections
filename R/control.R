@@ -19,9 +19,16 @@
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all tracts and
 #'   brackets. Default: 2.
-#' @param alpha_min Numeric. Lower bound for alpha values. The
+#' @param alpha_min Numeric or NULL. Lower bound for alpha values. The
 #'   reparameterization becomes `alpha = alpha_min + softplus(theta)`.
-#'   Default: 1, which restricts decay to linear or steeper.
+#'   If NULL (default), the bound is set based on `kernel`:
+#'   1 for `"power"` (linear-or-steeper decay), 0 for `"exponential"`.
+#' @param kernel Character. Kernel function for spatial decay.
+#'   `"power"` (default): \eqn{K(t) = (t + \text{offset})^{-\alpha}},
+#'   the classic inverse distance weighting kernel.
+#'   `"exponential"`: \eqn{K(t) = \exp(-\alpha \cdot t)}, which has a
+#'   light tail (relative decay increases with distance). The exponential
+#'   kernel does not need an offset and allows `alpha_min = 0`.
 #' @param use_gpu Logical or NULL. If `TRUE`, use GPU (CUDA or MPS). If
 #'   `FALSE`, use CPU. If `NULL` (default), reads the package option
 #'   `interpElections.use_gpu` (set via [use_gpu()]).
@@ -53,7 +60,8 @@ optim_control <- function(
     patience        = 50L,
     barrier_mu      = 10,
     alpha_init      = 2,
-    alpha_min       = 1,
+    alpha_min       = NULL,
+    kernel          = "power",
     use_gpu         = NULL,
     device          = NULL,
     dtype           = "float32"
@@ -78,6 +86,11 @@ optim_control <- function(
   if (!is.numeric(alpha_init)) {
     stop("`alpha_init` must be numeric", call. = FALSE)
   }
+  kernel <- match.arg(kernel, c("power", "exponential"))
+  # Resolve kernel-dependent default for alpha_min
+  if (is.null(alpha_min)) {
+    alpha_min <- switch(kernel, power = 1, exponential = 0)
+  }
   if (!is.numeric(alpha_min) || length(alpha_min) != 1) {
     stop("`alpha_min` must be a single number", call. = FALSE)
   }
@@ -101,6 +114,7 @@ optim_control <- function(
       barrier_mu      = barrier_mu,
       alpha_init      = alpha_init,
       alpha_min       = alpha_min,
+      kernel          = kernel,
       use_gpu         = use_gpu,
       device          = device,
       dtype           = dtype
@@ -265,6 +279,7 @@ print.interpElections_optim_control <- function(x, ...) {
   cat("  alpha_init:", if (length(x$alpha_init) == 1) x$alpha_init
       else paste0("[", length(x$alpha_init), " values]"), "\n")
   cat("  alpha_min:", x$alpha_min, "\n")
+  cat("  kernel:", x$kernel, "\n")
   gpu_str <- if (is.null(x$use_gpu)) "NULL (auto)" else x$use_gpu
   cat("  use_gpu:", gpu_str, "\n")
   cat("  device:", x$device %||% "auto", "\n")
