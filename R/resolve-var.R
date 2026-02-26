@@ -161,17 +161,17 @@
 #'
 #' @param result An `interpElections_result` object.
 #' @param col Character. Column name (already resolved).
-#' @param type Character. Quantity type.
+#' @param quantity Character. Quantity type.
 #'
 #' @return Numeric vector of length n (one per tract).
 #' @noRd
-.compute_quantity <- function(result, col, type = "absolute") {
-  type <- match.arg(type, c("absolute", "pct_tract", "pct_muni",
+.compute_quantity <- function(result, col, quantity = "absolute") {
+  quantity <- match.arg(quantity, c("absolute", "pct_tract", "pct_muni",
                              "pct_valid", "pct_eligible", "density"))
 
   vals <- .get_col_values(result, col)
 
-  switch(type,
+  switch(quantity,
     absolute = vals,
     pct_tract = {
       denom <- .get_col_values(result, "QT_COMPARECIMENTO",
@@ -214,7 +214,7 @@
     },
     density = {
       if (!requireNamespace("sf", quietly = TRUE)) {
-        stop("The 'sf' package is required for type = 'density'.", call. = FALSE)
+        stop("The 'sf' package is required for quantity = 'density'.", call. = FALSE)
       }
       if (is.null(result$tracts_sf)) {
         stop("Cannot compute density: tracts_sf not available.", call. = FALSE)

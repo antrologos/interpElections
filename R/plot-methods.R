@@ -16,7 +16,7 @@
 #'   substring (e.g., `"Lula"`), or party abbreviation (e.g., `"PT"`).
 #'   Multiple values produce a faceted comparison.
 #'   If NULL, auto-selects the first candidate variable.
-#' @param type Quantity to map: `"pct_tract"` (default), `"absolute"`,
+#' @param quantity Quantity to map: `"pct_tract"` (default), `"absolute"`,
 #'   `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`, `"density"`.
 #' @param palette Color palette name. RColorBrewer palettes
 #'   (e.g., `"RdYlBu"`, `"YlGnBu"`, `"Spectral"`) or viridis palettes
@@ -61,7 +61,7 @@
 #' plot(result, variable = 13)
 #'
 #' # Absolute counts with continuous scale
-#' plot(result, variable = "PT", type = "absolute",
+#' plot(result, variable = "PT", quantity = "absolute",
 #'      breaks = "continuous")
 #'
 #' # Faceted comparison
@@ -78,7 +78,7 @@
 #'
 #' @exportS3Method
 plot.interpElections_result <- function(
-    x, variable = NULL, type = "pct_tract",
+    x, variable = NULL, quantity = "pct_tract",
     palette = "RdYlBu", breaks = "quantile", n_breaks = 5L,
     title = NULL, subtitle = NULL, legend_title = NULL,
     caption = NULL,
@@ -104,7 +104,7 @@ plot.interpElections_result <- function(
 
   # Multi-variable: faceted plot
   if (length(variable) > 1L) {
-    p <- .plot_faceted(x, variable, type, palette, breaks, n_breaks,
+    p <- .plot_faceted(x, variable, quantity, palette, breaks, n_breaks,
                        title, subtitle, legend_title, caption,
                        show_sources, border_color, border_width,
                        limits, scale_bar)
@@ -117,7 +117,7 @@ plot.interpElections_result <- function(
     NULL
   })
   if (is.null(col)) return(invisible(NULL))
-  values <- .compute_quantity(x, col, type)
+  values <- .compute_quantity(x, col, quantity)
 
   # Build plotting sf
   plot_sf <- x$tracts_sf
@@ -125,8 +125,8 @@ plot.interpElections_result <- function(
 
   # Auto-generate labels
   if (is.null(title)) title <- .auto_title(col, x)
-  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, type, breaks)
-  if (is.null(legend_title)) legend_title <- .quantity_label(type)
+  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, quantity, breaks)
+  if (is.null(legend_title)) legend_title <- .quantity_label(quantity)
   if (is.null(caption)) caption <- .auto_caption()
 
   # Inform about data range when custom breaks are used
@@ -142,7 +142,7 @@ plot.interpElections_result <- function(
 
   # For binned scales: convert to factor with interval labels
   if (!is.null(brk)) {
-    plot_sf$.plot_value <- .cut_values(values, brk, type)
+    plot_sf$.plot_value <- .cut_values(values, brk, quantity)
   }
 
   # Build plot
@@ -152,7 +152,7 @@ plot.interpElections_result <- function(
       color = border_color,
       linewidth = border_width
     ) +
-    .build_fill_scale(palette, brk, n_breaks, type = type) +
+    .build_fill_scale(palette, brk, n_breaks, quantity = quantity) +
     ggplot2::labs(title = title, subtitle = subtitle,
                   fill = legend_title, caption = caption) +
     .map_theme()
@@ -205,8 +205,7 @@ plot.interpElections_result <- function(
       )
     } else {
       warning(
-        "show_sources = TRUE but no electoral_sf in result. ",
-        "Re-run with keep = \"electoral_sf\".",
+        "show_sources = TRUE but no electoral_sf in result.",
         call. = FALSE
       )
     }
@@ -229,7 +228,7 @@ autoplot.interpElections_result <- function(object, ...) {
 
 #' @noRd
 .plot_faceted <- function(
-    x, variables, type, palette, breaks, n_breaks,
+    x, variables, quantity, palette, breaks, n_breaks,
     title, subtitle, legend_title, caption,
     show_sources, border_color, border_width,
     limits, scale_bar) {
@@ -239,7 +238,7 @@ autoplot.interpElections_result <- function(object, ...) {
   # Build long-format data
   geom_col <- attr(x$tracts_sf, "sf_column") %||% "geometry"
   pieces <- lapply(cols, function(col) {
-    vals <- .compute_quantity(x, col, type)
+    vals <- .compute_quantity(x, col, quantity)
     label <- .auto_title(col, x)
     df <- data.frame(
       .facet_var = label,
@@ -268,12 +267,12 @@ autoplot.interpElections_result <- function(object, ...) {
 
   # For binned scales: convert to factor with interval labels
   if (!is.null(brk)) {
-    sf_long$value <- .cut_values(sf_long$value, brk, type)
+    sf_long$value <- .cut_values(sf_long$value, brk, quantity)
   }
 
   if (is.null(title)) title <- NULL
-  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, type, breaks)
-  if (is.null(legend_title)) legend_title <- .quantity_label(type)
+  if (is.null(subtitle)) subtitle <- .auto_subtitle(x, quantity, breaks)
+  if (is.null(legend_title)) legend_title <- .quantity_label(quantity)
   if (is.null(caption)) caption <- .auto_caption()
 
   p <- ggplot2::ggplot(sf_long) +
@@ -283,7 +282,7 @@ autoplot.interpElections_result <- function(object, ...) {
       linewidth = border_width
     ) +
     ggplot2::facet_wrap(~ .facet_var) +
-    .build_fill_scale(palette, brk, n_breaks, type = type) +
+    .build_fill_scale(palette, brk, n_breaks, quantity = quantity) +
     ggplot2::labs(title = title, subtitle = subtitle,
                   fill = legend_title, caption = caption) +
     .map_theme()
@@ -366,7 +365,7 @@ autoplot.interpElections_result <- function(object, ...) {
 
 #' Auto-generate subtitle from metadata, quantity type, and break method
 #' @noRd
-.auto_subtitle <- function(result, type = NULL, breaks = NULL) {
+.auto_subtitle <- function(result, quantity = NULL, breaks = NULL) {
   parts <- character(0)
   if (!is.null(result$nome_municipio)) {
     parts <- c(parts, sprintf("%s (%s)", result$nome_municipio, result$uf))
@@ -384,8 +383,8 @@ autoplot.interpElections_result <- function(object, ...) {
     parts <- c(parts, cargo_str)
   }
 
-  if (!is.null(type) && type != "absolute") {
-    parts <- c(parts, .quantity_label(type))
+  if (!is.null(quantity) && quantity != "absolute") {
+    parts <- c(parts, .quantity_label(quantity))
   }
   if (is.character(breaks) && breaks != "continuous") {
     parts <- c(parts, tools::toTitleCase(breaks))
@@ -419,15 +418,15 @@ autoplot.interpElections_result <- function(object, ...) {
 
 #' Human-readable label for quantity type
 #' @noRd
-.quantity_label <- function(type) {
-  switch(type,
+.quantity_label <- function(quantity) {
+  switch(quantity,
     absolute     = "Count",
     pct_tract    = "% of tract votes",
     pct_muni     = "% of municipality total",
     pct_valid    = "% of valid votes",
     pct_eligible = "% of eligible voters",
     density      = "per km\u00b2",
-    type
+    quantity
   )
 }
 
@@ -503,13 +502,13 @@ autoplot.interpElections_result <- function(object, ...) {
 #' Build the ggplot2 fill scale
 #' @noRd
 .build_fill_scale <- function(palette, breaks, n_breaks, direction = -1,
-                               type = "absolute") {
+                               quantity = "absolute") {
   if (is.null(breaks)) {
     # Continuous scale
     viridis_names <- c("viridis", "magma", "plasma", "inferno",
                        "cividis", "mako", "rocket", "turbo")
     is_viridis <- tolower(palette) %in% viridis_names
-    labels_fn <- .scale_labels(type, breaks)
+    labels_fn <- .scale_labels(quantity, breaks)
 
     if (is_viridis) {
       ggplot2::scale_fill_viridis_c(option = palette, direction = direction,
@@ -520,7 +519,7 @@ autoplot.interpElections_result <- function(object, ...) {
     }
   } else {
     # Discrete scale from cut() bins
-    bin_labels <- .make_bin_labels(breaks, type)
+    bin_labels <- .make_bin_labels(breaks, quantity)
     n_bins <- length(bin_labels)
     colors <- .bin_colors(palette, n_bins, direction)
     names(colors) <- bin_labels
@@ -531,12 +530,12 @@ autoplot.interpElections_result <- function(object, ...) {
 
 #' Build label formatting function based on quantity type
 #' @noRd
-.scale_labels <- function(type, breaks = NULL) {
+.scale_labels <- function(quantity, breaks = NULL) {
   pct_types <- c("pct_tract", "pct_muni", "pct_valid", "pct_eligible")
-  if (type %in% pct_types) {
+  if (quantity %in% pct_types) {
     digits <- .label_precision(breaks, default = 1L)
     function(x) ifelse(is.na(x), "", paste0(round(x, digits), "%"))
-  } else if (type == "density") {
+  } else if (quantity == "density") {
     digits <- .label_precision(breaks, default = 1L)
     function(x) ifelse(is.na(x), "", format(round(x, digits), big.mark = ","))
   } else {
@@ -570,22 +569,22 @@ autoplot.interpElections_result <- function(object, ...) {
 #' Percentages: at most 2 significant digits. Absolute: no decimals.
 #'
 #' @param breaks Numeric vector of break points (length >= 2).
-#' @param type Quantity type for suffix formatting.
+#' @param quantity Quantity type for suffix formatting.
 #' @return Character vector of length `length(breaks) - 1`.
 #' @noRd
-.make_bin_labels <- function(breaks, type) {
+.make_bin_labels <- function(breaks, quantity) {
   n <- length(breaks) - 1L
   pct_types <- c("pct_tract", "pct_muni", "pct_valid", "pct_eligible")
 
-  suffix <- if (type %in% pct_types) {
+  suffix <- if (quantity %in% pct_types) {
     "%"
-  } else if (type == "density") {
+  } else if (quantity == "density") {
     "/km\u00b2"
   } else {
     ""
   }
 
-  is_pct <- type %in% c(pct_types, "density")
+  is_pct <- quantity %in% c(pct_types, "density")
 
   if (is_pct) {
     # At least 1 decimal place; increase until all finite breaks are distinct
@@ -663,15 +662,15 @@ autoplot.interpElections_result <- function(object, ...) {
 #'
 #' @param values Numeric vector.
 #' @param breaks Numeric break vector.
-#' @param type Quantity type (for label formatting).
+#' @param quantity Quantity type (for label formatting).
 #' @return Factor with human-readable bin labels.
 #' @noRd
-.cut_values <- function(values, breaks, type) {
+.cut_values <- function(values, breaks, quantity) {
   if (length(breaks) < 2L) {
     return(factor(rep("All values equal", length(values))))
   }
 
-  bin_labels <- .make_bin_labels(breaks, type)
+  bin_labels <- .make_bin_labels(breaks, quantity)
 
   # Extend outermost breaks to cover full data range (prevents NAs)
   brk <- breaks

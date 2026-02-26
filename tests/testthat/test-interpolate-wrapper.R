@@ -89,10 +89,10 @@ test_that("interpolate_election() with pre-computed time_matrix matches manual p
   expect_equal(ncol(result$alpha), k)
   expect_true(is.finite(result$optimization$value))
 
-  # weights and time_matrix always kept; electoral_sf opt-in
+  # weights, time_matrix, and electoral_sf always kept
   expect_true(is.matrix(result$weights))
   expect_true(is.matrix(result$time_matrix))
-  expect_null(result$electoral_sf)
+  expect_s3_class(result$electoral_sf, "sf")
 
   # New fields present
   expect_s3_class(result$tracts_sf, "sf")
@@ -141,7 +141,7 @@ test_that("interpolate_election() with keep includes heavy objects", {
   expect_equal(dim(result$time_matrix), c(n, m))
 })
 
-test_that("interpolate_election() keep electoral_sf returns sf object", {
+test_that("interpolate_election() electoral_sf always kept (sf object)", {
   skip_if_not_installed("sf")
 
   set.seed(42)
@@ -408,4 +408,109 @@ test_that("print.interpElections_result works", {
   expect_output(print(result), "Census tracts:")
   expect_output(print(result), "result\\$tracts_sf")
   expect_output(print(result), "Methods:")
+})
+
+
+# --- weights parameter ---
+
+test_that("interpolate_election() skips optimization when weights provided", {
+  skip_if_not_installed("sf")
+
+  set.seed(42)
+  n <- 10; m <- 5; k <- 3
+  pop_cols <- paste0("pop_", letters[1:k])
+  src_cols <- paste0("src_", letters[1:k])
+
+  tracts <- .mock_tracts_sf(n, pop_cols)
+  sources <- .mock_electoral_sf(m, src_cols)
+  tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
+
+  # First run: get optimized weights
+  result1 <- suppressWarnings(interpolate_election(
+    tracts_sf = tracts, electoral_sf = sources,
+    tract_id = "zone_id", point_id = "point_id",
+    calib_tracts = pop_cols, calib_sources = src_cols,
+    time_matrix = tt, verbose = FALSE
+  ))
+
+  # Second run: pass weights directly
+  result2 <- suppressWarnings(interpolate_election(
+    tracts_sf = tracts, electoral_sf = sources,
+    tract_id = "zone_id", point_id = "point_id",
+    calib_tracts = pop_cols, calib_sources = src_cols,
+    time_matrix = tt, weights = result1$weights,
+    verbose = FALSE
+  ))
+
+  # Same interpolated values (same weights × same source data)
+  expect_equal(result2$interpolated, result1$interpolated)
+  # Optimization was skipped
+  expect_null(result2$optimization)
+})
+
+test_that("interpolate_election() errors on weights dimension mismatch", {
+  skip_if_not_installed("sf")
+
+  n <- 10; m <- 5
+  tracts <- .mock_tracts_sf(n, "pop_a")
+  sources <- .mock_electoral_sf(m, "src_a")
+  tt <- matrix(1, n, m)
+  bad_W <- matrix(1, n - 1, m)  # wrong number of rows
+
+  expect_error(
+    suppressWarnings(interpolate_election(
+      tracts, sources,
+      interp_tracts = "pop_a", interp_sources = "src_a",
+      calib_tracts = "pop_a", calib_sources = "src_a",
+      time_matrix = tt, weights = bad_W, verbose = FALSE
+    )),
+    "dimensions"
+  )
+})
+
+
+# --- save_interpolation / load_interpolation ---
+
+test_that("save_interpolation / load_interpolation round-trips correctly", {
+  skip_if_not_installed("sf")
+
+  set.seed(42)
+  n <- 10; m <- 5; k <- 2
+  pop_cols <- paste0("pop_", letters[1:k])
+  src_cols <- paste0("src_", letters[1:k])
+
+  tracts <- .mock_tracts_sf(n, pop_cols)
+  sources <- .mock_electoral_sf(m, src_cols)
+  tt <- matrix(abs(rnorm(n * m, 50, 20)), n, m)
+
+  result <- suppressWarnings(interpolate_election(
+    tracts_sf = tracts, electoral_sf = sources,
+    tract_id = "zone_id", point_id = "point_id",
+    calib_tracts = pop_cols, calib_sources = src_cols,
+    time_matrix = tt, verbose = FALSE
+  ))
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+
+  path <- save_interpolation(result, tmp)
+  expect_equal(path, tmp)
+  expect_true(file.exists(tmp))
+
+  loaded <- load_interpolation(tmp)
+  expect_s3_class(loaded, "interpElections_result")
+  expect_equal(loaded$interpolated, result$interpolated)
+  expect_equal(loaded$weights, result$weights)
+  expect_equal(loaded$time_matrix, result$time_matrix)
+  expect_equal(loaded$alpha, result$alpha)
+})
+
+test_that("save_interpolation rejects non-result objects", {
+  expect_error(save_interpolation(list(a = 1), "test.rds"),
+               "interpElections_result")
+})
+
+test_that("load_interpolation errors on non-existent file", {
+  expect_error(load_interpolation("nonexistent_file.rds"),
+               "not found")
 })

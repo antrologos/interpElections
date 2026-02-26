@@ -43,6 +43,8 @@ Suggests:
     withr (>= 2.5.0),
     ggplot2 (>= 3.4.0),
     mapview (>= 2.11.0),
+    leaflet (>= 2.1.0),
+    htmlwidgets (>= 1.5.0),
     leafsync (>= 0.1.0),
     leafpop (>= 0.1.0),
     classInt (>= 0.4.0),

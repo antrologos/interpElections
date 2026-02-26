@@ -13,6 +13,7 @@ interpolate_election(
   tract_id = "id",
   point_id = "id",
   time_matrix = NULL,
+  weights = NULL,
   optim = optim_control(),
   routing = routing_control(),
   min_tract_pop = 1,
@@ -49,6 +50,10 @@ Default: \code{"id"}.}
 \item{time_matrix}{Numeric matrix [n x m] or NULL. Pre-computed travel
 times. If provided, skips all travel time computation.}
 
+\item{weights}{Numeric matrix or NULL. Pre-computed weight matrix
+[n x m]. When provided, optimization is skipped and these weights
+are used directly. Useful for \code{\link[=reinterpolate]{reinterpolate()}} fast path.}
+
 \item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
 Default: \code{optim_control()}.}
 
@@ -61,9 +66,9 @@ Default: \code{routing_control()}.}
 \item{offset}{Numeric. Travel time offset. Default: 1.}
 
 \item{keep}{Character vector or NULL. Names of extra intermediate
-objects to include in the result. \code{weights} and \code{time_matrix} are
-always kept. Options: \code{"electoral_sf"}, \code{"pop_raster"},
-\code{"rep_points"}.}
+objects to include in the result. \code{weights}, \code{time_matrix},
+\code{electoral_sf}, and \code{rep_points} are always kept.
+Options: \code{"pop_raster"}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
@@ -86,11 +91,11 @@ A list of class \code{"interpElections_result"} with components:
 \item{tract_id, point_id}{ID column names.}
 \item{interp_cols}{Character vector. Interpolated column names.}
 \item{calib_cols}{List with \verb{$tracts} and \verb{$sources}.}
-\item{weights}{Weight matrix or NULL (opt-in via \code{keep}).}
-\item{time_matrix}{Travel time matrix or NULL (opt-in via \code{keep}).}
-\item{electoral_sf}{\code{sf} point object or NULL (opt-in via \code{keep}).}
+\item{weights}{Weight matrix. Always kept.}
+\item{time_matrix}{Travel time matrix. Always kept.}
+\item{electoral_sf}{\code{sf} point object. Always kept.}
+\item{rep_points}{Representative points \code{sf} object. Always kept.}
 \item{pop_raster}{Population raster or NULL (opt-in via \code{keep}).}
-\item{rep_points}{Representative points or NULL (opt-in via \code{keep}).}
 }
 }
 \description{

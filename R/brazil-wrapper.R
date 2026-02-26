@@ -40,9 +40,11 @@
 #'   day at 10 AM.
 #' @param offset Numeric. Travel time offset. Default: 1.
 #' @param force Re-download all cached data. Default: FALSE.
+#' @param weights Numeric matrix or NULL. Pre-computed weight matrix.
+#'   When provided, optimization is skipped.
 #' @param keep Character vector of extra objects to include in the
-#'   result. `weights` and `time_matrix` are always kept.
-#'   Options: `"electoral_sf"`, `"pop_raster"`, `"rep_points"`.
+#'   result. `weights`, `time_matrix`, `electoral_sf`, and `rep_points`
+#'   are always kept. Options: `"pop_raster"`.
 #' @param verbose Print progress messages. Default: TRUE.
 #' @param ... Advanced arguments. `network_path` (character),
 #'   `cache` (logical, default TRUE), `osm_provider` (character),
@@ -98,6 +100,7 @@ interpolate_election_br <- function(
     min_tract_pop      = 1,
     # -- Pre-computed input --
     time_matrix        = NULL,
+    weights            = NULL,
     # -- Control --
     optim              = optim_control(),
     routing            = routing_control(),
@@ -386,6 +389,7 @@ interpolate_election_br <- function(
     calib_sources = calib$calib_sources,
     interp_sources = interp_sources,
     time_matrix = time_matrix,
+    weights = weights,
     optim = optim,
     routing = routing,
     min_tract_pop = 1,

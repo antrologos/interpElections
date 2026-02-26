@@ -13,7 +13,7 @@
 #'   (numeric), candidate name substring, or party abbreviation.
 #'   Multiple values create synchronized comparison panels.
 #'   If NULL, auto-selects the first candidate variable.
-#' @param type Quantity to map: `"pct_tract"` (default), `"absolute"`,
+#' @param quantity Quantity to map: `"pct_tract"` (default), `"absolute"`,
 #'   `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`, `"density"`.
 #' @param palette Color palette name. Default: `"RdYlBu"`
 #'   (diverging, colorblind-friendly).
@@ -41,11 +41,11 @@
 #'                                    keep = "electoral_sf")
 #'
 #' # Interactive map by candidate name
-#' plot_interactive(result, variable = "Lula", type = "pct_tract")
+#' plot_interactive(result, variable = "Lula", quantity = "pct_tract")
 #'
 #' # Side-by-side comparison (synced panels)
 #' plot_interactive(result, variable = c("Lula", "Bolsonaro"),
-#'                  type = "pct_tract")
+#'                  quantity = "pct_tract")
 #'
 #' # Custom popup
 #' plot_interactive(result, variable = "PT",
@@ -55,7 +55,7 @@
 #'
 #' @export
 plot_interactive <- function(
-    result, variable = NULL, type = "pct_tract",
+    result, variable = NULL, quantity = "pct_tract",
     palette = "RdYlBu",
     breaks = "quantile", n_breaks = 5L,
     popup_vars = NULL,
@@ -84,7 +84,7 @@ plot_interactive <- function(
 
   # Multi-variable: synchronized panels
   if (length(variable) > 1L) {
-    return(.interactive_sync(result, variable, type, palette,
+    return(.interactive_sync(result, variable, quantity, palette,
                               breaks, n_breaks,
                               popup_vars, alpha, legend, basemap, ...))
   }
@@ -94,7 +94,7 @@ plot_interactive <- function(
     NULL
   })
   if (is.null(col)) return(invisible(NULL))
-  values <- .compute_quantity(result, col, type)
+  values <- .compute_quantity(result, col, quantity)
 
   # Build sf for display
   plot_sf <- result$tracts_sf
@@ -103,7 +103,7 @@ plot_interactive <- function(
   # Compute breaks and optionally bin values (same logic as plot())
   brk <- .compute_breaks(values, breaks, n_breaks)
   if (!is.null(brk)) {
-    plot_sf[[display_name]] <- .cut_values(values, brk, type)
+    plot_sf[[display_name]] <- .cut_values(values, brk, quantity)
     pal <- .bin_colors(palette, length(brk) - 1L, direction = -1)
   } else {
     plot_sf[[display_name]] <- values
@@ -120,7 +120,7 @@ plot_interactive <- function(
 
   # Layer name
   if (is.null(layer_name)) {
-    qty_suffix <- if (type != "absolute") paste0(" (", .quantity_label(type), ")") else ""
+    qty_suffix <- if (quantity != "absolute") paste0(" (", .quantity_label(quantity), ")") else ""
     layer_name <- paste0(display_name, qty_suffix)
   }
 
@@ -163,7 +163,7 @@ plot_interactive <- function(
 
 #' @noRd
 .interactive_sync <- function(
-    result, variables, type, palette,
+    result, variables, quantity, palette,
     breaks, n_breaks,
     popup_vars, alpha, legend, basemap, ...) {
 
@@ -179,7 +179,7 @@ plot_interactive <- function(
 
   # Compute all values first for shared breaks
   all_values <- lapply(cols, function(col) {
-    .compute_quantity(result, col, type)
+    .compute_quantity(result, col, quantity)
   })
 
   # Compute breaks across ALL variables for a shared scale
@@ -197,7 +197,7 @@ plot_interactive <- function(
     display_name <- .auto_title(col, result)
 
     if (!is.null(brk)) {
-      plot_sf[[display_name]] <- .cut_values(values, brk, type)
+      plot_sf[[display_name]] <- .cut_values(values, brk, quantity)
       pal <- .bin_colors(palette, length(brk) - 1L, direction = -1)
     } else {
       plot_sf[[display_name]] <- values
@@ -211,8 +211,8 @@ plot_interactive <- function(
       popup <- .build_detail_popup(result, col, display_name, plot_sf)
     }
 
-    qty_suffix <- if (type != "absolute") {
-      paste0(" (", .quantity_label(type), ")")
+    qty_suffix <- if (quantity != "absolute") {
+      paste0(" (", .quantity_label(quantity), ")")
     } else {
       ""
     }

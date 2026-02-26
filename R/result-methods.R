@@ -263,5 +263,12 @@ residuals.interpElections_result <- function(object, ...) {
   # Residuals = fitted - observed
   resid <- fitted_vals - pop_mat
   colnames(resid) <- object$calib_cols$tracts
+
+  # Mark unreachable tracts (NA interpolated values) as NA
+  if (!is.null(object$interpolated)) {
+    unreachable <- rowSums(is.na(object$interpolated)) > 0L
+    if (any(unreachable)) resid[unreachable, ] <- NA_real_
+  }
+
   resid
 }

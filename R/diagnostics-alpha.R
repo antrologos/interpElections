@@ -107,7 +107,7 @@ plot_alpha <- function(result, type = c("map", "histogram", "bracket"),
       color = "white",
       linewidth = 0.05
     ) +
-    .build_fill_scale(palette, brk, n_breaks, type = "absolute") +
+    .build_fill_scale(palette, brk, n_breaks, quantity = "absolute") +
     ggplot2::labs(title = title, fill = "Alpha") +
     .map_theme()
 

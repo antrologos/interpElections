@@ -134,6 +134,48 @@
 }
 
 
+#' Get real station IDs from result
+#'
+#' Returns station IDs from electoral_sf using the point_id column.
+#' Falls back to character sequence when electoral_sf is NULL.
+#' @noRd
+.get_station_ids <- function(result) {
+  if (!is.null(result$electoral_sf) && !is.null(result$point_id)) {
+    ids <- if (requireNamespace("sf", quietly = TRUE)) {
+      sf::st_drop_geometry(result$electoral_sf)[[result$point_id]]
+    } else {
+      result$electoral_sf[[result$point_id]]
+    }
+    if (!is.null(ids)) return(as.character(ids))
+  }
+  m <- if (!is.null(result$weights)) ncol(result$weights)
+       else if (!is.null(result$sources)) nrow(result$sources)
+       else 0L
+  as.character(seq_len(m))
+}
+
+
+#' Get real tract IDs from result
+#'
+#' Returns tract IDs from tracts_sf using the tract_id column.
+#' Falls back to character sequence when tracts_sf is NULL.
+#' @noRd
+.get_tract_ids <- function(result) {
+  if (!is.null(result$tracts_sf) && !is.null(result$tract_id)) {
+    ids <- if (requireNamespace("sf", quietly = TRUE)) {
+      sf::st_drop_geometry(result$tracts_sf)[[result$tract_id]]
+    } else {
+      result$tracts_sf[[result$tract_id]]
+    }
+    if (!is.null(ids)) return(as.character(ids))
+  }
+  n <- if (!is.null(result$weights)) nrow(result$weights)
+       else if (!is.null(result$tracts_sf)) nrow(result$tracts_sf)
+       else 0L
+  as.character(seq_len(n))
+}
+
+
 #' Compute raw, Pearson, or deviance residuals
 #' @noRd
 .compute_typed_residuals <- function(result, residual_type = "raw") {
@@ -156,6 +198,13 @@
   observed <- as.matrix(tracts_df[, result$calib_cols$tracts, drop = FALSE])
   storage.mode(observed) <- "double"
 
+  # Identify unreachable tracts (NA interpolated values → fitted = 0 artefact)
+  unreachable <- if (!is.null(result$interpolated)) {
+    rowSums(is.na(result$interpolated)) > 0L
+  } else {
+    rep(FALSE, nrow(fitted_vals))
+  }
+
   if (residual_type == "pearson") {
     # (fitted - observed) / sqrt(fitted)
     denom <- sqrt(pmax(fitted_vals, .Machine$double.eps))
@@ -169,6 +218,9 @@
   } else {
     stop("Unknown residual_type: '", residual_type, "'", call. = FALSE)
   }
+
+  # Mark unreachable tracts as NA (avoid false extreme residuals)
+  if (any(unreachable)) resid[unreachable, ] <- NA_real_
 
   colnames(resid) <- result$calib_cols$tracts
   resid

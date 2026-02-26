@@ -8,6 +8,7 @@ plot_moran(
   result,
   variable = NULL,
   type = c("lisa", "moran"),
+  quantity = "pct_tract",
   significance = 0.05,
   nsim = 999L,
   ...
@@ -22,9 +23,18 @@ candidate name, or party abbreviation.}
 \item{type}{Character. \code{"moran"} for the Moran scatterplot, or
 \code{"lisa"} for the LISA cluster map. Default: \code{"lisa"}.}
 
+\item{quantity}{Quantity to analyze: \code{"pct_tract"} (default),
+\code{"absolute"}, \code{"pct_muni"}, \code{"pct_valid"}, \code{"pct_eligible"},
+\code{"density"}. The default \code{"pct_tract"} divides raw vote counts by
+tract turnout, revealing political preference patterns rather than
+population density patterns. Matches the default of
+\code{\link[=plot.interpElections_result]{plot.interpElections_result()}}.}
+
 \item{significance}{Significance level for LISA. Default: 0.05.}
 
-\item{nsim}{Number of permutations. Default: 999.}
+\item{nsim}{Number of permutations for LISA significance testing
+(conditional permutation test via \code{\link[spdep:localmoran]{spdep::localmoran_perm()}}).
+Default: 999. Only used when \code{type = "lisa"}.}
 
 \item{...}{Ignored.}
 }

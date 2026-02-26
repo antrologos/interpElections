@@ -107,8 +107,16 @@ plot_residual_autocorrelation <- function(result,
 #'   candidate name, or party abbreviation.
 #' @param type Character. `"moran"` for the Moran scatterplot, or
 #'   `"lisa"` for the LISA cluster map. Default: `"lisa"`.
+#' @param quantity Quantity to analyze: `"pct_tract"` (default),
+#'   `"absolute"`, `"pct_muni"`, `"pct_valid"`, `"pct_eligible"`,
+#'   `"density"`. The default `"pct_tract"` divides raw vote counts by
+#'   tract turnout, revealing political preference patterns rather than
+#'   population density patterns. Matches the default of
+#'   [plot.interpElections_result()].
 #' @param significance Significance level for LISA. Default: 0.05.
-#' @param nsim Number of permutations. Default: 999.
+#' @param nsim Number of permutations for LISA significance testing
+#'   (conditional permutation test via [spdep::localmoran_perm()]).
+#'   Default: 999. Only used when `type = "lisa"`.
 #' @param ... Ignored.
 #'
 #' @return A `ggplot` object (invisibly).
@@ -116,8 +124,11 @@ plot_residual_autocorrelation <- function(result,
 #' @export
 plot_moran <- function(result, variable = NULL,
                         type = c("lisa", "moran"),
+                        quantity = "pct_tract",
                         significance = 0.05, nsim = 999L, ...) {
   type <- match.arg(type)
+  quantity <- match.arg(quantity, c("absolute", "pct_tract", "pct_muni",
+                                     "pct_valid", "pct_eligible", "density"))
   if (!requireNamespace("spdep", quietly = TRUE)) {
     message("The 'spdep' package is required.\n",
             "Install with: install.packages(\"spdep\")")
@@ -139,7 +150,11 @@ plot_moran <- function(result, variable = NULL,
   })
   if (is.null(col)) return(invisible(NULL))
 
-  values <- result$interpolated[, col]
+  values <- tryCatch(.compute_quantity(result, col, quantity), error = function(e) {
+    message(conditionMessage(e))
+    NULL
+  })
+  if (is.null(values)) return(invisible(NULL))
 
   # Filter out NA observations (unreachable tracts) before spatial analysis
   valid <- !is.na(values)
@@ -159,9 +174,9 @@ plot_moran <- function(result, variable = NULL,
   lw <- spdep::nb2listw(nb, style = "W", zero.policy = TRUE)
 
   if (type == "moran") {
-    p <- .moran_scatter(values, lw, col, result_sub)
+    p <- .moran_scatter(values, lw, col, result_sub, quantity)
   } else {
-    p <- .lisa_map(values, lw, col, result_sub, significance, nsim)
+    p <- .lisa_map(values, lw, col, result_sub, significance, nsim, quantity)
   }
 
   if (!is.null(p)) print(p)
@@ -170,7 +185,7 @@ plot_moran <- function(result, variable = NULL,
 
 
 #' @noRd
-.moran_scatter <- function(values, lw, col, result) {
+.moran_scatter <- function(values, lw, col, result, quantity = "absolute") {
   moran_test <- spdep::moran.test(values, lw, zero.policy = TRUE)
   I_stat <- moran_test$estimate["Moran I statistic"]
   p_val <- moran_test$p.value
@@ -179,6 +194,8 @@ plot_moran <- function(result, variable = NULL,
   df <- data.frame(value = values, lag_value = lag_vals)
 
   title <- tryCatch(.auto_title(col, result), error = function(e) col)
+  qty_label <- .quantity_label(quantity)
+  sub <- if (quantity != "absolute") qty_label else NULL
 
   p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$value,
                                           y = .data$lag_value)) +
@@ -194,8 +211,9 @@ plot_moran <- function(result, variable = NULL,
                        fontface = "bold") +
     ggplot2::labs(
       title = sprintf("Moran scatterplot: %s", title),
-      x = col,
-      y = sprintf("Spatially lagged %s", col)
+      subtitle = sub,
+      x = qty_label,
+      y = sprintf("Spatially lagged %s", qty_label)
     ) +
     ggplot2::theme_minimal()
   p
@@ -203,10 +221,20 @@ plot_moran <- function(result, variable = NULL,
 
 
 #' @noRd
-.lisa_map <- function(values, lw, col, result, significance, nsim) {
-  # Local Moran's I
-  lisa <- spdep::localmoran(values, lw, zero.policy = TRUE)
-  p_vals <- lisa[, "Pr(z != E(Ii))"]
+.lisa_map <- function(values, lw, col, result, significance, nsim,
+                     quantity = "absolute") {
+  # Local Moran's I (permutation-based)
+  lisa <- spdep::localmoran_perm(values, lw, nsim = nsim,
+                                  zero.policy = TRUE)
+  # Permutation p-value column
+  p_col <- "Pr(folded) Sim"
+  if (!p_col %in% colnames(lisa)) {
+    p_col <- grep("Pr.*Sim", colnames(lisa), value = TRUE)[1L]
+  }
+  if (is.null(p_col) || !p_col %in% colnames(lisa)) {
+    p_col <- "Pr(z != E(Ii))"
+  }
+  p_vals <- lisa[, p_col]
 
   # Classify clusters
   z_val <- scale(values)[, 1]
@@ -237,6 +265,9 @@ plot_moran <- function(result, variable = NULL,
 
   n_sig <- sum(sig)
   title <- tryCatch(.auto_title(col, result), error = function(e) col)
+  qty_label <- .quantity_label(quantity)
+  sub <- sprintf("%d significant tracts (p < %.2f)", n_sig, significance)
+  if (quantity != "absolute") sub <- paste0(qty_label, " \u2014 ", sub)
 
   p <- ggplot2::ggplot(plot_sf) +
     ggplot2::geom_sf(
@@ -246,7 +277,7 @@ plot_moran <- function(result, variable = NULL,
     ggplot2::scale_fill_manual(values = lisa_colors, drop = FALSE) +
     ggplot2::labs(
       title = sprintf("LISA clusters: %s", title),
-      subtitle = sprintf("%d significant tracts (p < %.2f)", n_sig, significance),
+      subtitle = sub,
       fill = "Cluster"
     ) +
     .map_theme()

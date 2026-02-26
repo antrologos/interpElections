@@ -308,37 +308,13 @@ test_that("plot_connections overview without background tracts", {
 })
 
 
-# --- plot_connections detail tests ---
-
-test_that("plot_connections with tract index returns ggplot", {
-  skip_if_not_installed("sf")
-  skip_if_not_installed("ggplot2")
-  obj <- .mock_weight_result()
-  p <- plot_connections(obj, tract = 1)
-  expect_s3_class(p, "gg")
-})
-
-test_that("plot_connections with tract ID returns ggplot", {
-  skip_if_not_installed("sf")
-  skip_if_not_installed("ggplot2")
-  obj <- .mock_weight_result()
-  p <- plot_connections(obj, tract = "Z3")
-  expect_s3_class(p, "gg")
-})
-
-test_that("plot_connections with multiple tracts returns ggplot", {
-  skip_if_not_installed("sf")
-  skip_if_not_installed("ggplot2")
-  obj <- .mock_weight_result()
-  p <- plot_connections(obj, tract = c(1, 3, 5))
-  expect_s3_class(p, "gg")
-})
+# --- plot_connections with top_k and threshold ---
 
 test_that("plot_connections respects top_k", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_weight_result()
-  p <- plot_connections(obj, tract = 1, top_k = 2)
+  p <- plot_connections(obj, top_k = 2)
   expect_s3_class(p, "gg")
 })
 
@@ -346,7 +322,7 @@ test_that("plot_connections respects threshold", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_weight_result()
-  p <- plot_connections(obj, tract = 1, threshold = 0.5)
+  p <- plot_connections(obj, threshold = 0.5)
   expect_s3_class(p, "gg")
 })
 
@@ -384,18 +360,22 @@ test_that("plot_connections errors without tracts_sf", {
   expect_error(plot_connections(obj), "tracts_sf")
 })
 
-test_that("plot_connections errors on out-of-range tract index", {
-  skip_if_not_installed("sf")
-  skip_if_not_installed("ggplot2")
-  obj <- .mock_weight_result(n = 10, m = 5)
-  expect_error(plot_connections(obj, tract = 99), "out of range")
-})
-
-test_that("plot_connections errors on unknown tract ID", {
+test_that("plot_connections overview has fill scale (tracts colored)", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_weight_result()
-  expect_error(plot_connections(obj, tract = "NONEXISTENT"), "not found")
+  p <- plot_connections(obj)
+  # Should have a fill scale for effective sources
+  expect_true(!is.null(p$scales$get_scales("fill")))
+})
+
+test_that("plot_connections overview subtitle includes filter info", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_weight_result()
+  p <- plot_connections(obj, top_k = 3, threshold = 0.05)
+  expect_true(grepl("top_k", p$labels$subtitle))
+  expect_true(grepl("threshold", p$labels$subtitle))
 })
 
 
@@ -426,4 +406,70 @@ test_that(".resolve_tract_indices errors on out-of-range index", {
   skip_if_not_installed("sf")
   obj <- .mock_weight_result(n = 10, m = 5)
   expect_error(.resolve_tract_indices(15, obj), "out of range")
+})
+
+
+# --- .get_station_ids / .get_tract_ids tests ---
+
+test_that(".get_station_ids returns real IDs from electoral_sf", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  ids <- .get_station_ids(obj)
+  expect_equal(ids, paste0("P", 1:5))
+})
+
+test_that(".get_station_ids falls back to sequence", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  obj$electoral_sf <- NULL
+  ids <- .get_station_ids(obj)
+  expect_equal(ids, as.character(1:5))
+})
+
+test_that(".get_tract_ids returns real IDs from tracts_sf", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  ids <- .get_tract_ids(obj)
+  expect_equal(ids, paste0("Z", 1:10))
+})
+
+test_that(".get_tract_ids falls back to sequence", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  obj$tracts_sf <- NULL
+  ids <- .get_tract_ids(obj)
+  expect_equal(ids, as.character(1:10))
+})
+
+test_that("tract popup contains real station IDs", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  ws <- weight_summary(obj)
+  popups <- .build_connection_tract_popup(obj, obj$weights, ws)
+  expect_true(any(grepl("P1", popups) | grepl("P2", popups)))
+})
+
+test_that("station popup contains real station IDs", {
+  skip_if_not_installed("sf")
+  obj <- .mock_weight_result()
+  popups <- .build_connection_station_popup(obj, obj$weights)
+  expect_true(any(grepl("P1", popups) | grepl("P2", popups)))
+})
+
+test_that("interactive connections returns htmlwidget", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("leaflet")
+  skip_if_not_installed("htmlwidgets")
+  obj <- .mock_weight_result()
+  W <- obj$weights
+  centroids <- sf::st_coordinates(
+    sf::st_centroid(sf::st_geometry(obj$tracts_sf))
+  )
+  station_coords <- sf::st_coordinates(obj$electoral_sf)
+  m <- .plot_connections_interactive(
+    obj, W, centroids, station_coords[, 1:2],
+    top_k = NULL, threshold = 0.01,
+    show_all_tracts = TRUE, palette = "YlOrRd"
+  )
+  expect_s3_class(m, "htmlwidget")
 })

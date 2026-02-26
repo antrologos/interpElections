@@ -57,7 +57,7 @@ weight_summary <- function(result) {
   # Travel-time weighted mean
   tt <- result$time_matrix
   mean_tt_weighted <- if (!is.null(tt) && nrow(tt) == n && ncol(tt) == m) {
-    rowSums(W * tt)
+    rowSums(W * tt, na.rm = TRUE)
   } else {
     rep(NA_real_, n)
   }
@@ -133,30 +133,28 @@ plot_weights <- function(result, tract = NULL,
 
 #' Plot tract-station connections
 #'
-#' Draws lines between tract centroids and their assigned stations,
-#' with width and alpha proportional to weight.
+#' Draws lines between tract centroids and their assigned stations.
+#' In the static version, tracts are colored by effective number of
+#' sources and lines are scaled by weight. In the interactive version,
+#' clicking a station or tract reveals its connections.
 #'
 #' @param result An `interpElections_result` object.
-#' @param tract Tract ID(s) or index(es). NULL for overview.
-#' @param top_k Max connections per tract.
-#' @param threshold Min weight for a connection.
+#' @param top_k Max connections per tract. `NULL` shows only the
+#'   dominant connection (static) or all connections (interactive).
+#' @param threshold Min weight for a connection to be drawn.
 #' @param show_all_tracts Logical. Show all tract polygons as background.
 #' @param palette Color palette.
 #' @param interactive Logical.
 #' @param ... Ignored.
 #'
-#' @return A ggplot object (invisibly).
+#' @return A ggplot object (invisibly) or an htmlwidget (interactive).
 #' @export
-plot_connections <- function(result, tract = NULL, top_k = NULL,
+plot_connections <- function(result, top_k = NULL,
                               threshold = 0.01, show_all_tracts = TRUE,
-                              palette = "viridis", interactive = FALSE, ...) {
+                              palette = "YlOrRd", interactive = FALSE, ...) {
 
   if (!inherits(result, "interpElections_result")) {
     stop("'result' must be an interpElections_result object.", call. = FALSE)
-  }
-  if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    stop("The 'ggplot2' package is required for plot_connections().",
-         call. = FALSE)
   }
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("The 'sf' package is required for plot_connections().", call. = FALSE)
@@ -182,20 +180,18 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
   }
 
   if (interactive) {
-    return(.plot_connections_interactive(result, W, centroids, station_coords))
+    return(.plot_connections_interactive(result, W, centroids, station_coords,
+                                         top_k, threshold, show_all_tracts,
+                                         palette))
   }
 
-  if (is.null(tract)) {
-    # Overview mode: one line per tract to its dominant station
-    p <- .plot_connections_overview(result, W, centroids, station_coords,
-                                     show_all_tracts)
-  } else {
-    # Specific tract(s) mode
-    tract_indices <- .resolve_tract_indices(tract, result)
-    p <- .plot_connections_detail(result, W, centroids, station_coords,
-                                   tract_indices, top_k, threshold,
-                                   show_all_tracts, palette)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("The 'ggplot2' package is required for plot_connections().",
+         call. = FALSE)
   }
+
+  p <- .plot_connections_overview(result, W, centroids, station_coords,
+                                   top_k, threshold, show_all_tracts, palette)
 
   print(p)
   invisible(p)
@@ -222,7 +218,7 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
       ggplot2::aes(fill = .data$.eff_n),
       color = "white", linewidth = 0.05
     ) +
-    .build_fill_scale(palette, brk, n_breaks, type = "absolute") +
+    .build_fill_scale(palette, brk, n_breaks, quantity = "absolute") +
     ggplot2::labs(
       title = "Effective number of sources",
       fill = "Eff. sources"
@@ -438,210 +434,105 @@ plot_connections <- function(result, tract = NULL, top_k = NULL,
 
 #' @noRd
 .plot_connections_overview <- function(result, W, centroids, station_coords,
-                                        show_all_tracts) {
+                                        top_k, threshold, show_all_tracts,
+                                        palette) {
   n <- nrow(W)
-  dom <- apply(W, 1, which.max)
-
-  seg_df <- data.frame(
-    cx = centroids[, 1],
-    cy = centroids[, 2],
-    sx = station_coords[dom, 1],
-    sy = station_coords[dom, 2]
-  )
-
-  p <- ggplot2::ggplot()
-
-  if (show_all_tracts) {
-    p <- p + ggplot2::geom_sf(
-      data = result$tracts_sf,
-      fill = "grey90", color = "grey70", linewidth = 0.15,
-      inherit.aes = FALSE
-    )
-  }
-
-  # Auto-scale line aesthetics based on density
-  line_alpha <- if (n > 2000) 0.1 else if (n > 1000) 0.15 else 0.3
-  line_lw    <- if (n > 2000) 0.1 else if (n > 1000) 0.15 else 0.3
-  pt_size    <- if (n > 2000) 0.6 else if (n > 1000) 0.8  else 1.2
-
-  p <- p +
-    ggplot2::geom_segment(
-      data = seg_df,
-      ggplot2::aes(
-        x = .data$cx, y = .data$cy,
-        xend = .data$sx, yend = .data$sy
-      ),
-      color = "steelblue", alpha = line_alpha, linewidth = line_lw
-    )
-
-  # Station points
-  st_df <- data.frame(x = station_coords[, 1], y = station_coords[, 2])
-  p <- p + ggplot2::geom_point(
-    data = st_df,
-    ggplot2::aes(x = .data$x, y = .data$y),
-    color = "black", size = pt_size,
-    inherit.aes = FALSE
-  )
-
-  p <- p +
-    ggplot2::labs(
-      title = "Tract-station connections (dominant)",
-      subtitle = sprintf("%d tracts, %d stations", n, ncol(W))
-    ) +
-    .map_theme()
-
-  border_layer <- .muni_border_layer(result$code_muni, result$tracts_sf,
-                                      result$muni_boundary)
-  if (!is.null(border_layer)) p <- p + border_layer
-
-  p
-}
-
-
-#' @noRd
-.plot_connections_detail <- function(result, W, centroids, station_coords,
-                                      tract_indices, top_k, threshold,
-                                      show_all_tracts, palette) {
-  n_tracts <- length(tract_indices)
   m <- ncol(W)
+  ws <- weight_summary(result)
 
-  # Build segment data frame
-  segs <- vector("list", n_tracts)
-  for (k in seq_along(tract_indices)) {
-    i <- tract_indices[k]
+  # Build segment data for connections passing threshold/top_k filters
+  segs <- vector("list", n)
+  for (i in seq_len(n)) {
     w <- W[i, ]
+    if (max(w) == 0) next
     keep <- w >= threshold
-    if (!is.null(top_k) && sum(keep) > top_k) {
+    if (is.null(top_k)) {
+      # Default static: show only dominant connection
+      dom <- which.max(w)
+      keep <- rep(FALSE, m)
+      keep[dom] <- TRUE
+    } else if (sum(keep) > top_k) {
       ord <- order(w, decreasing = TRUE)
-      keep <- rep(FALSE, length(w))
+      keep <- rep(FALSE, m)
       keep[ord[seq_len(top_k)]] <- TRUE
     }
     if (!any(keep)) next
-
     idx <- which(keep)
-    segs[[k]] <- data.frame(
-      cx = centroids[i, 1],
-      cy = centroids[i, 2],
-      sx = station_coords[idx, 1],
-      sy = station_coords[idx, 2],
+    segs[[i]] <- data.frame(
+      cx = centroids[i, 1], cy = centroids[i, 2],
+      sx = station_coords[idx, 1], sy = station_coords[idx, 2],
       weight = w[idx],
-      tract = as.character(i),
-      stringsAsFactors = FALSE
+      stringsAsFactors = FALSE,
+      row.names = NULL
     )
   }
   seg_df <- do.call(rbind, segs)
 
+  # Tract fill: effective number of sources
+  plot_sf <- result$tracts_sf
+  plot_sf$.eff_n <- ws$effective_n_sources
+
   p <- ggplot2::ggplot()
 
   if (show_all_tracts) {
     p <- p + ggplot2::geom_sf(
-      data = result$tracts_sf,
-      fill = "grey90", color = "grey70", linewidth = 0.15,
+      data = plot_sf,
+      ggplot2::aes(fill = .data$.eff_n),
+      color = "white", linewidth = 0.05,
       inherit.aes = FALSE
-    )
-  }
-
-  # Highlight selected tracts
-  sel_sf <- result$tracts_sf[tract_indices, , drop = FALSE]
-  p <- p + ggplot2::geom_sf(
-    data = sel_sf,
-    fill = "#fee08b", color = "#d73027", linewidth = 0.5,
-    inherit.aes = FALSE
-  )
-
-  if (!is.null(seg_df) && nrow(seg_df) > 0L) {
-    if (n_tracts > 1L) {
-      p <- p + ggplot2::geom_segment(
-        data = seg_df,
-        ggplot2::aes(
-          x = .data$cx, y = .data$cy,
-          xend = .data$sx, yend = .data$sy,
-          alpha = .data$weight, linewidth = .data$weight,
-          color = .data$tract
-        )
-      ) +
-        ggplot2::scale_linewidth_continuous(range = c(0.5, 3), guide = "none") +
-        ggplot2::scale_alpha_continuous(range = c(0.5, 1), guide = "none")
-    } else {
-      p <- p + ggplot2::geom_segment(
-        data = seg_df,
-        ggplot2::aes(
-          x = .data$cx, y = .data$cy,
-          xend = .data$sx, yend = .data$sy,
-          alpha = .data$weight, linewidth = .data$weight
-        ),
-        color = "steelblue"
-      ) +
-        ggplot2::scale_linewidth_continuous(range = c(0.5, 3), guide = "none") +
-        ggplot2::scale_alpha_continuous(range = c(0.5, 1), guide = "none")
-
-      # Weight labels on top-3 connections
-      top3 <- seg_df[order(seg_df$weight, decreasing = TRUE), ]
-      top3 <- top3[seq_len(min(3L, nrow(top3))), ]
-      top3$label <- sprintf("%.3f", top3$weight)
-      top3$lx <- (top3$cx + top3$sx) / 2
-      top3$ly <- (top3$cy + top3$sy) / 2
-      p <- p + ggplot2::geom_label(
-        data = top3,
-        ggplot2::aes(x = .data$lx, y = .data$ly, label = .data$label),
-        size = 2.8, fill = "white", alpha = 0.8,
-        label.padding = ggplot2::unit(0.15, "lines"),
-        inherit.aes = FALSE
+    ) +
+      ggplot2::scale_fill_distiller(
+        palette = palette, direction = 1, na.value = "grey90",
+        name = "Eff. sources"
       )
-    }
-
-    # Zoom: bounding box of selected tract(s) + connected stations, expanded 30%
-    all_x <- c(seg_df$cx, seg_df$sx)
-    all_y <- c(seg_df$cy, seg_df$sy)
-    x_range <- range(all_x)
-    y_range <- range(all_y)
-    x_pad <- diff(x_range) * 0.3
-    y_pad <- diff(y_range) * 0.3
-    # Ensure minimum padding from tract bounding box
-    sel_bbox <- sf::st_bbox(sel_sf)
-    x_pad <- max(x_pad, (sel_bbox[["xmax"]] - sel_bbox[["xmin"]]) * 0.5)
-    y_pad <- max(y_pad, (sel_bbox[["ymax"]] - sel_bbox[["ymin"]]) * 0.5)
-    zoom_xlim <- x_range + c(-x_pad, x_pad)
-    zoom_ylim <- y_range + c(-y_pad, y_pad)
   }
 
-  # Station points (only connected stations in zoomed view)
+  # Connection lines with weight-proportional width
   if (!is.null(seg_df) && nrow(seg_df) > 0L) {
-    connected_idx <- unique(match(
-      paste(seg_df$sx, seg_df$sy),
-      paste(station_coords[, 1], station_coords[, 2])
-    ))
-    connected_idx <- connected_idx[!is.na(connected_idx)]
-    st_df <- data.frame(
-      x = station_coords[connected_idx, 1],
-      y = station_coords[connected_idx, 2]
-    )
-  } else {
-    st_df <- data.frame(x = station_coords[, 1], y = station_coords[, 2])
+    p <- p + ggplot2::geom_segment(
+      data = seg_df,
+      ggplot2::aes(
+        x = .data$cx, y = .data$cy,
+        xend = .data$sx, yend = .data$sy,
+        linewidth = .data$weight
+      ),
+      color = "steelblue", alpha = 0.4
+    ) +
+      ggplot2::scale_linewidth_continuous(
+        range = c(0.1, 2), guide = "none"
+      )
   }
+
+  # Station points sized by total weight (importance)
+  total_w <- colSums(W)
+  st_df <- data.frame(
+    x = station_coords[, 1],
+    y = station_coords[, 2],
+    total_weight = total_w
+  )
   p <- p + ggplot2::geom_point(
     data = st_df,
-    ggplot2::aes(x = .data$x, y = .data$y),
-    color = "black", size = 2.5, shape = 16,
+    ggplot2::aes(x = .data$x, y = .data$y, size = .data$total_weight),
+    color = "black", alpha = 0.7,
     inherit.aes = FALSE
-  )
+  ) +
+    ggplot2::scale_size_continuous(range = c(0.5, 4), guide = "none")
+
+  # Subtitle
+  sub_parts <- sprintf("%d tracts, %d stations", n, m)
+  if (!is.null(top_k)) sub_parts <- paste0(sub_parts, sprintf(", top_k = %d", top_k))
+  if (threshold > 0) sub_parts <- paste0(sub_parts, sprintf(", threshold = %.3f", threshold))
 
   p <- p +
     ggplot2::labs(
       title = "Tract-station connections",
-      subtitle = sprintf("%d tract(s), threshold = %.3f",
-                         n_tracts, threshold)
+      subtitle = sub_parts
     ) +
     .map_theme()
 
   border_layer <- .muni_border_layer(result$code_muni, result$tracts_sf,
                                       result$muni_boundary)
   if (!is.null(border_layer)) p <- p + border_layer
-
-  # Apply zoom AFTER all geom_sf layers (adding geom_sf after coord_sf resets it)
-  if (exists("zoom_xlim")) {
-    p <- p + ggplot2::coord_sf(xlim = zoom_xlim, ylim = zoom_ylim)
-  }
 
   p
 }

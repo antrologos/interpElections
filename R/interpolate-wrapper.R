@@ -34,10 +34,13 @@
 #' @param min_tract_pop Numeric. Minimum total population in
 #'   `calib_tracts` for a census tract to be included. Default: 1.
 #' @param offset Numeric. Travel time offset. Default: 1.
+#' @param weights Numeric matrix or NULL. Pre-computed weight matrix
+#'   \[n x m\]. When provided, optimization is skipped and these weights
+#'   are used directly. Useful for [reinterpolate()] fast path.
 #' @param keep Character vector or NULL. Names of extra intermediate
-#'   objects to include in the result. `weights` and `time_matrix` are
-#'   always kept. Options: `"electoral_sf"`, `"pop_raster"`,
-#'   `"rep_points"`.
+#'   objects to include in the result. `weights`, `time_matrix`,
+#'   `electoral_sf`, and `rep_points` are always kept.
+#'   Options: `"pop_raster"`.
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Advanced arguments. `network_path` (character) for
 #'   pre-downloaded OSM data, `elevation_path` (character) for
@@ -57,11 +60,11 @@
 #'   \item{tract_id, point_id}{ID column names.}
 #'   \item{interp_cols}{Character vector. Interpolated column names.}
 #'   \item{calib_cols}{List with `$tracts` and `$sources`.}
-#'   \item{weights}{Weight matrix or NULL (opt-in via `keep`).}
-#'   \item{time_matrix}{Travel time matrix or NULL (opt-in via `keep`).}
-#'   \item{electoral_sf}{`sf` point object or NULL (opt-in via `keep`).}
+#'   \item{weights}{Weight matrix. Always kept.}
+#'   \item{time_matrix}{Travel time matrix. Always kept.}
+#'   \item{electoral_sf}{`sf` point object. Always kept.}
+#'   \item{rep_points}{Representative points `sf` object. Always kept.}
 #'   \item{pop_raster}{Population raster or NULL (opt-in via `keep`).}
-#'   \item{rep_points}{Representative points or NULL (opt-in via `keep`).}
 #' }
 #'
 #' @examples
@@ -113,6 +116,7 @@ interpolate_election <- function(
     point_id           = "id",
     # -- Pre-computed input --
     time_matrix        = NULL,
+    weights            = NULL,
     # -- Control --
     optim              = optim_control(),
     routing            = routing_control(),
@@ -484,25 +488,43 @@ interpolate_election <- function(
   row_targets <- pop_total / sum(pop_total) * ncol(time_matrix)
 
   optim_result <- NULL
-  if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
-                               step_num, total_steps))
-  optim_result <- optimize_alpha(
-    time_matrix = time_matrix, pop_matrix = pop_matrix,
-    source_matrix = source_matrix, row_targets = row_targets,
-    optim = optim,
-    offset = offset, verbose = verbose
-  )
-  alpha <- optim_result$alpha
+  if (!is.null(weights)) {
+    # Pre-computed weights: skip optimization
+    W <- weights
+    if (nrow(W) != nrow(pop_matrix) || ncol(W) != nrow(source_matrix)) {
+      stop(sprintf(
+        "weights dimensions (%d x %d) do not match tracts (%d) x sources (%d)",
+        nrow(W), ncol(W), nrow(pop_matrix), nrow(source_matrix)),
+        call. = FALSE)
+    }
+    # Use uniform alpha placeholder (weights already encode the decay)
+    alpha <- matrix(NA_real_, nrow = nrow(pop_matrix),
+                    ncol = ncol(pop_matrix))
+    if (verbose) message(sprintf("[%d/%d] Using pre-computed weights (skipping optimization)...",
+                                 step_num, total_steps))
+  } else {
+    if (verbose) message(sprintf("[%d/%d] Optimizing alpha...",
+                                 step_num, total_steps))
+    optim_result <- optimize_alpha(
+      time_matrix = time_matrix, pop_matrix = pop_matrix,
+      source_matrix = source_matrix, row_targets = row_targets,
+      optim = optim,
+      offset = offset, verbose = verbose
+    )
+    alpha <- optim_result$alpha
+  }
   step_num <- step_num + 1L
 
   # --- Step 5: Interpolate ---
   if (verbose) message(sprintf("[%d/%d] Interpolating...",
                                step_num, total_steps))
-  if (!is.null(optim_result) && !is.null(optim_result$W)) {
-    W <- optim_result$W
-  } else {
-    W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
-                                offset = offset, use_gpu = optim$use_gpu)
+  if (is.null(weights)) {
+    if (!is.null(optim_result) && !is.null(optim_result$W)) {
+      W <- optim_result$W
+    } else {
+      W <- compute_weight_matrix(time_matrix, alpha, pop_matrix, source_matrix,
+                                  offset = offset, use_gpu = optim$use_gpu)
+    }
   }
   interpolated <- W %*% interp_data
   if (!is.null(colnames(interp_data))) {
@@ -552,13 +574,13 @@ interpolate_election <- function(
     interp_cols   = colnames(interpolated),
     calib_cols    = list(tracts = calib_tracts, sources = calib_sources),
     row_targets   = row_targets,
-    # Always kept (needed for reinterpolate, residuals, etc.)
+    # Always kept (needed for reinterpolate, residuals, diagnostics, etc.)
     weights       = W,
     time_matrix   = time_matrix,
+    electoral_sf  = electoral_sf,
+    rep_points    = rep_points_obj,
     # Heavy objects (opt-in)
-    electoral_sf  = if ("electoral_sf" %in% keep) electoral_sf else NULL,
     pop_raster    = if ("pop_raster" %in% keep) pop_raster_obj else NULL,
-    rep_points    = if ("rep_points" %in% keep) rep_points_obj else NULL,
     # Brazilian metadata (NULL when called generically)
     code_muni      = NULL,
     nome_municipio = NULL,
@@ -665,7 +687,7 @@ print.interpElections_result <- function(x, ...) {
   if (has_r) cat("    result$rep_points      representative points (sf)\n")
 
   cat("  Methods: summary(), as.data.frame(), coef(), residuals()\n")
-  cat("  Plotting: plot(result, variable = ..., type = ..., breaks = ...)\n")
+  cat("  Plotting: plot(result, variable = ..., quantity = ..., breaks = ...)\n")
   cat("            plot_interactive(result, variable = ...) -- mapview\n")
 
   invisible(x)

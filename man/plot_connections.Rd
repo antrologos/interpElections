@@ -6,11 +6,10 @@
 \usage{
 plot_connections(
   result,
-  tract = NULL,
   top_k = NULL,
   threshold = 0.01,
   show_all_tracts = TRUE,
-  palette = "viridis",
+  palette = "YlOrRd",
   interactive = FALSE,
   ...
 )
@@ -18,11 +17,10 @@ plot_connections(
 \arguments{
 \item{result}{An \code{interpElections_result} object.}
 
-\item{tract}{Tract ID(s) or index(es). NULL for overview.}
+\item{top_k}{Max connections per tract. \code{NULL} shows only the
+dominant connection (static) or all connections (interactive).}
 
-\item{top_k}{Max connections per tract.}
-
-\item{threshold}{Min weight for a connection.}
+\item{threshold}{Min weight for a connection to be drawn.}
 
 \item{show_all_tracts}{Logical. Show all tract polygons as background.}
 
@@ -33,9 +31,11 @@ plot_connections(
 \item{...}{Ignored.}
 }
 \value{
-A ggplot object (invisibly).
+A ggplot object (invisibly) or an htmlwidget (interactive).
 }
 \description{
-Draws lines between tract centroids and their assigned stations,
-with width and alpha proportional to weight.
+Draws lines between tract centroids and their assigned stations.
+In the static version, tracts are colored by effective number of
+sources and lines are scaled by weight. In the interactive version,
+clicking a station or tract reveals its connections.
 }

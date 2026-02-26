@@ -8,7 +8,7 @@ routing_control(
   mode = "WALK",
   point_method = "pop_weighted",
   min_area_for_pop_weight = 1,
-  max_trip_duration = 300L,
+  max_trip_duration = 180L,
   n_threads = 4L,
   gtfs_zip_path = NULL,
   departure_datetime = NULL,
@@ -33,8 +33,8 @@ applying the pop_weighted method. Smaller tracts fall back to
 point_on_surface. Default: 1.}
 
 \item{max_trip_duration}{Integer. Maximum trip duration in minutes.
-Also used as fill value for unreachable pairs (unless \code{fill_missing}
-is set). Default: 300 (5 hours walking).}
+Pairs beyond this threshold are not routed and receive zero weight.
+Default: 180 (3 hours walking).}
 
 \item{n_threads}{Integer. Number of parallel threads for the r5r routing
 engine. Default: 4.}
@@ -54,8 +54,11 @@ WorldPop data is auto-downloaded. Default: NULL.}
 \item{osm_buffer_km}{Numeric. Buffer in km around the combined bounding
 box of tracts and points when clipping OSM data. Default: 10.}
 
-\item{fill_missing}{Numeric or NULL. Value for unreachable OD pairs.
-NULL (default) uses \code{max_trip_duration}.}
+\item{fill_missing}{Numeric, \code{NA}, or NULL. Value for unreachable OD pairs.
+\code{NA} (default when NULL) leaves unreachable pairs as \code{NA} in the travel
+time matrix, which maps to exactly zero weight in the weight matrix.
+These pairs are immune to alpha optimization. Set to a numeric value
+(e.g., \code{max_trip_duration}) to impute a travel time instead.}
 }
 \value{
 A list of class \code{"interpElections_routing_control"} with one element
@@ -67,7 +70,7 @@ Creates a control object for travel-time computation in
 override only what you need.
 }
 \examples{
-# Default settings (walking, 5h max)
+# Default settings (walking, 3h max)
 routing_control()
 
 # Transit mode with GTFS

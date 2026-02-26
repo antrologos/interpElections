@@ -291,12 +291,12 @@ test_that("plot resolves variable by party", {
   expect_s3_class(p, "gg")
 })
 
-test_that("plot with type = pct_tract works", {
+test_that("plot with quantity = pct_tract works", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_plot_result()
 
-  p <- plot(obj, variable = "CAND_13", type = "pct_tract")
+  p <- plot(obj, variable = "CAND_13", quantity = "pct_tract")
   expect_s3_class(p, "gg")
 })
 
@@ -452,19 +452,19 @@ test_that(".auto_subtitle returns municipality and year", {
   expect_true(grepl("2020", sub))
 })
 
-test_that(".auto_subtitle includes type and breaks when provided", {
+test_that(".auto_subtitle includes quantity and breaks when provided", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  sub <- .auto_subtitle(obj, type = "pct_tract", breaks = "quantile")
+  sub <- .auto_subtitle(obj, quantity = "pct_tract", breaks = "quantile")
   expect_true(grepl("SAO PAULO", sub))
   expect_true(grepl("tract", sub, ignore.case = TRUE))
   expect_true(grepl("uantile", sub, ignore.case = TRUE))
 })
 
-test_that(".auto_subtitle omits type for absolute and breaks for continuous", {
+test_that(".auto_subtitle omits quantity for absolute and breaks for continuous", {
   skip_if_not_installed("sf")
   obj <- .mock_plot_result()
-  sub <- .auto_subtitle(obj, type = "absolute", breaks = "continuous")
+  sub <- .auto_subtitle(obj, quantity = "absolute", breaks = "continuous")
   expect_true(grepl("SAO PAULO", sub))
   expect_false(grepl("Count", sub))
   expect_false(grepl("ontinuous", sub, ignore.case = TRUE))
@@ -540,12 +540,12 @@ test_that("plot_interactive resolves variable by name", {
   expect_true(inherits(m, "mapview"))
 })
 
-test_that("plot_interactive with type = pct_muni works", {
+test_that("plot_interactive with quantity = pct_muni works", {
   skip_if_not_installed("sf")
   skip_if_not_installed("mapview")
   obj <- .mock_plot_result()
 
-  m <- plot_interactive(obj, variable = "CAND_13", type = "pct_muni")
+  m <- plot_interactive(obj, variable = "CAND_13", quantity = "pct_muni")
   expect_true(inherits(m, "mapview"))
 })
 

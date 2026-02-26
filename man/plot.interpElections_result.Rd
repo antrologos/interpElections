@@ -8,7 +8,7 @@
 \method{plot}{interpElections_result}(
   x,
   variable = NULL,
-  type = "pct_tract",
+  quantity = "pct_tract",
   palette = "RdYlBu",
   breaks = "quantile",
   n_breaks = 5L,
@@ -35,7 +35,7 @@ substring (e.g., \code{"Lula"}), or party abbreviation (e.g., \code{"PT"}).
 Multiple values produce a faceted comparison.
 If NULL, auto-selects the first candidate variable.}
 
-\item{type}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
+\item{quantity}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
 \code{"pct_muni"}, \code{"pct_valid"}, \code{"pct_eligible"}, \code{"density"}.}
 
 \item{palette}{Color palette name. RColorBrewer palettes
@@ -101,7 +101,7 @@ plot(result, variable = "Lula")
 plot(result, variable = 13)
 
 # Absolute counts with continuous scale
-plot(result, variable = "PT", type = "absolute",
+plot(result, variable = "PT", quantity = "absolute",
      breaks = "continuous")
 
 # Faceted comparison

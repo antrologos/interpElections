@@ -7,7 +7,7 @@
 plot_interactive(
   result,
   variable = NULL,
-  type = "pct_tract",
+  quantity = "pct_tract",
   palette = "RdYlBu",
   breaks = "quantile",
   n_breaks = 5L,
@@ -27,7 +27,7 @@ plot_interactive(
 Multiple values create synchronized comparison panels.
 If NULL, auto-selects the first candidate variable.}
 
-\item{type}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
+\item{quantity}{Quantity to map: \code{"pct_tract"} (default), \code{"absolute"},
 \code{"pct_muni"}, \code{"pct_valid"}, \code{"pct_eligible"}, \code{"density"}.}
 
 \item{palette}{Color palette name. Default: \code{"RdYlBu"}
@@ -71,11 +71,11 @@ result <- interpolate_election_br(3304557, 2022,
                                    keep = "electoral_sf")
 
 # Interactive map by candidate name
-plot_interactive(result, variable = "Lula", type = "pct_tract")
+plot_interactive(result, variable = "Lula", quantity = "pct_tract")
 
 # Side-by-side comparison (synced panels)
 plot_interactive(result, variable = c("Lula", "Bolsonaro"),
-                 type = "pct_tract")
+                 quantity = "pct_tract")
 
 # Custom popup
 plot_interactive(result, variable = "PT",

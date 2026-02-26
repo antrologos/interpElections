@@ -17,6 +17,7 @@ interpolate_election_br(
   clip_tracts_sf = NULL,
   min_tract_pop = 1,
   time_matrix = NULL,
+  weights = NULL,
   optim = optim_control(),
   routing = routing_control(),
   offset = 1,
@@ -66,6 +67,9 @@ it. Tracts below this are dropped. Default: 1.}
 \item{time_matrix}{Pre-computed travel time matrix [n x m], or NULL.
 If provided, skips routing (no r5r, no OSM download).}
 
+\item{weights}{Numeric matrix or NULL. Pre-computed weight matrix.
+When provided, optimization is skipped.}
+
 \item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
 Default: \code{optim_control()}.}
 
@@ -79,8 +83,8 @@ day at 10 AM.}
 \item{force}{Re-download all cached data. Default: FALSE.}
 
 \item{keep}{Character vector of extra objects to include in the
-result. \code{weights} and \code{time_matrix} are always kept.
-Options: \code{"electoral_sf"}, \code{"pop_raster"}, \code{"rep_points"}.}
+result. \code{weights}, \code{time_matrix}, \code{electoral_sf}, and \code{rep_points}
+are always kept. Options: \code{"pop_raster"}.}
 
 \item{verbose}{Print progress messages. Default: TRUE.}
 

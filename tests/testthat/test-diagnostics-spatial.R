@@ -22,6 +22,7 @@
   interp_mat <- matrix(runif(n * 3, 10, 200), n, 3)
   colnames(interp_mat) <- interp_names
   for (col in interp_names) tracts_sf[[col]] <- interp_mat[, col]
+  tracts_sf[["QT_COMPARECIMENTO"]] <- rpois(n, 500)
 
   sources <- data.frame(point_id = paste0("P", seq_len(m)))
   for (col in src_cols) sources[[col]] <- rpois(m, 160)
@@ -108,4 +109,50 @@ test_that("plot_moran auto-selects first variable", {
     "No variable specified"
   )
   expect_s3_class(p, "ggplot")
+})
+
+test_that("plot_moran quantity = absolute works", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("spdep")
+  obj <- .mock_spatial_result()
+
+  p <- plot_moran(obj, variable = "VAR_1", type = "lisa",
+                  quantity = "absolute")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot_moran quantity = pct_tract works", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("spdep")
+  obj <- .mock_spatial_result()
+
+  p <- plot_moran(obj, variable = "VAR_1", type = "lisa",
+                  quantity = "pct_tract")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot_moran moran scatter respects quantity", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("spdep")
+  obj <- .mock_spatial_result()
+
+  p <- plot_moran(obj, variable = "VAR_1", type = "moran",
+                  quantity = "pct_tract")
+  expect_s3_class(p, "ggplot")
+  expect_true(grepl("tract", p$labels$x, ignore.case = TRUE))
+})
+
+test_that("plot_moran rejects invalid quantity", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("spdep")
+  obj <- .mock_spatial_result()
+
+  expect_error(
+    plot_moran(obj, variable = "VAR_1", quantity = "bogus"),
+    "arg"
+  )
 })

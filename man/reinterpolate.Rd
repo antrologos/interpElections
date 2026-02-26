@@ -11,6 +11,7 @@ reinterpolate(
   parties = NULL,
   cargo = NULL,
   turno = NULL,
+  reuse_weights = TRUE,
   optim = optim_control(),
   keep = NULL,
   verbose = TRUE,
@@ -35,11 +36,16 @@ See \code{\link[=interpolate_election_br]{interpolate_election_br()}}.}
 
 \item{turno}{Integer or NULL. Override the election round (1 or 2).}
 
-\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
-Default: \code{optim_control()}.}
+\item{reuse_weights}{Logical. If TRUE (default), reuse the weight matrix
+from the original result to skip optimization. Automatically disabled
+when \code{turno} or \code{cargo} change (which alter calibration brackets).}
 
-\item{keep}{Character vector or NULL. Heavy objects to include in result.
-See \code{\link[=interpolate_election_br]{interpolate_election_br()}}.}
+\item{optim}{An \code{\link[=optim_control]{optim_control()}} object with optimization parameters.
+Only used when \code{reuse_weights = FALSE}.}
+
+\item{keep}{Character vector or NULL. Extra objects to include in result.
+\code{weights}, \code{time_matrix}, \code{electoral_sf}, and \code{rep_points} are always
+kept. Options: \code{"pop_raster"}.}
 
 \item{verbose}{Logical. Print progress messages. Default: TRUE.}
 
@@ -56,28 +62,34 @@ the expensive routing step. Useful for switching to different candidates,
 parties, \code{what} types, or election rounds without recomputing travel times.
 }
 \details{
-The previous result must contain a \code{time_matrix} (always kept
-by default since v0.2).
+The previous result must contain a \code{time_matrix} (always kept by default).
 
-\strong{Note}: Alpha is re-optimized (which can take minutes). Only the
-travel-time computation is skipped.
+When \code{reuse_weights = TRUE} (the default) and the stored weight matrix
+is available, optimization is also skipped — making re-interpolation
+near-instantaneous. Set \code{reuse_weights = FALSE} to force re-optimization
+(e.g., when switching \code{turno} or \code{cargo}, which changes the calibration
+brackets).
 }
 \examples{
 \dontrun{
-# First run (time_matrix is kept by default)
+# First run
 result <- interpolate_election_br(
   3550308, 2022,
   cargo = "presidente"
 )
 
-# Re-interpolate for parties instead of candidates
+# Re-interpolate for parties (reuses weights, near-instant)
 result2 <- reinterpolate(result, what = "parties")
 
-# Re-interpolate for a different cargo
+# Re-interpolate for a different cargo (forces re-optimization)
 result3 <- reinterpolate(result, cargo = "governador")
 
-# Re-interpolate for turno 2 (runoff)
+# Re-interpolate for turno 2 (forces re-optimization)
 result4 <- reinterpolate(result, turno = 2)
+
+# Force re-optimization even when calibration hasn't changed
+result5 <- reinterpolate(result, what = "parties",
+                          reuse_weights = FALSE)
 }
 
 }
