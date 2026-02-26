@@ -566,15 +566,18 @@ where $\phi(t) = \log(t + 1)$ for the power kernel and $\phi(t) = t$ for the
 exponential. Everything downstream (column normalization, Poisson deviance,
 gradient computation) is kernel-agnostic.
 
-The power kernel has a **heavy tail**: its relative decay
-$K(2t)/K(t) \approx 2^{-\alpha}$ is approximately constant regardless of
-distance. The exponential kernel has a **light tail**: its relative decay
-$K(2t)/K(t) = \exp(-\alpha \cdot t)$ increases with distance, naturally
-suppressing distant stations more aggressively.
+The two kernels differ in **tail behavior**. For the power kernel, the
+relative decay $K(2t)/K(t) \approx 2^{-\alpha}$ is approximately constant
+regardless of distance (**heavy tail**). For the exponential kernel, the
+relative decay $K(2t)/K(t) = \exp(-\alpha \cdot t)$ increases with distance
+(**light tail**). This is a structural difference in shape, not a claim about
+which kernel produces more localized weights --- that depends on what
+$\alpha$ the optimizer finds.
 
 Note that $\alpha$ has **different units** in the two kernels: it is
 dimensionless for the power kernel but has units of $\text{min}^{-1}$ for the
-exponential. The optimizer finds the appropriate scale automatically.
+exponential. The optimizer finds the appropriate scale automatically, so
+comparing the two at the "same alpha" is meaningless.
 
 For the default power kernel, the raw weight between tract $i$ and station $j$
 is:
