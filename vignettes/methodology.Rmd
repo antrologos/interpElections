@@ -512,8 +512,9 @@ knitr::include_graphics("figures/tt-accessibility-map.png")
 Tracts in the center have short travel times to the nearest station;
 peripheral tracts are farther away.
 
-**The offset**: before applying the IDW kernel, we add 1 to all travel
-times (`time_matrix + 1`) to avoid singularity when $t = 0$.
+**The offset**: before applying the power-law IDW kernel (the default), we add
+1 to all travel times (`time_matrix + 1`) to avoid singularity when $t = 0$.
+The exponential kernel does not need this offset (see Section 10).
 
 
 # Part IV: The Weight Matrix
@@ -551,7 +552,32 @@ The nearest station (5 min) gets the lion's share of the weight. The
 
 ### The formula
 
-The raw weight between tract $i$ and station $j$:
+The package supports two kernel functions, selected via
+`optim_control(kernel = ...)`:
+
+**Power-law kernel** (default):
+$$K_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
+
+**Exponential kernel**:
+$$K_{ij} = \exp(-\alpha_i \cdot t_{ij})$$
+
+Both share the unified form $\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})$,
+where $\phi(t) = \log(t + 1)$ for the power kernel and $\phi(t) = t$ for the
+exponential. Everything downstream (column normalization, Poisson deviance,
+gradient computation) is kernel-agnostic.
+
+The power kernel has a **heavy tail**: its relative decay
+$K(2t)/K(t) \approx 2^{-\alpha}$ is approximately constant regardless of
+distance. The exponential kernel has a **light tail**: its relative decay
+$K(2t)/K(t) = \exp(-\alpha \cdot t)$ increases with distance, naturally
+suppressing distant stations more aggressively.
+
+Note that $\alpha$ has **different units** in the two kernels: it is
+dimensionless for the power kernel but has units of $\text{min}^{-1}$ for the
+exponential. The optimizer finds the appropriate scale automatically.
+
+For the default power kernel, the raw weight between tract $i$ and station $j$
+is:
 
 $$W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
 
@@ -1459,11 +1485,16 @@ interpElections_cache("clean", category = "votes")  # clear by category
 
 ### IDW kernel
 
-$$K_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
+Both kernels share the form $\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})$:
+
+| Kernel | $K_{ij}$ | $\phi(t)$ | Tail |
+|:------:|:---------:|:---------:|:----:|
+| Power (default) | $(t_{ij} + 1)^{-\alpha_i}$ | $\log(t_{ij} + 1)$ | Heavy |
+| Exponential | $\exp(-\alpha_i \cdot t_{ij})$ | $t_{ij}$ | Light |
 
 ### Log-domain kernel
 
-$$\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)$$
+$$\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})$$
 
 ### Column normalization
 

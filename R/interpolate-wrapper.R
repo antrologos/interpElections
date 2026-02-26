@@ -33,7 +33,8 @@
 #'   Default: `routing_control()`.
 #' @param min_tract_pop Numeric. Minimum total population in
 #'   `calib_tracts` for a census tract to be included. Default: 1.
-#' @param offset Numeric. Travel time offset. Default: 1.
+#' @param offset Numeric. Travel time offset (power kernel only; ignored
+#'   when `kernel = "exponential"` in `optim`). Default: 1.
 #' @param weights Numeric matrix or NULL. Pre-computed weight matrix
 #'   \[n x m\]. When provided, optimization is skipped and these weights
 #'   are used directly. Useful for [reinterpolate()] fast path.

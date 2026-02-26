@@ -11,7 +11,8 @@ optim_control(
   patience = 50L,
   barrier_mu = 10,
   alpha_init = 2,
-  alpha_min = 1,
+  alpha_min = NULL,
+  kernel = "power",
   use_gpu = NULL,
   device = NULL,
   dtype = "float32"
@@ -40,9 +41,17 @@ Set to 0 to disable. Default: 10.}
 Initial guess for alpha. A scalar is recycled to all tracts and
 brackets. Default: 2.}
 
-\item{alpha_min}{Numeric. Lower bound for alpha values. The
+\item{alpha_min}{Numeric or NULL. Lower bound for alpha values. The
 reparameterization becomes \code{alpha = alpha_min + softplus(theta)}.
-Default: 1, which restricts decay to linear or steeper.}
+If NULL (default), the bound is set based on \code{kernel}:
+1 for \code{"power"} (linear-or-steeper decay), 0 for \code{"exponential"}.}
+
+\item{kernel}{Character. Kernel function for spatial decay.
+\code{"power"} (default): \eqn{K(t) = (t + \text{offset})^{-\alpha}},
+the classic inverse distance weighting kernel.
+\code{"exponential"}: \eqn{K(t) = \exp(-\alpha \cdot t)}, which has a
+light tail (relative decay increases with distance). The exponential
+kernel does not need an offset and allows \code{alpha_min = 0}.}
 
 \item{use_gpu}{Logical or NULL. If \code{TRUE}, use GPU (CUDA or MPS). If
 \code{FALSE}, use CPU. If \code{NULL} (default), reads the package option

@@ -63,7 +63,8 @@ Default: \code{routing_control()}.}
 \item{min_tract_pop}{Numeric. Minimum total population in
 \code{calib_tracts} for a census tract to be included. Default: 1.}
 
-\item{offset}{Numeric. Travel time offset. Default: 1.}
+\item{offset}{Numeric. Travel time offset (power kernel only; ignored
+when \code{kernel = "exponential"} in \code{optim}). Default: 1.}
 
 \item{keep}{Character vector or NULL. Names of extra intermediate
 objects to include in the result. \code{weights}, \code{time_matrix},

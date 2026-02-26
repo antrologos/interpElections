@@ -35,7 +35,8 @@ attract, proportional to its share of total population. If NULL
 alpha_init, alpha_min, use_gpu, device, dtype). Default:
 \code{optim_control()}.}
 
-\item{offset}{Numeric. Value added to travel times before exponentiation.
+\item{offset}{Numeric. Value added to travel times before exponentiation
+(power kernel only; ignored when \code{kernel = "exponential"}).
 Default: 1.}
 
 \item{verbose}{Logical. Print progress messages? Default: TRUE.}
@@ -71,6 +72,7 @@ detected); 1 = stopped at max_epochs.}
 \item{grad_history}{Numeric vector. Gradient norm (theta-space) at
 each epoch.}
 \item{lr_history}{Numeric vector. Learning rate at each epoch.}
+\item{kernel}{Character. Kernel used (\code{"power"} or \code{"exponential"}).}
 }
 }
 \description{
@@ -85,11 +87,22 @@ gradients flow through all computations. Works on both CPU and GPU
 The optimization requires the \code{torch} R package. Install it with
 \code{\link[=setup_torch]{setup_torch()}} if not already available.
 
+\strong{Kernel}: Two kernel functions are available, controlled via the
+\code{kernel} field in \code{\link[=optim_control]{optim_control()}}:
+\itemize{
+\item \strong{Power} (default): \eqn{K(t) = (t + \text{offset})^{-\alpha}}.
+Classic inverse distance weighting.
+\item \strong{Exponential}: \eqn{K(t) = \exp(-\alpha \cdot t)}.
+Lighter tail; relative decay increases with distance. Does not use
+\code{offset}.
+}
+
 \strong{Parameterization}: alpha[i,b] is reparameterized as
 \code{alpha = alpha_min + softplus(theta)} with \code{theta} unconstrained,
 where \code{softplus(x) = log(1 + exp(x))}. With the default
-\code{alpha_min = 1}, alpha is always at least 1 (inverse-distance
-decay or steeper). Set \code{alpha_min = 0} for unconstrained
+\code{alpha_min = 1} (power kernel), alpha is always at least 1
+(inverse-distance decay or steeper). The exponential kernel defaults
+to \code{alpha_min = 0}. Set \code{alpha_min = 0} for unconstrained
 optimization (similar to legacy \code{exp(theta)}).
 
 \strong{Epoch structure}: Each epoch is one full-data gradient step with

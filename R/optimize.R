@@ -21,7 +21,8 @@
 #'   (max_epochs, lr_init, convergence_tol, patience, barrier_mu,
 #'   alpha_init, alpha_min, use_gpu, device, dtype). Default:
 #'   `optim_control()`.
-#' @param offset Numeric. Value added to travel times before exponentiation.
+#' @param offset Numeric. Value added to travel times before exponentiation
+#'   (power kernel only; ignored when `kernel = "exponential"`).
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
 #' @param ... **Deprecated**. Old-style individual parameters
@@ -54,17 +55,29 @@
 #'   \item{grad_history}{Numeric vector. Gradient norm (theta-space) at
 #'     each epoch.}
 #'   \item{lr_history}{Numeric vector. Learning rate at each epoch.}
+#'   \item{kernel}{Character. Kernel used (`"power"` or `"exponential"`).}
 #' }
 #'
 #' @details
 #' The optimization requires the `torch` R package. Install it with
 #' [setup_torch()] if not already available.
 #'
+#' **Kernel**: Two kernel functions are available, controlled via the
+#' `kernel` field in [optim_control()]:
+#' \itemize{
+#'   \item **Power** (default): \eqn{K(t) = (t + \text{offset})^{-\alpha}}.
+#'     Classic inverse distance weighting.
+#'   \item **Exponential**: \eqn{K(t) = \exp(-\alpha \cdot t)}.
+#'     Lighter tail; relative decay increases with distance. Does not use
+#'     `offset`.
+#' }
+#'
 #' **Parameterization**: alpha\[i,b\] is reparameterized as
 #' `alpha = alpha_min + softplus(theta)` with `theta` unconstrained,
 #' where `softplus(x) = log(1 + exp(x))`. With the default
-#' `alpha_min = 1`, alpha is always at least 1 (inverse-distance
-#' decay or steeper). Set `alpha_min = 0` for unconstrained
+#' `alpha_min = 1` (power kernel), alpha is always at least 1
+#' (inverse-distance decay or steeper). The exponential kernel defaults
+#' to `alpha_min = 0`. Set `alpha_min = 0` for unconstrained
 #' optimization (similar to legacy `exp(theta)`).
 #'
 #' **Epoch structure**: Each epoch is one full-data gradient step with

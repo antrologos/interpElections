@@ -10,6 +10,7 @@ compute_weight_matrix(
   pop_matrix,
   source_matrix,
   offset = 1,
+  kernel = "power",
   use_gpu = NULL,
   verbose = FALSE
 )
@@ -29,8 +30,12 @@ per zone and demographic bracket.}
 points per demographic bracket.}
 
 \item{offset}{Numeric scalar. Added to \code{time_matrix} before
-exponentiation: \eqn{K^b_{ij} = (t_{ij} + \text{offset})^{-\alpha_{ib}}}.
-Default: 1.}
+exponentiation for the power kernel:
+\eqn{K^b_{ij} = (t_{ij} + \text{offset})^{-\alpha_{ib}}}.
+Ignored when \code{kernel = "exponential"}. Default: 1.}
+
+\item{kernel}{Character. \code{"power"} (default) or \code{"exponential"}.
+See \code{\link[=optim_control]{optim_control()}} for details.}
 
 \item{use_gpu}{Logical or NULL. If TRUE, use GPU; if FALSE, use CPU;
 if NULL (default), respect the global setting from \code{\link[=use_gpu]{use_gpu()}}.}

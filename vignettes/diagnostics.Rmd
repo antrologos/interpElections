@@ -186,9 +186,15 @@ $\alpha$ is a **matrix** with one row per tract and one column per demographic b
 
 The weight before column normalization is:
 
+For the default **power-law kernel**:
+
 $$K_{ij} = (t_{ij} + 1)^{-\alpha_i}$$
 
-where $t_{ij}$ is the travel time (in minutes) from tract $i$ to station $j$. The final weight is $W_{ij} = K_{ij} / \sum_i K_{ij}$ (column-normalized so each station's voters are fully distributed).
+For the **exponential kernel** (`optim_control(kernel = "exponential")`):
+
+$$K_{ij} = \exp(-\alpha_i \cdot t_{ij})$$
+
+where $t_{ij}$ is the travel time (in minutes) from tract $i$ to station $j$. The final weight is $W_{ij} = K_{ij} / \sum_i K_{ij}$ (column-normalized so each station's voters are fully distributed). See `vignette("methodology")` for details on kernel choice.
 
 ### Applied examples: Map mode
 
