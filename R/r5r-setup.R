@@ -653,13 +653,24 @@ set_java_memory <- function(size, persist = interactive()) {
   }
 
   # Attempt to uninstall each conflicting version
+  results <- logical(nrow(others))
   for (i in seq_len(nrow(others))) {
-    .uninstall_java(
+    results[i] <- isTRUE(.uninstall_java(
       path    = others$path[i],
       vendor  = others$vendor[i],
       source  = others$source[i],
       version = others$version[i],
       verbose = verbose
+    ))
+  }
+
+  if (any(!results)) {
+    failed <- others$path[!results]
+    warning(
+      "Some Java versions could not be removed: ",
+      paste(failed, collapse = ", "), "\n",
+      "setup_java() will continue, but you may need to remove them manually.",
+      call. = FALSE, immediate. = TRUE
     )
   }
 
@@ -691,10 +702,7 @@ set_java_memory <- function(size, persist = interactive()) {
       .uninstall_java_linux(path, vendor, source, version, verbose)
     }
   }, error = function(e) {
-    if (verbose) warning(
-      "Could not remove Java ", version, ": ",
-      conditionMessage(e), call. = FALSE, immediate. = TRUE
-    )
+    if (verbose) message("  Error during removal: ", conditionMessage(e))
     FALSE
   })
 
@@ -731,7 +739,8 @@ set_java_memory <- function(size, persist = interactive()) {
       res <- tryCatch(
         system2("brew", c("uninstall", "--force", formula),
                 stdout = TRUE, stderr = TRUE),
-        error = function(e) NULL
+        error = function(e) NULL,
+        warning = function(w) NULL
       )
       return(!is.null(res))
     }
@@ -742,15 +751,18 @@ set_java_memory <- function(size, persist = interactive()) {
   if (!is.null(bundle_path) &&
       grepl("^/Library/Java/JavaVirtualMachines/", bundle_path)) {
     if (verbose) message("    Removing system JVM: ", bundle_path)
+    # Sanitize path to prevent shell injection via osascript
+    safe_path <- gsub('[\\\\"]', '', bundle_path)
     # Use osascript for native macOS admin password prompt
     script <- sprintf(
       'do shell script "rm -rf \\"%s\\"" with administrator privileges',
-      bundle_path
+      safe_path
     )
     res <- tryCatch(
       system2("osascript", c("-e", script),
               stdout = TRUE, stderr = TRUE),
-      error = function(e) NULL
+      error = function(e) NULL,
+      warning = function(w) NULL
     )
     return(!is.null(res) && !dir.exists(bundle_path))
   }
@@ -779,10 +791,11 @@ set_java_memory <- function(size, persist = interactive()) {
   m <- regmatches(path, regexpr("openjdk(@[0-9]+)?", path))
   if (length(m) > 0L) return(m[1])
 
-  # Broader match for other Homebrew Java packages
-  m <- regmatches(path, regexpr("(temurin|java|jdk)([0-9]*)", path,
-                                 ignore.case = TRUE))
-  if (length(m) > 0L) return(m[1])
+  # Match Homebrew temurin formula (e.g. temurin@17, temurin17)
+  # Use lookahead to avoid matching fragments inside .jdk extensions
+  m <- regmatches(path, regexpr("temurin(@[0-9]+|[0-9]+)?(?=/)", path,
+                                 perl = TRUE))
+  if (length(m) > 0L && nzchar(m[1])) return(m[1])
 
   NULL
 }
@@ -878,6 +891,13 @@ set_java_memory <- function(size, persist = interactive()) {
                                    verbose = TRUE) {
   java_bin <- file.path(path, "bin", "java")
 
+  # Check if passwordless sudo is available (avoid hanging on password prompt)
+  has_sudo <- tryCatch({
+    code <- system2("sudo", c("-n", "true"),
+                    stdout = FALSE, stderr = FALSE)
+    code == 0L
+  }, error = function(e) FALSE)
+
   # Try dpkg (Debian/Ubuntu)
   pkg <- tryCatch({
     out <- system2("dpkg", c("-S", java_bin),
@@ -887,16 +907,21 @@ set_java_memory <- function(size, persist = interactive()) {
     } else {
       NULL
     }
-  }, error = function(e) NULL)
+  }, error = function(e) NULL,
+     warning = function(w) NULL)
 
   if (!is.null(pkg)) {
+    if (!has_sudo) {
+      if (verbose) {
+        message("    sudo requires a password. Please remove manually:")
+        message("    sudo apt-get remove -y ", pkg)
+      }
+      return(FALSE)
+    }
     if (verbose) message("    Removing package: ", pkg)
-    res <- tryCatch(
-      system2("sudo", c("apt-get", "remove", "-y", pkg),
-              stdout = TRUE, stderr = TRUE),
-      error = function(e) NULL
-    )
-    if (!is.null(res)) return(TRUE)
+    exit_code <- system2("sudo", c("apt-get", "remove", "-y", pkg),
+                         stdout = TRUE, stderr = TRUE)
+    return(is.null(attr(exit_code, "status")))
   }
 
   # Try rpm (Fedora/RHEL)
@@ -908,16 +933,21 @@ set_java_memory <- function(size, persist = interactive()) {
     } else {
       NULL
     }
-  }, error = function(e) NULL)
+  }, error = function(e) NULL,
+     warning = function(w) NULL)
 
   if (!is.null(pkg)) {
+    if (!has_sudo) {
+      if (verbose) {
+        message("    sudo requires a password. Please remove manually:")
+        message("    sudo dnf remove -y ", pkg)
+      }
+      return(FALSE)
+    }
     if (verbose) message("    Removing package: ", pkg)
-    res <- tryCatch(
-      system2("sudo", c("dnf", "remove", "-y", pkg),
-              stdout = TRUE, stderr = TRUE),
-      error = function(e) NULL
-    )
-    if (!is.null(res)) return(TRUE)
+    exit_code <- system2("sudo", c("dnf", "remove", "-y", pkg),
+                         stdout = TRUE, stderr = TRUE)
+    return(is.null(attr(exit_code, "status")))
   }
 
   # Fallback: remove the directory
@@ -1319,10 +1349,11 @@ setup_java <- function(
                             "java"),
     persist     = interactive(),
     setup_rjava = TRUE,
-    verbose     = TRUE
+    verbose     = TRUE,
+    .ask_consent = TRUE
 ) {
   # 1. Ask for consent in interactive mode
-  if (interactive()) {
+  if (.ask_consent && interactive()) {
     consent <- utils::menu(
       c("Yes, handle everything for me",
         "No, I will set up Java myself"),

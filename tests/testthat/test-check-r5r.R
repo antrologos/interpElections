@@ -297,16 +297,15 @@ test_that(".get_jdk_bundle_path finds .jdk bundle from Contents/Home path", {
   result <- interpElections:::.get_jdk_bundle_path(
     "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
   )
-  expect_equal(result,
-    "/Library/Java/JavaVirtualMachines/temurin-17.jdk")
+  # normalizePath may prepend drive letter on Windows, so check suffix
+  expect_true(grepl("temurin-17\\.jdk$", result))
 })
 
 test_that(".get_jdk_bundle_path returns .jdk path directly", {
   result <- interpElections:::.get_jdk_bundle_path(
     "/Library/Java/JavaVirtualMachines/oracle-jdk-17.jdk"
   )
-  expect_equal(result,
-    "/Library/Java/JavaVirtualMachines/oracle-jdk-17.jdk")
+  expect_true(grepl("oracle-jdk-17\\.jdk$", result))
 })
 
 test_that(".get_jdk_bundle_path returns NULL for non-.jdk paths", {

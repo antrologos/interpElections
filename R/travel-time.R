@@ -141,7 +141,7 @@ compute_travel_times <- function(
       )
 
       if (choice == 1L) {
-        setup_java()
+        setup_java(.ask_consent = FALSE)
 
         # Re-verify after setup
         java_recheck <- tryCatch(
