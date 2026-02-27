@@ -385,7 +385,10 @@ set_java_memory <- function(size, persist = interactive()) {
     if (nzchar(java_path)) {
       resolved <- normalizePath(java_path, winslash = "/", mustWork = FALSE)
       jdk_home <- dirname(dirname(resolved))
-      add_candidate(jdk_home, "PATH (Sys.which)")
+      # Skip root-level dirs like /usr (macOS java shim resolves there)
+      if (!jdk_home %in% c("/usr", "/usr/local")) {
+        add_candidate(jdk_home, "PATH (Sys.which)")
+      }
     }
   }, error = function(e) NULL)
 
@@ -432,8 +435,10 @@ set_java_memory <- function(size, persist = interactive()) {
   } else if (platform$os == "mac") {
     # ---- macOS: /usr/libexec/java_home -V ----
     tryCatch({
-      out <- system2("/usr/libexec/java_home", "-V",
-                     stdout = TRUE, stderr = TRUE)
+      out <- suppressWarnings(
+        system2("/usr/libexec/java_home", "-V",
+                stdout = TRUE, stderr = TRUE)
+      )
       for (line in out) {
         m <- regmatches(line, regexpr("/Library/Java/[^ \t]+", line))
         if (length(m) > 0) add_candidate(m, "/usr/libexec/java_home")
@@ -454,8 +459,9 @@ set_java_memory <- function(size, persist = interactive()) {
 
     # ---- macOS: Homebrew ----
     tryCatch({
-      brew_prefix <- system2("brew", "--prefix",
-                             stdout = TRUE, stderr = TRUE)
+      brew_prefix <- suppressWarnings(
+        system2("brew", "--prefix", stdout = TRUE, stderr = TRUE)
+      )
       if (length(brew_prefix) > 0) {
         opt_dir <- file.path(trimws(brew_prefix[1]), "opt")
         if (dir.exists(opt_dir)) {
@@ -476,8 +482,10 @@ set_java_memory <- function(size, persist = interactive()) {
   } else {
     # ---- Linux: update-alternatives ----
     tryCatch({
-      out <- system2("update-alternatives", c("--list", "java"),
-                     stdout = TRUE, stderr = TRUE)
+      out <- suppressWarnings(
+        system2("update-alternatives", c("--list", "java"),
+                stdout = TRUE, stderr = TRUE)
+      )
       for (p in out) {
         p <- trimws(p)
         if (nzchar(p)) add_candidate(dirname(dirname(p)),
@@ -538,7 +546,9 @@ set_java_memory <- function(size, persist = interactive()) {
   for (i in seq_len(n)) {
     java_bin <- file.path(paths[i], "bin", java_exe)
     tryCatch({
-      out <- system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+      out <- suppressWarnings(
+        system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+      )
       ver <- .parse_java_version(out)
       versions[i] <- if (is.na(ver)) 0L else ver
 
@@ -1206,8 +1216,10 @@ set_java_memory <- function(size, persist = interactive()) {
   if (platform$os != "windows") {
     result$javareconf_ok <- tryCatch({
       r_bin <- file.path(R.home("bin"), "R")
-      system2(r_bin, c("CMD", "javareconf", "-e"),
-              stdout = TRUE, stderr = TRUE)
+      suppressWarnings(
+        system2(r_bin, c("CMD", "javareconf", "-e"),
+                stdout = TRUE, stderr = TRUE)
+      )
       TRUE
     }, error = function(e) {
       if (verbose) warning("R CMD javareconf failed: ",
@@ -1257,11 +1269,13 @@ set_java_memory <- function(size, persist = interactive()) {
     if (platform$os == "windows") "java.exe" else "java")
 
   tryCatch({
-    out <- system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+    out <- suppressWarnings(
+      system2(java_bin, "-version", stdout = TRUE, stderr = TRUE)
+    )
     ver <- .parse_java_version(out)
     result$java_version <- ver
     result$java_ok <- !is.na(ver) && ver == 21L
-  }, error = function(e) NULL)
+  }, error = function(e) NULL, warning = function(w) NULL)
 
   result$rjava_ok <- tryCatch({
     requireNamespace("rJava", quietly = TRUE) && {
