@@ -87,16 +87,29 @@ test_that(".get_java_memory detects options(java.parameters)", {
 })
 
 
+# --- .recommend_heap_size() ---------------------------------------------------
+
+test_that(".recommend_heap_size returns a valid size string", {
+  size <- interpElections:::.recommend_heap_size()
+  # On any machine with detectable RAM, should return a string like "2g"-"8g"
+  if (!is.null(size)) {
+    expect_match(size, "^[0-9]+g$")
+    gb <- as.integer(sub("g$", "", size))
+    expect_true(gb >= 2L && gb <= 8L)
+  }
+})
+
+
 # --- interpElections:::set_java_memory() -------------------------------------------------------
 
 test_that("set_java_memory sets java.parameters option", {
   old <- getOption("java.parameters")
   on.exit(options(java.parameters = old))
 
-  interpElections:::set_java_memory("2g", persist = FALSE)
+  suppressWarnings(interpElections:::set_java_memory("2g", persist = FALSE))
   expect_equal(getOption("java.parameters"), "-Xmx2g")
 
-  interpElections:::set_java_memory("512m", persist = FALSE)
+  suppressWarnings(interpElections:::set_java_memory("512m", persist = FALSE))
   expect_equal(getOption("java.parameters"), "-Xmx512m")
 })
 
@@ -111,7 +124,9 @@ test_that("set_java_memory returns previous value invisibly", {
   on.exit(options(java.parameters = old))
 
   options(java.parameters = "-Xmx1g")
-  prev <- interpElections:::set_java_memory("2g", persist = FALSE)
+  prev <- suppressWarnings(
+    interpElections:::set_java_memory("2g", persist = FALSE)
+  )
   expect_equal(prev, "-Xmx1g")
 })
 

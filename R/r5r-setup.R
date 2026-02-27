@@ -288,6 +288,25 @@ set_java_memory <- function(size, persist = interactive()) {
 }
 
 
+#' Recommend a JVM heap size based on system RAM
+#'
+#' Uses half of system RAM, capped between 2g and 8g.
+#'
+#' @return A string like `"4g"`, or `NULL` if system RAM cannot be detected.
+#' @noRd
+.recommend_heap_size <- function() {
+  ram_str <- tryCatch(.get_system_ram(), error = function(e) NULL)
+  if (is.null(ram_str)) return(NULL)
+
+  gb <- as.numeric(sub(" GB$", "", ram_str))
+  if (is.na(gb) || gb < 1) return(NULL)
+
+  # Use half of system RAM, capped between 2 GB and 8 GB
+  heap_gb <- max(2, min(8, floor(gb / 2)))
+  paste0(heap_gb, "g")
+}
+
+
 #' Set JAVA_HOME and update PATH for the current R session
 #' @param jdk_home Path to the JDK root directory.
 #' @noRd
@@ -408,8 +427,10 @@ set_java_memory <- function(size, persist = interactive()) {
           '" -ErrorAction SilentlyContinue | ',
           'ForEach-Object { (Get-ItemProperty $_.PSPath).Path }'
         )
-        out <- system2("powershell", c("-NoProfile", "-Command", ps_cmd),
-                       stdout = TRUE, stderr = TRUE)
+        out <- suppressWarnings(
+          system2("powershell", c("-NoProfile", "-Command", ps_cmd),
+                  stdout = TRUE, stderr = TRUE)
+        )
         out <- trimws(out)
         out <- out[nzchar(out)]
         for (p in out) add_candidate(p, paste0("Registry: ", rp))
@@ -1481,6 +1502,15 @@ setup_java <- function(
 
   # 10. RStudio restart warning
   .configure_rstudio(jdk_home, verbose = verbose)
+
+  # 10b. Auto-configure Java heap if not already set (before rJava loads JVM)
+  java_mem <- .get_java_memory()
+  if (is.null(java_mem$configured)) {
+    auto_size <- .recommend_heap_size()
+    if (!is.null(auto_size)) {
+      set_java_memory(auto_size, persist = persist)
+    }
+  }
 
   # 11. rJava setup
   if (setup_rjava) {
