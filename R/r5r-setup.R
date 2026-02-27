@@ -502,6 +502,11 @@ set_java_memory <- function(size, persist = interactive()) {
     managed_dir <- file.path(tools::R_user_dir("interpElections", "data"),
                              "java", "jdk-21")
     add_candidate(managed_dir, "interpElections managed")
+    # macOS: Adoptium tarballs extract with Contents/Home/ structure
+    contents_home <- file.path(managed_dir, "Contents", "Home")
+    if (dir.exists(contents_home)) {
+      add_candidate(contents_home, "interpElections managed")
+    }
   }, error = function(e) NULL)
 
   # ---- Deduplicate by normalized path ----
@@ -597,65 +602,332 @@ set_java_memory <- function(size, persist = interactive()) {
 }
 
 
-#' Advise user about conflicting Java installations
+#' Handle conflicting Java installations interactively
 #'
-#' Warns about non-21 versions and, in interactive mode, offers removal
-#' instructions. Never auto-removes anything.
+#' When non-Java-21 installations are found, asks the user whether to remove
+#' them. If the user declines, aborts with an error (only Java 21 is
+#' acceptable for r5r). In non-interactive mode, always aborts.
 #'
 #' @param conflicts List from [.check_java_conflicts()].
 #' @param verbose Logical.
-#' @return invisible(NULL)
+#' @return invisible(TRUE) if no conflicts or conflicts were resolved.
+#'   Throws an error if the user declines removal or in non-interactive mode.
 #' @noRd
-.advise_java_conflicts <- function(conflicts, verbose = TRUE) {
-  if (!conflicts$has_conflict) return(invisible(NULL))
+.handle_java_conflicts <- function(conflicts, verbose = TRUE) {
+  if (!conflicts$has_conflict) return(invisible(TRUE))
 
-  platform <- .detect_platform()
-  others   <- conflicts$others
+  others <- conflicts$others
 
-  warning(
-    "Found ", nrow(others),
-    " non-Java-21 installation(s) that may cause conflicts:",
-    call. = FALSE, immediate. = TRUE
+  message(
+    "\nFound ", nrow(others),
+    " incompatible Java installation(s):"
   )
-
   for (i in seq_len(nrow(others))) {
     message("  Java ", others$version[i], " (", others$vendor[i], ") at ",
             others$path[i])
   }
 
- if (interactive()) {
-    choice <- utils::menu(
-      c("Show removal instructions", "Skip (continue anyway)"),
-      title = "\nWould you like instructions to remove conflicting versions?"
+  if (!interactive()) {
+    stop(
+      "Incompatible Java version(s) found. ",
+      "Run setup_java() interactively to handle removal.",
+      call. = FALSE
     )
-    if (choice != 1L) return(invisible(NULL))
-  } else {
-    message("  Run setup_java() interactively for removal instructions.")
-    return(invisible(NULL))
   }
 
-  message("\nRemoval instructions:")
+  choice <- utils::menu(
+    c("Yes, remove incompatible version(s)",
+      "No, abort setup"),
+    title = paste0(
+      "\nr5r requires exactly Java 21. ",
+      "Remove the incompatible version(s)?"
+    )
+  )
+
+  if (choice != 1L) {
+    stop(
+      "Java setup aborted. Only Java 21 is compatible with r5r.\n",
+      "Remove incompatible Java versions and try again.",
+      call. = FALSE
+    )
+  }
+
+  # Attempt to uninstall each conflicting version
   for (i in seq_len(nrow(others))) {
-    message("\n  Java ", others$version[i], " at ", others$path[i], ":")
-    if (platform$os == "windows") {
-      message("    Uninstall via Settings > Apps & Features, or use:")
-      message('    powershell "Get-Package *java* | Uninstall-Package"')
-    } else if (platform$os == "mac") {
-      if (grepl("Homebrew", others$source[i])) {
-        message("    brew uninstall java")
-      } else {
-        jvm_folder <- basename(dirname(dirname(others$path[i])))
-        message("    sudo rm -rf /Library/Java/JavaVirtualMachines/",
-                jvm_folder, "/")
-      }
+    .uninstall_java(
+      path    = others$path[i],
+      vendor  = others$vendor[i],
+      source  = others$source[i],
+      version = others$version[i],
+      verbose = verbose
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Uninstall a Java installation (dispatcher)
+#'
+#' Routes to platform-specific uninstall logic.
+#'
+#' @param path Character. JDK home path.
+#' @param vendor Character. Vendor name.
+#' @param source Character. How the installation was discovered.
+#' @param version Integer. Java major version.
+#' @param verbose Logical.
+#' @return invisible(logical) TRUE on success.
+#' @noRd
+.uninstall_java <- function(path, vendor, source, version, verbose = TRUE) {
+  platform <- .detect_platform()
+  if (verbose) message("  Removing Java ", version, " at ", path, "...")
+
+  success <- tryCatch({
+    if (platform$os == "mac") {
+      .uninstall_java_mac(path, vendor, source, version, verbose)
+    } else if (platform$os == "windows") {
+      .uninstall_java_windows(path, vendor, source, version, verbose)
     } else {
-      message("    sudo apt remove <package-name>  # Debian/Ubuntu")
-      message("    sudo dnf remove <package-name>  # Fedora/RHEL")
+      .uninstall_java_linux(path, vendor, source, version, verbose)
+    }
+  }, error = function(e) {
+    if (verbose) warning(
+      "Could not remove Java ", version, ": ",
+      conditionMessage(e), call. = FALSE, immediate. = TRUE
+    )
+    FALSE
+  })
+
+  if (verbose) {
+    if (isTRUE(success)) {
+      message("  Successfully removed Java ", version, ".")
+    } else {
+      warning(
+        "Could not automatically remove Java ", version, " at ", path, ".\n",
+        "Please remove it manually and re-run setup_java().",
+        call. = FALSE, immediate. = TRUE
+      )
     }
   }
-  message("")
 
-  invisible(NULL)
+  invisible(success)
+}
+
+
+#' Uninstall Java on macOS
+#'
+#' Handles Homebrew installs, system JVMs in /Library/Java, and
+#' interpElections-managed installs.
+#'
+#' @inheritParams .uninstall_java
+#' @return logical TRUE on success.
+#' @noRd
+.uninstall_java_mac <- function(path, vendor, source, version, verbose = TRUE) {
+  # --- Homebrew installs ---
+  if (grepl("Homebrew", source, ignore.case = TRUE)) {
+    formula <- .guess_brew_formula(path)
+    if (!is.null(formula)) {
+      if (verbose) message("    Uninstalling via Homebrew: ", formula)
+      res <- tryCatch(
+        system2("brew", c("uninstall", "--force", formula),
+                stdout = TRUE, stderr = TRUE),
+        error = function(e) NULL
+      )
+      return(!is.null(res))
+    }
+  }
+
+  # --- System JVMs in /Library/Java/JavaVirtualMachines ---
+  bundle_path <- .get_jdk_bundle_path(path)
+  if (!is.null(bundle_path) &&
+      grepl("^/Library/Java/JavaVirtualMachines/", bundle_path)) {
+    if (verbose) message("    Removing system JVM: ", bundle_path)
+    # Use osascript for native macOS admin password prompt
+    script <- sprintf(
+      'do shell script "rm -rf \\"%s\\"" with administrator privileges',
+      bundle_path
+    )
+    res <- tryCatch(
+      system2("osascript", c("-e", script),
+              stdout = TRUE, stderr = TRUE),
+      error = function(e) NULL
+    )
+    return(!is.null(res) && !dir.exists(bundle_path))
+  }
+
+  # --- interpElections managed or other ---
+  if (dir.exists(path)) {
+    unlink(path, recursive = TRUE)
+    return(!dir.exists(path))
+  }
+
+  FALSE
+}
+
+
+#' Guess the Homebrew formula name from a JDK path
+#'
+#' @param path JDK home path (e.g.,
+#'   `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home`).
+#' @return Character formula name (e.g., `"openjdk@17"`), or NULL.
+#' @noRd
+.guess_brew_formula <- function(path) {
+  # Typical Homebrew JDK paths:
+  #   /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+  #   /opt/homebrew/Cellar/openjdk@17/17.0.x/libexec/openjdk.jdk/Contents/Home
+  #   /usr/local/opt/openjdk/libexec/openjdk.jdk/Contents/Home
+  m <- regmatches(path, regexpr("openjdk(@[0-9]+)?", path))
+  if (length(m) > 0L) return(m[1])
+
+  # Broader match for other Homebrew Java packages
+  m <- regmatches(path, regexpr("(temurin|java|jdk)([0-9]*)", path,
+                                 ignore.case = TRUE))
+  if (length(m) > 0L) return(m[1])
+
+  NULL
+}
+
+
+#' Get the .jdk bundle root path from a JDK home path
+#'
+#' On macOS, JDKs in /Library/Java/JavaVirtualMachines/ have structure:
+#'   <name>.jdk/Contents/Home/  (the JDK home)
+#' This function walks up to find the .jdk bundle root.
+#'
+#' @param path JDK home path.
+#' @return Character path to the .jdk bundle, or NULL if not found.
+#' @noRd
+.get_jdk_bundle_path <- function(path) {
+  # Walk up from path looking for a .jdk directory
+  current <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  for (i in seq_len(5L)) {
+    if (grepl("\\.jdk$", current)) return(current)
+    parent <- dirname(current)
+    if (parent == current) break # reached root
+    current <- parent
+  }
+  NULL
+}
+
+
+#' Uninstall Java on Windows
+#'
+#' Searches the Windows Uninstall registry for matching Java entries and
+#' runs the uninstaller. Falls back to directory removal.
+#'
+#' @inheritParams .uninstall_java
+#' @return logical TRUE on success.
+#' @noRd
+.uninstall_java_windows <- function(path, vendor, source, version,
+                                     verbose = TRUE) {
+  # Try registry-based uninstall via PowerShell
+  ps_cmd <- paste0(
+    '$paths = @(',
+    '"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",',
+    '"HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"',
+    '); ',
+    '$apps = Get-ItemProperty $paths -EA SilentlyContinue | ',
+    'Where-Object { ',
+    '($_.DisplayName -like "*Java*" -or $_.DisplayName -like "*JDK*") ',
+    '-and $_.DisplayName -notlike "*21*" ',
+    '-and $_.InstallLocation -and ',
+    '($_.InstallLocation.TrimEnd("\\") -eq "',
+    gsub("/", "\\\\", path), '")',
+    '}; ',
+    'if ($apps) { ',
+    'foreach ($app in $apps) { ',
+    'if ($app.QuietUninstallString) { ',
+    'cmd /c $app.QuietUninstallString ',
+    '} elseif ($app.UninstallString) { ',
+    'cmd /c $app.UninstallString /quiet ',
+    '} } ',
+    'Write-Output "DONE" ',
+    '} else { Write-Output "NOTFOUND" }'
+  )
+
+  result <- tryCatch(
+    system2("powershell", c("-NoProfile", "-Command", ps_cmd),
+            stdout = TRUE, stderr = TRUE),
+    error = function(e) NULL
+  )
+
+  if (!is.null(result) && any(grepl("DONE", result))) {
+    return(TRUE)
+  }
+
+  # Fallback: remove the directory
+  if (verbose) message("    Registry uninstaller not found, removing directory.")
+  if (dir.exists(path)) {
+    unlink(path, recursive = TRUE)
+    return(!dir.exists(path))
+  }
+
+  FALSE
+}
+
+
+#' Uninstall Java on Linux
+#'
+#' Tries to find the owning package via dpkg or rpm, then removes it.
+#' Falls back to directory removal.
+#'
+#' @inheritParams .uninstall_java
+#' @return logical TRUE on success.
+#' @noRd
+.uninstall_java_linux <- function(path, vendor, source, version,
+                                   verbose = TRUE) {
+  java_bin <- file.path(path, "bin", "java")
+
+  # Try dpkg (Debian/Ubuntu)
+  pkg <- tryCatch({
+    out <- system2("dpkg", c("-S", java_bin),
+                   stdout = TRUE, stderr = TRUE)
+    if (length(out) > 0L && !any(grepl("not found", out, ignore.case = TRUE))) {
+      sub(":.*$", "", trimws(out[1]))
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  if (!is.null(pkg)) {
+    if (verbose) message("    Removing package: ", pkg)
+    res <- tryCatch(
+      system2("sudo", c("apt-get", "remove", "-y", pkg),
+              stdout = TRUE, stderr = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.null(res)) return(TRUE)
+  }
+
+  # Try rpm (Fedora/RHEL)
+  pkg <- tryCatch({
+    out <- system2("rpm", c("-qf", java_bin),
+                   stdout = TRUE, stderr = TRUE)
+    if (length(out) > 0L && !any(grepl("not owned", out, ignore.case = TRUE))) {
+      trimws(out[1])
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  if (!is.null(pkg)) {
+    if (verbose) message("    Removing package: ", pkg)
+    res <- tryCatch(
+      system2("sudo", c("dnf", "remove", "-y", pkg),
+              stdout = TRUE, stderr = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.null(res)) return(TRUE)
+  }
+
+  # Fallback: remove the directory
+  if (verbose) message("    Package manager not available, removing directory.")
+  if (dir.exists(path)) {
+    unlink(path, recursive = TRUE)
+    return(!dir.exists(path))
+  }
+
+  FALSE
 }
 
 
@@ -1014,15 +1286,16 @@ set_java_memory <- function(size, persist = interactive()) {
 #'
 #' @details
 #' The function performs the following steps:
-#' 1. Scans for existing Java installations on the system
-#' 2. Warns about non-Java-21 versions that may conflict
-#' 3. Uses an existing Java 21 if found, or downloads Adoptium JDK 21
-#' 4. Configures `JAVA_HOME` and `PATH` for the current R session
-#' 5. Persists `JAVA_HOME` to `~/.Renviron`
-#' 6. Sets `JAVA_HOME` at the OS level (Windows User env / shell config)
-#' 7. Adds JDK `bin/` to the system PATH
-#' 8. Optionally installs and configures rJava
-#' 9. Runs a final verification
+#' 1. Asks for consent (interactive mode only)
+#' 2. Scans for existing Java installations on the system
+#' 3. Offers to remove incompatible (non-21) Java versions
+#' 4. Uses an existing Java 21 if found, or downloads Adoptium JDK 21
+#' 5. Configures `JAVA_HOME` and `PATH` for the current R session
+#' 6. Persists `JAVA_HOME` to `~/.Renviron`
+#' 7. Sets `JAVA_HOME` at the OS level (Windows User env / shell config)
+#' 8. Adds JDK `bin/` to the system PATH
+#' 9. Optionally installs and configures rJava
+#' 10. Runs a final verification
 #'
 #' Even if Java 21 is already installed, calling `setup_java()` ensures
 #' all configuration (env vars, PATH, rJava) is correctly wired up.
@@ -1048,13 +1321,28 @@ setup_java <- function(
     setup_rjava = TRUE,
     verbose     = TRUE
 ) {
-  # 1. Discover existing installations
+  # 1. Ask for consent in interactive mode
+  if (interactive()) {
+    consent <- utils::menu(
+      c("Yes, handle everything for me",
+        "No, I will set up Java myself"),
+      title = paste0(
+        "setup_java() will scan your system, download Java 21 if needed,\n",
+        "and configure all paths. Proceed?"
+      )
+    )
+    if (consent != 1L) {
+      stop("Java setup cancelled by user.", call. = FALSE)
+    }
+  }
+
+  # 2. Discover existing installations
   if (verbose) message("=== Scanning for Java installations ===")
   installations <- .discover_java_installations(verbose = verbose)
 
-  # 2-3. Check and advise about conflicts
+  # 3. Check for conflicts and offer to remove incompatible versions
   conflicts <- .check_java_conflicts(installations)
-  .advise_java_conflicts(conflicts, verbose = verbose)
+  .handle_java_conflicts(conflicts, verbose = verbose)
 
   # 4. Use existing Java 21 or download
   if (nrow(conflicts$java21) > 0L) {
@@ -1112,7 +1400,14 @@ setup_java <- function(
     jdk_dir <- jdk_dir[1]
 
     file.rename(jdk_dir, jdk_parent)
-    jdk_home <- normalizePath(jdk_parent, winslash = "/")
+
+    # macOS Adoptium tarballs extract with Contents/Home/ structure
+    contents_home <- file.path(jdk_parent, "Contents", "Home")
+    if (dir.exists(contents_home)) {
+      jdk_home <- normalizePath(contents_home, winslash = "/")
+    } else {
+      jdk_home <- normalizePath(jdk_parent, winslash = "/")
+    }
 
     unlink(archive_path)
     if (verbose) message("Java 21 installed to: ", jdk_home)

@@ -289,3 +289,87 @@ test_that(".verify_java_setup returns expected structure", {
   expect_type(result$rjava_ok, "logical")
   expect_type(result$r5r_ok, "logical")
 })
+
+
+# --- .get_jdk_bundle_path() --------------------------------------------------
+
+test_that(".get_jdk_bundle_path finds .jdk bundle from Contents/Home path", {
+  result <- interpElections:::.get_jdk_bundle_path(
+    "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+  )
+  expect_equal(result,
+    "/Library/Java/JavaVirtualMachines/temurin-17.jdk")
+})
+
+test_that(".get_jdk_bundle_path returns .jdk path directly", {
+  result <- interpElections:::.get_jdk_bundle_path(
+    "/Library/Java/JavaVirtualMachines/oracle-jdk-17.jdk"
+  )
+  expect_equal(result,
+    "/Library/Java/JavaVirtualMachines/oracle-jdk-17.jdk")
+})
+
+test_that(".get_jdk_bundle_path returns NULL for non-.jdk paths", {
+  expect_null(interpElections:::.get_jdk_bundle_path("/opt/java/jdk-17"))
+  expect_null(interpElections:::.get_jdk_bundle_path("/usr/lib/jvm/java-17"))
+})
+
+
+# --- .guess_brew_formula() ---------------------------------------------------
+
+test_that(".guess_brew_formula extracts openjdk@N from Homebrew paths", {
+  path <- "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+  expect_equal(interpElections:::.guess_brew_formula(path), "openjdk@17")
+})
+
+test_that(".guess_brew_formula extracts plain openjdk", {
+  path <- "/usr/local/opt/openjdk/libexec/openjdk.jdk/Contents/Home"
+  expect_equal(interpElections:::.guess_brew_formula(path), "openjdk")
+})
+
+test_that(".guess_brew_formula returns NULL for unrecognized paths", {
+  expect_null(interpElections:::.guess_brew_formula("/some/random/path"))
+})
+
+
+# --- .handle_java_conflicts() ------------------------------------------------
+
+test_that(".handle_java_conflicts returns TRUE when no conflicts", {
+  no_conflict <- list(
+    java21 = data.frame(
+      path = "/opt/java/21", version = 21L,
+      vendor = "Adoptium", source = "JAVA_HOME",
+      stringsAsFactors = FALSE
+    ),
+    others = data.frame(
+      path = character(0), version = integer(0),
+      vendor = character(0), source = character(0),
+      stringsAsFactors = FALSE
+    ),
+    has_conflict = FALSE
+  )
+  expect_true(
+    interpElections:::.handle_java_conflicts(no_conflict, verbose = FALSE)
+  )
+})
+
+test_that(".handle_java_conflicts errors in non-interactive mode with conflicts", {
+  with_conflict <- list(
+    java21 = data.frame(
+      path = character(0), version = integer(0),
+      vendor = character(0), source = character(0),
+      stringsAsFactors = FALSE
+    ),
+    others = data.frame(
+      path = "/opt/java/17", version = 17L,
+      vendor = "Oracle", source = "JAVA_HOME",
+      stringsAsFactors = FALSE
+    ),
+    has_conflict = TRUE
+  )
+  # Non-interactive always errors
+  expect_error(
+    interpElections:::.handle_java_conflicts(with_conflict, verbose = FALSE),
+    "Incompatible Java"
+  )
+})

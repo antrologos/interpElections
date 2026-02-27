@@ -114,21 +114,70 @@ compute_travel_times <- function(
     error = function(e) NULL,
     warning = function(w) NULL
   )
-  if (is.null(java_check)) {
-    stop(
-      "Java not found. r5r requires exactly Java/JDK 21.\n",
-      "Run interpElections::check_r5r() for diagnostics, or\n",
-      "Run interpElections::setup_java() to download and install Java 21.",
-      call. = FALSE
-    )
+  java_missing <- is.null(java_check)
+  java_wrong   <- FALSE
+  java_ver     <- NA_integer_
+
+  if (!java_missing) {
+    java_ver   <- .parse_java_version(java_check)
+    java_wrong <- !is.na(java_ver) && java_ver != 21L
   }
-  java_ver <- .parse_java_version(java_check)
-  if (!is.na(java_ver) && java_ver != 21L) {
-    stop(
-      sprintf("Java %d found, but r5r requires exactly Java 21.\n", java_ver),
-      "Run interpElections::setup_java() to download and install Java 21.",
-      call. = FALSE
-    )
+
+  if (java_missing || java_wrong) {
+    if (java_missing) {
+      issue_msg <- "Java not found. r5r requires exactly Java/JDK 21."
+    } else {
+      issue_msg <- sprintf(
+        "Java %d found, but r5r requires exactly Java 21.", java_ver
+      )
+    }
+
+    if (interactive()) {
+      message(issue_msg)
+      choice <- utils::menu(
+        c("Yes, set up Java 21 automatically",
+          "No, I will handle it myself"),
+        title = "Would you like R to download and configure Java 21 for you?"
+      )
+
+      if (choice == 1L) {
+        setup_java()
+
+        # Re-verify after setup
+        java_recheck <- tryCatch(
+          system2("java", "-version", stdout = TRUE, stderr = TRUE),
+          error = function(e) NULL, warning = function(w) NULL
+        )
+        if (is.null(java_recheck)) {
+          stop(
+            "Java setup completed but Java is still not accessible on PATH.\n",
+            "Please restart R and try again.",
+            call. = FALSE
+          )
+        }
+        java_ver2 <- .parse_java_version(java_recheck)
+        if (is.na(java_ver2) || java_ver2 != 21L) {
+          stop(
+            "Java setup completed but Java 21 is still not the active version.\n",
+            "Please restart R and try again.",
+            call. = FALSE
+          )
+        }
+        if (verbose) message("Java 21 is now configured. Continuing...")
+      } else {
+        stop(
+          issue_msg, "\n",
+          "Run interpElections::setup_java() when ready.",
+          call. = FALSE
+        )
+      }
+    } else {
+      stop(
+        issue_msg, "\n",
+        "Run interpElections::setup_java() to download and install Java 21.",
+        call. = FALSE
+      )
+    }
   }
 
   # Validate inputs
