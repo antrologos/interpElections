@@ -54,8 +54,8 @@ A list of class \code{"interpElections_optim"} with components:
 decay parameters. Each row is a census tract, each column is a
 demographic bracket. Inactive brackets (zero population or voters)
 are filled with 1.}
-\item{value}{Numeric. Objective function value at optimum (Poisson
-deviance).}
+\item{value}{Numeric. Poisson deviance at optimum.}
+\item{loss}{Numeric. Full loss at optimum (deviance + barrier + entropy).}
 \item{W}{Numeric matrix [n x m]. Column-normalized weight matrix
 from the best-epoch. Use directly for interpolation
 via \verb{W \\\%*\\\% data}. Column sums are approximately 1.}
@@ -107,7 +107,7 @@ optimization (similar to legacy \code{exp(theta)}).
 
 \strong{Epoch structure}: Each epoch is one full-data gradient step with
 exact gradients (column sums require all tracts). The loss reported at
-each epoch is the true objective evaluated on the full dataset.
+each epoch is the true loss evaluated on the full dataset.
 
 Two execution paths:
 \itemize{

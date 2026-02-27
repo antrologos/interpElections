@@ -66,13 +66,10 @@ result <- interpolate_election(
 
 For each tract *i* and source *j*, the decay kernel is one of:
 
-| Kernel | Formula |
-|---|---|
-| **Power** (default) | $K_{ij} = (t_{ij} + 1)^{-\alpha_i}$ |
-| **Exponential** | $K_{ij} = \exp(-\alpha_i \cdot t_{ij})$ |
-
-Select via `optim_control(kernel = "exponential")`.
-
+| Kernel | Formula | Select |
+|---|---|---|
+| **Power** (default) | $K_{ij} = (t_{ij} + 1)^{-\alpha_i}$ | `optim_control(kernel = "power")` |
+| **Exponential** | $K_{ij} = \exp(-\alpha_i \cdot t_{ij})$ | `optim_control(kernel = "exponential")` |
 Weights are **column-normalized** so that column sums equal 1 (each
 source distributes exactly 100% of its data). The optimal alpha is found
 by minimizing the Poisson deviance between interpolated and census

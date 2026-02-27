@@ -10,6 +10,9 @@ optim_control(
   convergence_tol = 1e-04,
   patience = 50L,
   barrier_mu = 10,
+  entropy_mu = 0,
+  target_eff_src = NULL,
+  dual_eta = 0.05,
   alpha_init = 2,
   alpha_min = NULL,
   kernel = "power",
@@ -36,6 +39,25 @@ uses \code{2 * patience} as its own patience. Default: 50.}
 \item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
 prevents any census tract from receiving zero predicted voters.
 Set to 0 to disable. Default: 10.}
+
+\item{entropy_mu}{Numeric. Strength of the Shannon entropy penalty that
+discourages diffuse weight distributions (many effective sources per
+tract). Higher values push the optimizer to concentrate weights on
+fewer nearby stations, reducing effective sources at the cost of
+higher Poisson deviance. The penalty uses the mean entropy per
+bracket-tract pair, making entropy_mu scale-independent across
+different problem sizes. Set to 0 to disable. Default: 0.
+Ignored when \code{target_eff_src} is set (dual ascent mode).}
+
+\item{target_eff_src}{Numeric or NULL. Target number of effective sources
+per tract. When set (not NULL), enables dual ascent: the optimizer
+automatically adapts \code{entropy_mu} during training to reach this target.
+Must be > 1. Mutually exclusive with manual \code{entropy_mu} tuning.
+Default: NULL (disabled).}
+
+\item{dual_eta}{Numeric. Learning rate for the dual ascent update of
+\code{entropy_mu}. Controls how quickly \code{entropy_mu} adapts: higher values
+mean faster adaptation but risk oscillation. Default: 0.05.}
 
 \item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
 Initial guess for alpha. A scalar is recycled to all tracts and

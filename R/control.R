@@ -16,6 +16,22 @@
 #' @param barrier_mu Numeric. Strength of the log-barrier penalty that
 #'   prevents any census tract from receiving zero predicted voters.
 #'   Set to 0 to disable. Default: 10.
+#' @param entropy_mu Numeric. Strength of the Shannon entropy penalty that
+#'   discourages diffuse weight distributions (many effective sources per
+#'   tract). Higher values push the optimizer to concentrate weights on
+#'   fewer nearby stations, reducing effective sources at the cost of
+#'   higher Poisson deviance. The penalty uses the mean entropy per
+#'   bracket-tract pair, making entropy_mu scale-independent across
+#'   different problem sizes. Set to 0 to disable. Default: 0.
+#'   Ignored when `target_eff_src` is set (dual ascent mode).
+#' @param target_eff_src Numeric or NULL. Target number of effective sources
+#'   per tract. When set (not NULL), enables dual ascent: the optimizer
+#'   automatically adapts `entropy_mu` during training to reach this target.
+#'   Must be > 1. Mutually exclusive with manual `entropy_mu` tuning.
+#'   Default: NULL (disabled).
+#' @param dual_eta Numeric. Learning rate for the dual ascent update of
+#'   `entropy_mu`. Controls how quickly `entropy_mu` adapts: higher values
+#'   mean faster adaptation but risk oscillation. Default: 0.05.
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all tracts and
 #'   brackets. Default: 2.
@@ -59,6 +75,9 @@ optim_control <- function(
     convergence_tol = 1e-4,
     patience        = 50L,
     barrier_mu      = 10,
+    entropy_mu      = 0,
+    target_eff_src  = NULL,
+    dual_eta        = 0.05,
     alpha_init      = 2,
     alpha_min       = NULL,
     kernel          = "power",
@@ -82,6 +101,19 @@ optim_control <- function(
   }
   if (!is.numeric(barrier_mu) || length(barrier_mu) != 1 || barrier_mu < 0) {
     stop("`barrier_mu` must be a non-negative number", call. = FALSE)
+  }
+  if (!is.numeric(entropy_mu) || length(entropy_mu) != 1 || entropy_mu < 0) {
+    stop("`entropy_mu` must be a non-negative number", call. = FALSE)
+  }
+  if (!is.null(target_eff_src)) {
+    if (!is.numeric(target_eff_src) || length(target_eff_src) != 1 ||
+        target_eff_src <= 1) {
+      stop("`target_eff_src` must be a number > 1", call. = FALSE)
+    }
+  }
+  if (!is.numeric(dual_eta) || length(dual_eta) != 1 ||
+      dual_eta <= 0 || dual_eta > 1) {
+    stop("`dual_eta` must be a number in (0, 1]", call. = FALSE)
   }
   if (!is.numeric(alpha_init)) {
     stop("`alpha_init` must be numeric", call. = FALSE)
@@ -112,6 +144,9 @@ optim_control <- function(
       convergence_tol = convergence_tol,
       patience        = as.integer(patience),
       barrier_mu      = barrier_mu,
+      entropy_mu      = entropy_mu,
+      target_eff_src  = target_eff_src,
+      dual_eta        = dual_eta,
       alpha_init      = alpha_init,
       alpha_min       = alpha_min,
       kernel          = kernel,
@@ -276,6 +311,12 @@ print.interpElections_optim_control <- function(x, ...) {
   cat("  convergence_tol:", x$convergence_tol, "\n")
   cat("  patience:", x$patience, "\n")
   cat("  barrier_mu:", x$barrier_mu, "\n")
+  if (!is.null(x$target_eff_src)) {
+    cat("  target_eff_src:", x$target_eff_src, "(dual ascent)\n")
+    cat("  dual_eta:", x$dual_eta, "\n")
+  } else if (x$entropy_mu > 0) {
+    cat("  entropy_mu:", x$entropy_mu, "\n")
+  }
   cat("  alpha_init:", if (length(x$alpha_init) == 1) x$alpha_init
       else paste0("[", length(x$alpha_init), " values]"), "\n")
   cat("  alpha_min:", x$alpha_min, "\n")

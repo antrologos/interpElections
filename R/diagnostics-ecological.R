@@ -72,11 +72,17 @@ plot_income <- function(result, variable = NULL, census_year = NULL,
   tracts_df <- sf::st_drop_geometry(result$tracts_sf)
   tract_id_col <- result$tract_id
 
-  # Compute vote share
-  vote_vals <- result$interpolated[, col]
-  total_votes <- rowSums(result$interpolated)
-  total_votes[total_votes == 0] <- NA_real_
-  vote_share <- vote_vals / total_votes
+  # Compute vote share (% of tract turnout, consistent with plot_interactive)
+  vote_share <- tryCatch(
+    .compute_quantity(result, col, "pct_tract"),
+    error = function(e) {
+      # Fallback if QT_COMPARECIMENTO not available
+      vote_vals <- result$interpolated[, col]
+      total_votes <- rowSums(result$interpolated)
+      total_votes[total_votes == 0] <- NA_real_
+      vote_vals / total_votes * 100
+    }
+  )
 
   tracts_df$.vote_share <- vote_share
   tracts_df$.tract_code <- as.character(tracts_df[[tract_id_col]])
@@ -136,7 +142,7 @@ plot_income <- function(result, variable = NULL, census_year = NULL,
       x = "log(Mean household head income)",
       y = "Vote share"
     ) +
-    ggplot2::scale_y_continuous(labels = function(x) paste0(round(x * 100), "%")) +
+    ggplot2::scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
     ggplot2::theme_minimal()
   p
 }
@@ -177,7 +183,7 @@ plot_income <- function(result, variable = NULL, census_year = NULL,
     ggplot2::geom_sf(ggplot2::aes(fill = .data$.vote_share),
                       color = "white", linewidth = 0.05) +
     ggplot2::scale_fill_viridis_c(option = "mako", na.value = "grey90",
-                                   labels = function(x) paste0(round(x * 100), "%")) +
+                                   labels = function(x) paste0(round(x), "%")) +
     ggplot2::labs(title = title, fill = "Vote %") +
     .map_theme()
 
@@ -468,14 +474,27 @@ plot_ecological <- function(result, result2, variable = NULL,
   idx1 <- match(common_ids, as.character(id1))
   idx2 <- match(common_ids, as.character(id2))
 
-  v1 <- result$interpolated[idx1, col1]
-  v2 <- result2$interpolated[idx2, col2]
-  t1 <- rowSums(result$interpolated[idx1, , drop = FALSE])
-  t2 <- rowSums(result2$interpolated[idx2, , drop = FALSE])
-  t1[t1 == 0] <- NA_real_
-  t2[t2 == 0] <- NA_real_
-  share1 <- v1 / t1
-  share2 <- v2 / t2
+  # Compute vote shares (% of tract turnout, consistent with plot_interactive)
+  share1_full <- tryCatch(
+    .compute_quantity(result, col1, "pct_tract"),
+    error = function(e) {
+      v <- result$interpolated[, col1]
+      tot <- rowSums(result$interpolated)
+      tot[tot == 0] <- NA_real_
+      v / tot * 100
+    }
+  )
+  share2_full <- tryCatch(
+    .compute_quantity(result2, col2, "pct_tract"),
+    error = function(e) {
+      v <- result2$interpolated[, col2]
+      tot <- rowSums(result2$interpolated)
+      tot[tot == 0] <- NA_real_
+      v / tot * 100
+    }
+  )
+  share1 <- share1_full[idx1]
+  share2 <- share2_full[idx2]
 
   year1 <- result$year %||% "Year 1"
   year2 <- result2$year %||% "Year 2"
@@ -503,8 +522,8 @@ plot_ecological <- function(result, result2, variable = NULL,
         x = sprintf("%s vote share (%s)", title, year1),
         y = sprintf("%s vote share (%s)", title, year2)
       ) +
-      ggplot2::scale_x_continuous(labels = function(x) paste0(round(x * 100), "%")) +
-      ggplot2::scale_y_continuous(labels = function(x) paste0(round(x * 100), "%")) +
+      ggplot2::scale_x_continuous(labels = function(x) paste0(round(x), "%")) +
+      ggplot2::scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
       ggplot2::theme_minimal()
     print(p)
     invisible(p)
@@ -524,7 +543,7 @@ plot_ecological <- function(result, result2, variable = NULL,
                         color = "white", linewidth = 0.05) +
       ggplot2::scale_fill_viridis_c(
         na.value = "grey90",
-        labels = function(x) paste0(round(x * 100), "%")
+        labels = function(x) paste0(round(x), "%")
       ) +
       ggplot2::labs(title = sprintf("%s (%s)", title, year1), fill = "%") +
       .map_theme()
@@ -534,7 +553,7 @@ plot_ecological <- function(result, result2, variable = NULL,
                         color = "white", linewidth = 0.05) +
       ggplot2::scale_fill_viridis_c(
         na.value = "grey90",
-        labels = function(x) paste0(round(x * 100), "%")
+        labels = function(x) paste0(round(x), "%")
       ) +
       ggplot2::labs(title = sprintf("%s (%s)", title, year2), fill = "%") +
       .map_theme()

@@ -56,9 +56,13 @@ summary.interpElections_result <- function(object, ...) {
     }
   }
 
+  # Kernel
+  kernel <- x$kernel %||% "power"
+  cat(sprintf("Kernel: %s\n", kernel))
+
   # Optimization
   if (!is.null(x$optimization)) {
-    cat(sprintf("Optimization: %s | Objective: %.4f | Convergence: %d\n",
+    cat(sprintf("Optimization: %s | Deviance: %.4f | Convergence: %d\n",
                 x$optimization$method, x$optimization$value,
                 x$optimization$convergence))
   } else {
@@ -68,9 +72,10 @@ summary.interpElections_result <- function(object, ...) {
   # Alpha distribution (always shown)
   q <- stats::quantile(x$alpha, c(0.25, 0.5, 0.75), na.rm = TRUE)
   cat(sprintf(
-    "  Alpha: min=%.3f, Q1=%.3f, median=%.3f, Q3=%.3f, max=%.3f\n\n",
+    "  Alpha: min=%.3f, Q1=%.3f, median=%.3f, Q3=%.3f, max=%.3f\n",
     min(x$alpha, na.rm = TRUE), q[1], q[2], q[3], max(x$alpha, na.rm = TRUE)
   ))
+  cat("\n")
 
   # Per-variable summary grouped by type
   mat <- x$interpolated

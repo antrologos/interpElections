@@ -37,8 +37,8 @@
 #'     decay parameters. Each row is a census tract, each column is a
 #'     demographic bracket. Inactive brackets (zero population or voters)
 #'     are filled with 1.}
-#'   \item{value}{Numeric. Objective function value at optimum (Poisson
-#'     deviance).}
+#'   \item{value}{Numeric. Poisson deviance at optimum.}
+#'   \item{loss}{Numeric. Full loss at optimum (deviance + barrier + entropy).}
 #'   \item{W}{Numeric matrix \[n x m\]. Column-normalized weight matrix
 #'     from the best-epoch. Use directly for interpolation
 #'     via `W \%*\% data`. Column sums are approximately 1.}
@@ -82,7 +82,7 @@
 #'
 #' **Epoch structure**: Each epoch is one full-data gradient step with
 #' exact gradients (column sums require all tracts). The loss reported at
-#' each epoch is the true objective evaluated on the full dataset.
+#' each epoch is the true loss evaluated on the full dataset.
 #'
 #' Two execution paths:
 #' \itemize{
@@ -156,6 +156,9 @@ optimize_alpha <- function(
   barrier_mu      <- optim$barrier_mu
   alpha_min       <- optim$alpha_min
   kernel          <- optim$kernel %||% "power"
+  entropy_mu      <- optim$entropy_mu %||% 0
+  target_eff_src  <- optim$target_eff_src
+  dual_eta        <- optim$dual_eta %||% 0.05
   # --- Check torch is available ---
   if (!requireNamespace("torch", quietly = TRUE)) {
     stop(
@@ -280,6 +283,9 @@ optimize_alpha <- function(
     barrier_mu     = barrier_mu,
     alpha_min      = alpha_min,
     kernel         = kernel,
+    entropy_mu     = entropy_mu,
+    target_eff_src = target_eff_src,
+    dual_eta       = dual_eta,
     verbose        = verbose
   )
 
@@ -306,6 +312,7 @@ optimize_alpha <- function(
   result <- list(
     alpha               = alpha_full,
     value               = final_value,
+    loss                = raw$loss %||% final_value,
     W                   = raw$W,
     method              = raw$method,
     convergence         = raw$convergence,
@@ -317,6 +324,12 @@ optimize_alpha <- function(
     grad_norm_final     = raw$grad_norm_final %||% NULL,
     grad_history        = raw$grad_history %||% NULL,
     lr_history          = raw$lr_history %||% NULL,
+    mean_eff_sources    = if (is.null(raw$mean_eff_sources) ||
+                               is.na(raw$mean_eff_sources)) NULL
+                          else raw$mean_eff_sources,
+    entropy_mu_final    = raw$entropy_mu_final,
+    entropy_mu_history  = raw$entropy_mu_history,
+    target_eff_src      = raw$target_eff_src,
     row_targets         = row_targets,
     barrier_mu          = barrier_mu,
     alpha_min           = alpha_min,
@@ -326,11 +339,25 @@ optimize_alpha <- function(
 
   if (verbose) {
     conv_msg <- if (raw$convergence == 0L) " (converged)" else ""
+    eff_msg <- if (!is.null(result$mean_eff_sources)) {
+      sprintf(", eff_src=%.1f", result$mean_eff_sources)
+    } else ""
+    dual_msg <- if (!is.null(target_eff_src)) {
+      sprintf(", entropy_mu_final=%.4f", result$entropy_mu_final)
+    } else ""
+    loss_display <- if (!is.null(raw$loss)) {
+      format(round(raw$loss), big.mark = ",")
+    } else {
+      format(round(result$value), big.mark = ",")
+    }
     message(sprintf(
-      "  Completed %d epochs (%.1fs), objective=%s%s",
+      "  Completed %d epochs (%.1fs), loss=%s, deviance=%s%s%s%s",
       result$epochs,
       as.numeric(elapsed, units = "secs"),
+      loss_display,
       format(round(result$value), big.mark = ","),
+      eff_msg,
+      dual_msg,
       conv_msg
     ))
   }
@@ -343,7 +370,7 @@ print.interpElections_optim <- function(x, ...) {
   cat("interpElections optimization result\n")
   cat(sprintf("  Method:      %s\n", x$method))
   cat("  Loss fn:     poisson\n")
-  cat(sprintf("  Objective:   %.4f\n", x$value))
+  cat(sprintf("  Deviance:    %.4f\n", x$value))
   cat(sprintf("  Convergence: %d\n", x$convergence))
   if (is.matrix(x$alpha)) {
     cat(sprintf("  Alpha:       %d x %d matrix (tracts x brackets)\n",
@@ -369,7 +396,7 @@ print.interpElections_optim <- function(x, ...) {
 # Softplus reparameterization: alpha = alpha_min + softplus(theta),
 # theta unconstrained — no clamping, no gradient death at boundaries.
 # Epoch structure: the loss reported at each epoch is the true
-# objective evaluated on the full dataset.
+# loss evaluated on the full dataset.
 
 .optimize_torch <- function(time_matrix, pop_matrix, source_matrix,
                              alpha_init,
@@ -377,6 +404,9 @@ print.interpElections_optim <- function(x, ...) {
                              convergence_tol, patience,
                              barrier_mu, alpha_min,
                              kernel,
+                             entropy_mu = 0,
+                             target_eff_src = NULL,
+                             dual_eta = 0.05,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -397,7 +427,8 @@ print.interpElections_optim <- function(x, ...) {
                device, dtype,
                convergence_tol, patience,
                barrier_mu, alpha_min,
-               kernel,
+               kernel, entropy_mu,
+               target_eff_src, dual_eta,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -416,6 +447,9 @@ print.interpElections_optim <- function(x, ...) {
           barrier_mu = barrier_mu,
           alpha_min = alpha_min,
           kernel = kernel,
+          entropy_mu = entropy_mu,
+          target_eff_src = target_eff_src,
+          dual_eta = dual_eta,
           verbose = verbose
         )
       },
@@ -430,6 +464,9 @@ print.interpElections_optim <- function(x, ...) {
         barrier_mu = barrier_mu,
         alpha_min = alpha_min,
         kernel = kernel,
+        entropy_mu = entropy_mu,
+        target_eff_src = target_eff_src,
+        dual_eta = dual_eta,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -500,12 +537,30 @@ print.interpElections_optim <- function(x, ...) {
     }
   }
 
+  # --- Dual ascent setup ---
+  adaptive <- !is.null(target_eff_src)
+  if (adaptive && entropy_mu <= 0) entropy_mu <- 0.01
+
+  if (adaptive && target_eff_src > m * 0.8) {
+    warning(sprintf(paste0(
+      "target_eff_src (%.1f) is close to or above the number of stations (%d). ",
+      "Maximum achievable eff_src with uniform weights is %d. ",
+      "Consider a smaller target."),
+      target_eff_src, m, m), call. = FALSE)
+  }
+
   if (verbose) {
+    if (adaptive) {
+      entropy_msg <- sprintf(", target_eff_src=%.1f (dual ascent)", target_eff_src)
+    } else if (entropy_mu > 0) {
+      entropy_msg <- sprintf(", entropy_mu=%.2f", entropy_mu)
+    } else {
+      entropy_msg <- ""
+    }
     message(sprintf(paste0(
       "  PB-SGD colnorm (%s, %s, %s kernel): full-data gradient, barrier_mu=%.1f, ",
-      "loss=poisson, alpha_min=%.1f, max %d epochs"),
-      device, dtype, kernel, barrier_mu, alpha_min,
-      max_epochs))
+      "loss=poisson, alpha_min=%.1f%s, max %d epochs"),
+      device, dtype, kernel, barrier_mu, alpha_min, entropy_msg, max_epochs))
   }
 
   # Track tensors for cleanup
@@ -616,8 +671,9 @@ print.interpElections_optim <- function(x, ...) {
     gpu_tensors$theta   <- theta_torch
     gpu_tensors$log_V_b <- log_V_b_torch
 
+    optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
-      list(theta_torch), lr = lr_init, betas = c(0.9, 0.99))
+      optim_params, lr = lr_init, betas = c(0.9, 0.99))
 
     scheduler <- torch::lr_reduce_on_plateau(
       optimizer,
@@ -630,7 +686,9 @@ print.interpElections_optim <- function(x, ...) {
       verbose    = FALSE
     )
 
-    best_epoch_loss  <- Inf
+    best_loss        <- Inf
+    best_data_loss   <- Inf
+    best_eff_src     <- NA_real_
     best_alpha <- as.matrix(
       alpha_fn(theta_torch)$detach()$cpu())            # (n, ka)
     best_W     <- NULL                                   # n × m R matrix
@@ -639,6 +697,9 @@ print.interpElections_optim <- function(x, ...) {
     last_grad_norm   <- NA_real_
     step_counter     <- 0L
     epoch            <- 0L
+
+    mean_eff_src     <- NA_real_
+    entropy_mu_history <- numeric(max_epochs)
 
     # Convergence tracking
     patience_counter <- 0L
@@ -681,28 +742,94 @@ print.interpElections_optim <- function(x, ...) {
           log_W_3d)
       }
 
-      # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
+      # Voter counts per bracket per station (needed for V_hat and entropy)
       log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
+
+      # --- Entropy penalty on AGGREGATED weights ---
+      # Penalize the entropy of the aggregated weight matrix (voter-weighted
+      # mixture across brackets).  This is what weight_summary() reports and
+      # what the user sees.  Computing on the aggregated W (instead of per-
+      # bracket) ensures the gradient directly targets the metric that dual
+      # ascent steers, eliminating the Jensen's-inequality gap that caused
+      # entropy_mu instability with per-bracket entropy.
+      if (entropy_mu > 0 || adaptive) {
+        # Aggregate per-bracket column-normalized weights, weighted by
+        # station voter counts c[b,j]
+        #
+        # Mask unreachable pairs: log_W_3d has -Inf for unreachable (i,j)
+        # entries (from NaN-to-Inf cleanup).  logsumexp(-Inf, dim=1)
+        # backward computes softmax = 0/0 = NaN, poisoning gradients.
+        # torch_where routes unreachable entries to a detached finite fill
+        # so logsumexp backward gets well-defined softmax; gradients for
+        # unreachable entries flow to the dead-end fill (discarded),
+        # leaving reachable gradients untouched.
+        if (has_na) {
+          reachable_3d <- mask_torch$unsqueeze(1L)                         # (1, n, m)
+          fill_val <- torch::torch_tensor(
+            -1e20, device = device, dtype = torch_dtype)
+          log_W_3d_ent <- torch::torch_where(reachable_3d, log_W_3d, fill_val)
+        } else {
+          log_W_3d_ent <- log_W_3d
+        }
+        log_T_ent <- log_W_3d_ent + log_c_3d                              # (ka, n, m)
+        log_T_agg <- torch::torch_logsumexp(log_T_ent, dim = 1L)          # (n, m)
+        log_c_agg <- torch::torch_logsumexp(log_V_b_torch, dim = 1L)      # (m,)
+        log_W_agg <- log_T_agg - log_c_agg$unsqueeze(1L)                  # (n, m)
+
+        # Row-normalize for entropy.  Clamp for NaN-free gradient.
+        log_W_agg_c <- torch::torch_clamp(log_W_agg, min = -1e20)
+        log_p_agg <- log_W_agg_c -
+          torch::torch_logsumexp(log_W_agg_c, dim = 2L, keepdim = TRUE)   # (n, m)
+
+        # H[i] = -sum_j p[i,j] * log(p[i,j])
+        H_agg_torch <- -(
+          torch::torch_exp(log_p_agg) * log_p_agg)$sum(dim = 2L)          # (n,)
+
+        if (entropy_mu > 0) {
+          entropy_penalty <- entropy_mu * H_agg_torch$mean()
+        } else {
+          entropy_penalty <- 0
+        }
+
+        # eff_src = exp(median entropy) — matches weight_summary()
+        mean_eff_src <- as.numeric(
+          torch::torch_exp(H_agg_torch$median())$item())
+
+      } else {
+        entropy_penalty <- 0
+      }
+
+      # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
       V_hat_all <- torch::torch_exp(
         torch::torch_logsumexp(
           log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
 
       # Full-data loss (exact, no scaling needed)
       data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
+      data_loss_val <- as.numeric(data_loss$item())
 
-      # Capture epoch loss before adding barrier
-      epoch_loss_val <- as.numeric(data_loss$item())
 
-      # Log-barrier penalty on ALL tracts
+      # Barrier penalty: log-barrier prevents zero-voter tracts
+      barrier_val <- 0
       if (barrier_mu > 0) {
         V_hat_total <- V_hat_all$sum(dim = 2L)        # (n,)
         barrier <- -barrier_mu *
           torch::torch_log(
             torch::torch_clamp(V_hat_total, min = 1e-30))$sum()
-        loss <- data_loss + barrier
-      } else {
-        loss <- data_loss
+        barrier_val <- as.numeric(barrier$item())
+
       }
+
+      # Entropy penalty value for logging
+
+      entropy_val <- if (entropy_mu > 0) as.numeric(entropy_penalty$item()) else 0
+
+      # Total loss = deviance + barrier + entropy. Always.
+      loss <- data_loss
+      if (barrier_mu > 0) loss <- loss + barrier
+      if (entropy_mu > 0) loss <- loss + entropy_penalty
+      total_loss_val <- data_loss_val + barrier_val + entropy_val
+
 
       loss$backward()
 
@@ -712,12 +839,16 @@ print.interpElections_optim <- function(x, ...) {
         error = function(e) NA_real_
       )
       torch::nn_utils_clip_grad_norm_(
-        list(theta_torch), max_norm = 1.0)
+        optim_params, max_norm = 1.0)
 
       optimizer$step()
       step_counter <- step_counter + 1L
 
-      # Extract W and alpha candidates (no extra forward pass needed)
+      # Extract W, alpha candidates (no extra forward pass needed).
+      # All come from pre-step tensors (alpha_all, log_W_3d
+      # were computed before optimizer$step()).
+      # Note: mean_eff_src is computed above in the differentiable
+      # entropy block (aggregated entropy on W_agg).
       torch::with_no_grad({
         log_T_cn <- log_W_3d$detach() + log_c_3d     # (ka, n, m)
         log_c_agg_cn <- torch::torch_logsumexp(
@@ -729,10 +860,25 @@ print.interpElections_optim <- function(x, ...) {
         alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
       })
 
-      epoch_losses[epoch] <- epoch_loss_val
+      # --- Dual ascent: adapt entropy_mu to reach target eff_src ---
+      if (adaptive && !is.na(mean_eff_src) && mean_eff_src > 0) {
+        ratio <- mean_eff_src / target_eff_src
+        entropy_mu <- entropy_mu * ratio ^ dual_eta
+        entropy_mu <- max(entropy_mu, 1e-8)
+        entropy_mu <- min(entropy_mu, 1e6)
 
-      # Step the LR scheduler with the true epoch loss
-      scheduler$step(epoch_loss_val)
+      }
+      entropy_mu_history[epoch] <- entropy_mu
+
+      epoch_losses[epoch] <- total_loss_val
+
+      # LR scheduler: when dual ascent is active, track deviance only
+      # (entropy_mu changes make total_loss unstable for plateau detection)
+      if (adaptive) {
+        scheduler$step(data_loss_val)
+      } else {
+        scheduler$step(total_loss_val)
+      }
 
       grad_history[epoch] <- last_grad_norm
       lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
@@ -740,62 +886,161 @@ print.interpElections_optim <- function(x, ...) {
       # --- Convergence check ---
       # Converge when LR has been reduced to min_lr AND no improvement
       # for `patience` consecutive epochs at that LR.
-      # NOTE: must check BEFORE updating best_epoch_loss, otherwise the
-      # comparison (epoch_loss_val < best_epoch_loss - tol*|best|) is
-      # always false after a best-loss update.
+      # In dual ascent mode, also require eff_src near target.
       current_lr <- optimizer$param_groups[[1]]$lr
       lr_at_min  <- (current_lr <= min_lr * 1.01)
 
-      if (is.finite(epoch_loss_val) && epoch >= 5L) {
-        if (epoch_loss_val < best_epoch_loss -
-              convergence_tol * abs(best_epoch_loss)) {
+      # For dual ascent: track deviance for patience (stable component)
+      conv_metric <- if (adaptive) data_loss_val else total_loss_val
+
+      eff_near_target <- if (adaptive && !is.na(mean_eff_src)) {
+        abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
+      } else {
+        TRUE
+      }
+
+      if (is.finite(conv_metric) && epoch >= 5L) {
+        if (!eff_near_target) {
+          # Far from target: can't converge, reset patience
           patience_counter <- 0L
-        } else {
+        } else if (is.finite(best_data_loss) &&
+                   conv_metric < best_data_loss -
+                     convergence_tol * abs(best_data_loss)) {
+          # Near target and deviance improving: reset patience
+          patience_counter <- 0L
+        } else if (eff_near_target) {
+          # Near target, no improvement: count patience
           patience_counter <- patience_counter + 1L
         }
 
-        if (lr_at_min && patience_counter >= patience) {
+        if (lr_at_min && patience_counter >= patience && eff_near_target) {
           converged <- TRUE
           if (verbose) {
+            eff_conv <- if ((entropy_mu > 0 || adaptive) &&
+                            !is.na(mean_eff_src)) {
+              sprintf(", eff_src=%.1f", mean_eff_src)
+            } else ""
+            dual_conv <- if (adaptive) {
+              sprintf(", entropy_mu=%.4f", entropy_mu)
+            } else ""
             message(sprintf(paste0(
-              "  Converged at epoch %d (loss=%s, lr=%.1e, ",
-              "no improvement for %d epochs)"),
+              "  Converged at epoch %d (loss=%s",
+              " [deviance=%s, barrier=%s, entropy=%s]%s%s, ",
+              "lr=%.1e, no improvement for %d epochs)"),
               epoch,
-              format(round(epoch_loss_val), big.mark = ","),
+              format(round(total_loss_val), big.mark = ","),
+              format(round(data_loss_val), big.mark = ","),
+              format(round(barrier_val), big.mark = ","),
+              format(round(entropy_val), big.mark = ","),
+              eff_conv,
+              dual_conv,
               current_lr, patience))
           }
           break
         }
       }
 
-      # Track best alpha by true epoch loss (after convergence check)
-      if (is.finite(epoch_loss_val) &&
-          epoch_loss_val < best_epoch_loss) {
-        best_epoch_loss <- epoch_loss_val
-        best_alpha <- alpha_candidate
-        best_W <- W_candidate
+      # Best model tracking.
+      # In dual ascent: the converged state IS the saddle-point solution.
+      # Models from earlier epochs were optimized for wrong entropy_mu values.
+      # Track best near-target model only as fallback for non-convergence.
+      # At convergence, we override with the final epoch (see after loop).
+      if (adaptive) {
+        eff_ok <- !is.na(mean_eff_src) &&
+          abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
+        if (eff_ok && is.finite(data_loss_val) &&
+            data_loss_val < best_data_loss) {
+          best_loss       <- total_loss_val
+          best_data_loss  <- data_loss_val
+          best_alpha      <- alpha_candidate
+          best_W          <- W_candidate
+          best_eff_src    <- mean_eff_src
+        }
+      } else {
+        # Non-adaptive: fixed objective, standard best-model tracking
+        if (is.finite(total_loss_val) &&
+            total_loss_val < best_loss) {
+          best_loss       <- total_loss_val
+          best_data_loss  <- data_loss_val
+          best_alpha      <- alpha_candidate
+          best_W          <- W_candidate
+        }
       }
 
       if (verbose &&
           (epoch == 1L || epoch %% report_every == 0L)) {
+        eff_src_log <- if ((entropy_mu > 0 || adaptive) &&
+                            !is.na(mean_eff_src)) {
+          sprintf(", eff_src=%.1f", mean_eff_src)
+        } else ""
+        dual_log <- if (adaptive) {
+          sprintf(", entropy_mu=%.4f", entropy_mu)
+        } else ""
+        components <- sprintf(" [deviance=%s, barrier=%s, entropy=%s]",
+          format(round(data_loss_val), big.mark = ","),
+          format(round(barrier_val), big.mark = ","),
+          format(round(entropy_val), big.mark = ","))
         message(sprintf(paste0(
-          "  Epoch %3d/%d: loss=%s, grad=%.2e, lr=%.1e, ",
-          "alpha=[%.2f, %.2f, %.2f]"),
+          "  Epoch %3d/%d: loss=%s%s, grad=%.2e, lr=%.1e, ",
+          "alpha=[%.2f, %.2f, %.2f]%s%s"),
           epoch, max_epochs,
-          format(round(epoch_loss_val), big.mark = ","),
+          format(round(total_loss_val), big.mark = ","),
+          components,
           last_grad_norm,
           optimizer$param_groups[[1]]$lr,
           min(alpha_candidate), stats::median(alpha_candidate),
-          max(alpha_candidate)
+          max(alpha_candidate),
+          eff_src_log,
+          dual_log
         ))
       }
     }  # end epoch loop
+
+    # Dual ascent model selection:
+    # - Converged: the final epoch IS the saddle-point solution (theta and
+    #   entropy_mu jointly stabilized).  Earlier models were optimized for
+    #   wrong entropy_mu values and are not valid candidates.
+    # - Non-converged but had near-target models: use best tracked model.
+    # - Never reached near target: use final epoch as last resort.
+    if (adaptive) {
+      if (converged) {
+        best_loss      <- total_loss_val
+        best_data_loss <- data_loss_val
+        best_alpha     <- alpha_candidate
+        best_W         <- W_candidate
+        best_eff_src   <- mean_eff_src
+      } else if (!is.finite(best_data_loss)) {
+        best_loss      <- total_loss_val
+        best_data_loss <- data_loss_val
+        best_alpha     <- alpha_candidate
+        best_W         <- W_candidate
+        best_eff_src   <- mean_eff_src
+      }
+    }
+
+    if (adaptive && !converged && verbose) {
+      eff_str <- if (!is.na(mean_eff_src)) {
+        sprintf("%.1f", mean_eff_src)
+      } else "NA"
+      message(sprintf(
+        paste0("  Note: dual ascent did not converge in %d epochs. ",
+               "Final eff_src=%s vs target=%.1f. ",
+               "Consider increasing max_epochs or adjusting target_eff_src."),
+        epoch, eff_str, target_eff_src))
+    }
+
+    reported_eff_src <- if (adaptive && !is.na(best_eff_src)) {
+      best_eff_src
+    } else {
+      mean_eff_src
+    }
 
     list(
       alpha           = best_alpha,   # n × ka matrix
       active_brackets = active,       # which brackets are active
       W               = best_W,       # n × m weight matrix
-      value           = best_epoch_loss,
+      value           = best_data_loss, # Poisson deviance
+      loss            = best_loss,      # Full loss: deviance + barrier + entropy
       method          = paste0("pb_sgd_colnorm_", device),
       convergence     = if (converged) 0L else 1L,
       epochs          = epoch,
@@ -807,7 +1052,11 @@ print.interpElections_optim <- function(x, ...) {
       history             = epoch_losses[seq_len(epoch)],
       grad_norm_final     = last_grad_norm,
       grad_history        = grad_history[seq_len(epoch)],
-      lr_history          = lr_history[seq_len(epoch)]
+      lr_history          = lr_history[seq_len(epoch)],
+      mean_eff_sources    = reported_eff_src,
+      entropy_mu_final    = entropy_mu,
+      entropy_mu_history  = entropy_mu_history[seq_len(epoch)],
+      target_eff_src      = target_eff_src
     )
   }, error = function(e) {
     stop(sprintf(

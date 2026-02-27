@@ -663,10 +663,11 @@ print.interpElections_result <- function(x, ...) {
   } else {
     cat("  Optimizer: skipped (alpha provided)\n")
   }
+  kernel <- x$kernel %||% "power"
+  cat(sprintf("  Kernel:    %s\n", kernel))
   cat(sprintf("  Alpha:     [%.3f, %.3f] (mean %.3f)\n",
               min(x$alpha, na.rm = TRUE), max(x$alpha, na.rm = TRUE),
               mean(x$alpha, na.rm = TRUE)))
-
   # Contents
   cat("\n  Contents:\n")
   cat(sprintf("    result$tracts_sf       sf with census tracts + interpolated columns\n"))

@@ -160,7 +160,8 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
 
 # Internal: subprocess wrapper for compute_weight_matrix
 .compute_W_subprocess <- function(t_adj, alpha, pop_matrix, source_matrix,
-                                   kernel, device, dtype, verbose) {
+                                   kernel,
+                                   device, dtype, verbose) {
 
   # RStudio subprocess delegation
   if (.is_rstudio() &&
@@ -252,7 +253,7 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
 
   # Build 3D kernel: log_K_3d[b, i, j] = -alpha[i, b] * t_basis[i, j]
   log_K_3d <- -alpha_torch$t()$unsqueeze(3L) *
-    t_basis$unsqueeze(1L)                           # (ka, n, m)
+    t_basis$unsqueeze(1L)                             # (ka, n, m)
 
   # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
   if (has_na) {
