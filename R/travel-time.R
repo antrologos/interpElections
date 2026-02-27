@@ -282,33 +282,45 @@ compute_travel_times <- function(
     if (verbose) message("  Copied GTFS file to network directory")
   }
 
-  # Build r5r network
-  if (verbose) message("  Building r5r network...")
-  r5r_core <- suppressMessages(r5r::setup_r5(
-    data_path = network_path,
-    verbose = FALSE
-  ))
-  on.exit(suppressMessages(r5r::stop_r5(r5r_core)), add = TRUE)
+  # Run r5r in a subprocess when in Positron (ark kernel thread-safety issue)
+  use_subprocess <- .needs_r5r_subprocess()
 
-  # Build travel time call args
-  tt_args <- list(
-    r5r_core,
-    origins = origins,
-    destinations = destinations,
-    mode = mode,
-    max_trip_duration = max_trip_duration,
-    verbose = FALSE,
-    max_rides = 1L
-  )
+  if (use_subprocess) {
+    if (verbose) message("  Positron detected: running r5r in subprocess...")
+    tt <- .run_r5r_subprocess(
+      network_path       = network_path,
+      origins            = origins,
+      destinations       = destinations,
+      mode               = mode,
+      max_trip_duration  = max_trip_duration,
+      departure_datetime = departure_datetime,
+      verbose            = verbose
+    )
+  } else {
+    # In-process r5r (RStudio, terminal, etc.)
+    if (verbose) message("  Building r5r network...")
+    r5r_core <- suppressMessages(r5r::setup_r5(
+      data_path = network_path,
+      verbose = FALSE
+    ))
+    on.exit(suppressMessages(r5r::stop_r5(r5r_core)), add = TRUE)
 
-  # Pass departure_datetime if provided (needed for transit modes)
-  if (!is.null(departure_datetime)) {
-    tt_args$departure_datetime <- departure_datetime
+    tt_args <- list(
+      r5r_core,
+      origins = origins,
+      destinations = destinations,
+      mode = mode,
+      max_trip_duration = max_trip_duration,
+      verbose = FALSE,
+      max_rides = 1L
+    )
+    if (!is.null(departure_datetime)) {
+      tt_args$departure_datetime <- departure_datetime
+    }
+
+    if (verbose) message("  Computing travel times...")
+    tt <- suppressMessages(do.call(r5r::travel_time_matrix, tt_args))
   }
-
-  # Calculate travel times
-  if (verbose) message("  Computing travel times...")
-  tt <- suppressMessages(do.call(r5r::travel_time_matrix, tt_args))
 
   # Vectorized pivot to wide matrix
   tract_ids <- origins$id
@@ -433,4 +445,99 @@ compute_travel_times <- function(
   }
 
   mat
+}
+
+
+#' Detect if running inside Positron IDE (ark kernel)
+#'
+#' Positron's ark kernel panics when Java threads call back into R.
+#' We use a subprocess for r5r in this case.
+#'
+#' @return Logical.
+#' @noRd
+.is_positron <- function() {
+  nzchar(Sys.getenv("POSITRON_VERSION", ""))
+}
+
+
+#' Decide whether r5r should run in a subprocess
+#'
+#' Returns TRUE if we're in Positron and callr is available.
+#'
+#' @return Logical.
+#' @noRd
+.needs_r5r_subprocess <- function() {
+  .is_positron() && requireNamespace("callr", quietly = TRUE)
+}
+
+
+#' Run the r5r travel-time computation in a subprocess
+#'
+#' Isolates the JVM from the main R process, avoiding thread-safety
+#' issues with Positron's ark kernel.
+#'
+#' @param network_path Path to the directory with the OSM .pbf file.
+#' @param origins Data frame with id, lon, lat columns.
+#' @param destinations Data frame with id, lon, lat columns.
+#' @param mode Travel mode string.
+#' @param max_trip_duration Numeric.
+#' @param departure_datetime POSIXct or NULL.
+#' @param verbose Logical.
+#' @return Data frame with travel times (from r5r::travel_time_matrix).
+#' @noRd
+.run_r5r_subprocess <- function(network_path, origins, destinations,
+                                mode, max_trip_duration,
+                                departure_datetime, verbose) {
+  java_home   <- Sys.getenv("JAVA_HOME", "")
+  java_params <- getOption("java.parameters")
+
+  if (verbose) message("  Building r5r network...")
+  if (verbose) message("  Computing travel times...")
+
+  callr::r(
+    function(network_path, origins, destinations, mode,
+             max_trip_duration, departure_datetime,
+             java_home, java_params) {
+      # Configure JVM before loading r5r
+      if (nzchar(java_home)) {
+        Sys.setenv(JAVA_HOME = java_home)
+        old_path <- Sys.getenv("PATH", "")
+        bin_dir <- file.path(java_home, "bin")
+        Sys.setenv(PATH = paste(bin_dir, old_path, sep = .Platform$path.sep))
+      }
+      if (!is.null(java_params)) {
+        options(java.parameters = java_params)
+      }
+
+      r5r_core <- r5r::setup_r5(data_path = network_path, verbose = FALSE)
+      on.exit(r5r::stop_r5(r5r_core))
+
+      tt_args <- list(
+        r5r_core,
+        origins = origins,
+        destinations = destinations,
+        mode = mode,
+        max_trip_duration = max_trip_duration,
+        verbose = FALSE,
+        max_rides = 1L
+      )
+      if (!is.null(departure_datetime)) {
+        tt_args$departure_datetime <- departure_datetime
+      }
+
+      do.call(r5r::travel_time_matrix, tt_args)
+    },
+    args = list(
+      network_path       = network_path,
+      origins            = origins,
+      destinations       = destinations,
+      mode               = mode,
+      max_trip_duration  = max_trip_duration,
+      departure_datetime = departure_datetime,
+      java_home          = java_home,
+      java_params        = java_params
+    ),
+    show = TRUE,
+    spinner = FALSE
+  )
 }
