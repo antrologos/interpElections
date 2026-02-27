@@ -99,10 +99,6 @@ compute_travel_times <- function(
   n_threads               <- routing$n_threads
   departure_datetime      <- routing$departure_datetime
   gtfs_zip_path           <- routing$gtfs_zip_path
-  if (!requireNamespace("r5r", quietly = TRUE)) {
-    stop("The 'r5r' package is required for compute_travel_times()",
-         call. = FALSE)
-  }
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("The 'sf' package is required for compute_travel_times()",
          call. = FALSE)
@@ -178,6 +174,45 @@ compute_travel_times <- function(
         call. = FALSE
       )
     }
+  }
+
+  # Auto-configure Java heap if not set (must happen before r5r loads the JVM)
+  if (!"rJava" %in% loadedNamespaces()) {
+    java_mem <- .get_java_memory()
+    if (is.null(java_mem$configured)) {
+      auto_size <- .recommend_heap_size()
+      if (!is.null(auto_size)) {
+        param <- paste0("-Xmx", auto_size)
+        options(java.parameters = param)
+        # Persist so future sessions use this setting automatically
+        tryCatch(
+          .persist_renviron_var("_JAVA_OPTIONS", param),
+          error = function(e) NULL
+        )
+        if (verbose) {
+          message("  Java heap auto-configured to ", auto_size,
+                  " (based on ", java_mem$system_ram %||% "system", " RAM)")
+        }
+      }
+    }
+  } else {
+    # JVM already running — check if heap is dangerously low
+    java_mem <- .get_java_memory()
+    if (is.null(java_mem$configured)) {
+      warning(
+        "Java heap is at JVM default (~256-512 MB), which may be too small for r5r.\n",
+        "If R crashes, restart R and run:\n",
+        "  interpElections::set_java_memory(\"4g\")\n",
+        "before loading any packages.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # Now safe to load r5r (JVM will start with configured heap)
+  if (!requireNamespace("r5r", quietly = TRUE)) {
+    stop("The 'r5r' package is required for compute_travel_times()",
+         call. = FALSE)
   }
 
   # Validate inputs
