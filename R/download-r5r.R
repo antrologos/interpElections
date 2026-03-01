@@ -209,12 +209,21 @@ download_r5r_data <- function(
           ),
           call. = FALSE
         )
-      } else if (verbose) {
-        message(
-          "  Note: clipping tools not available, but file is ",
-          sprintf("small (%.0f MB) -- proceeding without clipping.",
-                  file_mb)
-        )
+      } else {
+        # Copy the unclipped file into the r5r network directory
+        # so that r5r::setup_r5() can find it
+        dest <- file.path(output_dir, basename(osm_path))
+        if (!file.exists(dest)) {
+          file.copy(osm_path, dest)
+        }
+        osm_path <- dest
+        if (verbose) {
+          message(
+            "  Note: clipping tools not available, but file is ",
+            sprintf("small (%.0f MB) -- proceeding without clipping.",
+                    file_mb)
+          )
+        }
       }
     }
 
