@@ -332,6 +332,7 @@ compute_travel_times <- function(
     row_idx <- match(to_ids, tract_ids)
     col_idx <- match(from_ids, point_ids)
   }
+  swapped <- (fwd_tract < rev_tract)
   valid <- !is.na(row_idx) & !is.na(col_idx)
 
   # r5r column name varies by version
@@ -400,6 +401,74 @@ compute_travel_times <- function(
       call. = FALSE
     )
     attr(mat, "unreachable_tracts") <- unreachable_ids
+  }
+
+  # Retry unreachable tracts when r5r swapped routing direction.
+  # When r5r routes destination→origin instead of origin→destination,
+  # some tracts may appear unreachable due to road network asymmetry.
+  # A small retry set (< n_destinations) prevents r5r from swapping again.
+  if (n_unreachable > 0 && swapped) {
+    retry_origins <- origins[origins$id %in% unreachable_ids, , drop = FALSE]
+    if (nrow(retry_origins) > 0 && nrow(retry_origins) < nrow(destinations)) {
+      if (verbose) {
+        message(sprintf(
+          "  Retrying %d unreachable tract(s) in forward direction...",
+          nrow(retry_origins)))
+      }
+
+      if (use_subprocess) {
+        tt2 <- .run_r5r_subprocess(
+          network_path       = network_path,
+          origins            = retry_origins,
+          destinations       = destinations,
+          mode               = mode,
+          max_trip_duration  = max_trip_duration,
+          departure_datetime = departure_datetime,
+          verbose            = FALSE
+        )
+      } else {
+        retry_args <- list(
+          r5r_core,
+          origins = retry_origins,
+          destinations = destinations,
+          mode = mode,
+          max_trip_duration = max_trip_duration,
+          verbose = FALSE,
+          max_rides = 1L
+        )
+        if (!is.null(departure_datetime)) {
+          retry_args$departure_datetime <- departure_datetime
+        }
+        tt2 <- suppressMessages(do.call(r5r::travel_time_matrix, retry_args))
+      }
+
+      if (nrow(tt2) > 0) {
+        from2 <- as.character(tt2$from_id)
+        to2   <- as.character(tt2$to_id)
+        row2  <- match(from2, tract_ids)
+        col2  <- match(to2, point_ids)
+        valid2 <- !is.na(row2) & !is.na(col2)
+        if (any(valid2)) {
+          mat[cbind(row2[valid2], col2[valid2])] <- tt2[[tt_col[1]]][valid2]
+        }
+
+        # Re-check unreachable tracts
+        all_na <- rowSums(!is.na(mat)) == 0L
+        n_fixed <- n_unreachable - sum(all_na)
+        n_unreachable <- sum(all_na)
+        if (n_fixed > 0 && verbose) {
+          message(sprintf("  Recovered %d tract(s) via forward-direction retry",
+                          n_fixed))
+        }
+        if (n_unreachable > 0) {
+          attr(mat, "unreachable_tracts") <- tract_ids[all_na]
+        } else {
+          attr(mat, "unreachable_tracts") <- NULL
+        }
+        # Update valid count for verbose output
+        n_valid <- sum(!is.na(mat))
+      }
+    }
   }
 
   # Propagate attributes from representative points
