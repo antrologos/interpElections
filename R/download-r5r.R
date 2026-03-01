@@ -175,8 +175,30 @@ download_r5r_data <- function(
       }
     )
 
+    osm_mb <- file.size(osm_path) / 1e6
+
+    # Validate the downloaded file: OSM state-level extracts should
+    # be at least 1 MB. A tiny file indicates a failed/corrupt download.
+    if (is.na(osm_mb) || osm_mb < 1) {
+      # Remove the corrupt cached file so next attempt re-downloads
+      unlink(osm_path)
+      stop(
+        sprintf(
+          paste0(
+            "The downloaded OSM file appears corrupt or empty ",
+            "(%.2f MB): %s\n",
+            "The file has been removed from the cache. ",
+            "Please check your internet connection and re-run.\n",
+            "If the problem persists, try providing an explicit URL:\n",
+            "  download_r5r_data(..., osm_url = \"https://...\")"
+          ),
+          osm_mb, basename(osm_path)
+        ),
+        call. = FALSE
+      )
+    }
+
     if (verbose) {
-      osm_mb <- file.size(osm_path) / 1e6
       message(sprintf("  OSM extract: %s (%.0f MB)",
                       basename(osm_path), osm_mb))
     }
