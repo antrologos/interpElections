@@ -237,3 +237,186 @@ test_that("all-NA rows are detected correctly", {
   expect_equal(which(all_na), 3L)
   expect_equal(sum(all_na), 1L)
 })
+
+
+# --- Road tier classification ---
+
+test_that(".road_tier classifies highway types correctly", {
+  road_tier <- interpElections:::.road_tier
+
+  # Tier 1: main municipal roads
+  expect_equal(road_tier("primary"), 1L)
+  expect_equal(road_tier("secondary_link"), 1L)
+  expect_equal(road_tier("tertiary"), 1L)
+  expect_equal(road_tier("residential"), 1L)
+  expect_equal(road_tier("living_street"), 1L)
+
+
+  # Tier 2: usually connected
+  expect_equal(road_tier("unclassified"), 2L)
+  expect_equal(road_tier("service"), 2L)
+
+  # Tier 3: often disconnected
+  expect_equal(road_tier("track"), 3L)
+  expect_equal(road_tier("path"), 3L)
+  expect_equal(road_tier("footway"), 3L)
+  expect_equal(road_tier("cycleway"), 3L)
+  expect_equal(road_tier("pedestrian"), 3L)
+
+  # Unknown types default to tier 3
+  expect_equal(road_tier("construction"), 3L)
+  expect_equal(road_tier("something_unknown"), 3L)
+
+  # Vectorized
+  result <- road_tier(c("primary", "service", "track"))
+  expect_equal(result, c(1L, 2L, 3L))
+})
+
+test_that("pop_weighted prefers tier 1 roads over tier 3", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("terra")
+
+  # Create a large tract (~12000 km2) with a single populated cluster
+  # spanning several cells. A tier 3 road (track) and a tier 1 road
+  # (residential) are both within 200m of cells in the cluster.
+  # The algorithm should select tier 1.
+  tract <- sf::st_sf(
+    data.frame(id = "Z1"),
+    geometry = sf::st_sfc(
+      sf::st_polygon(list(matrix(c(
+        -45.5, -21.5,  -44.5, -21.5,  -44.5, -20.5,  -45.5, -20.5,  -45.5, -21.5
+      ), ncol = 2, byrow = TRUE))),
+      crs = 4326
+    )
+  )
+
+  r <- terra::rast(
+    xmin = -45.5, xmax = -44.5, ymin = -21.5, ymax = -20.5,
+    resolution = 0.1, crs = "EPSG:4326"
+  )
+  terra::values(r) <- 0
+  # One contiguous cluster spanning 5 cells in row 1
+  r[1, 1] <- 100
+  r[1, 2] <- 90
+  r[1, 3] <- 50
+  r[1, 4] <- 50
+  r[1, 5] <- 80
+
+  # Track road near top-left cells, residential road near top-center cell
+  track_road <- sf::st_sf(
+    highway = "track",
+    geometry = sf::st_sfc(
+      sf::st_linestring(matrix(c(-45.45, -20.55, -45.35, -20.55), ncol = 2, byrow = TRUE)),
+      crs = 4326
+    )
+  )
+  residential_road <- sf::st_sf(
+    highway = "residential",
+    geometry = sf::st_sfc(
+      sf::st_linestring(matrix(c(-45.05, -20.55, -44.95, -20.55), ncol = 2, byrow = TRUE)),
+      crs = 4326
+    )
+  )
+  roads <- rbind(track_road, residential_road)
+
+  pts <- interpElections:::compute_representative_points(
+    tract, method = "pop_weighted",
+    pop_raster = r,
+    min_area_for_pop_weight = 0,
+    tract_id = "id",
+    osm_roads = roads,
+    verbose = FALSE
+  )
+
+  diag <- attr(pts, "pop_weighted_diagnostics")
+  expect_true(!is.null(diag))
+  expect_true("Z1" %in% names(diag))
+
+  # Should use tier 1 road (residential), not tier 3 (track)
+  expect_equal(diag[["Z1"]]$road_tier, 1L)
+  expect_true(diag[["Z1"]]$near_road)
+})
+
+test_that("pop_weighted falls back to tier 2 when no tier 1 roads exist", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("terra")
+
+  tract <- sf::st_sf(
+    data.frame(id = "Z1"),
+    geometry = sf::st_sfc(
+      sf::st_polygon(list(matrix(c(
+        -45.5, -21.5,  -44.5, -21.5,  -44.5, -20.5,  -45.5, -20.5,  -45.5, -21.5
+      ), ncol = 2, byrow = TRUE))),
+      crs = 4326
+    )
+  )
+
+  r <- terra::rast(
+    xmin = -45.5, xmax = -44.5, ymin = -21.5, ymax = -20.5,
+    resolution = 0.1, crs = "EPSG:4326"
+  )
+  terra::values(r) <- 0
+  r[1, 1] <- 100
+  r[1, 2] <- 50
+
+  # Only tier 2 road (service) near the cluster
+  service_road <- sf::st_sf(
+    highway = "service",
+    geometry = sf::st_sfc(
+      sf::st_linestring(matrix(c(-45.45, -20.55, -45.35, -20.55), ncol = 2, byrow = TRUE)),
+      crs = 4326
+    )
+  )
+
+  pts <- interpElections:::compute_representative_points(
+    tract, method = "pop_weighted",
+    pop_raster = r,
+    min_area_for_pop_weight = 0,
+    tract_id = "id",
+    osm_roads = service_road,
+    verbose = FALSE
+  )
+
+  diag <- attr(pts, "pop_weighted_diagnostics")
+  expect_true(!is.null(diag))
+  # Should fall back to tier 2
+  expect_equal(diag[["Z1"]]$road_tier, 2L)
+  expect_true(diag[["Z1"]]$near_road)
+})
+
+test_that("road_tier is NA when no roads are provided", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("terra")
+
+  tract <- sf::st_sf(
+    data.frame(id = "Z1"),
+    geometry = sf::st_sfc(
+      sf::st_polygon(list(matrix(c(
+        -45.5, -21.5,  -44.5, -21.5,  -44.5, -20.5,  -45.5, -20.5,  -45.5, -21.5
+      ), ncol = 2, byrow = TRUE))),
+      crs = 4326
+    )
+  )
+
+  r <- terra::rast(
+    xmin = -45.5, xmax = -44.5, ymin = -21.5, ymax = -20.5,
+    resolution = 0.1, crs = "EPSG:4326"
+  )
+  terra::values(r) <- 0
+  r[1, 1] <- 100
+
+  pts <- interpElections:::compute_representative_points(
+    tract, method = "pop_weighted",
+    pop_raster = r,
+    min_area_for_pop_weight = 0,
+    tract_id = "id",
+    osm_roads = NULL,
+    verbose = FALSE
+  )
+
+  diag <- attr(pts, "pop_weighted_diagnostics")
+  expect_true(!is.null(diag))
+  expect_true(is.na(diag[["Z1"]]$road_tier))
+  expect_false(diag[["Z1"]]$near_road)
+  expect_false(diag[["Z1"]]$has_roads)
+})

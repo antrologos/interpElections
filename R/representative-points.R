@@ -9,8 +9,12 @@
 #' The `pop_weighted` method uses cluster-based selection: it identifies
 #' connected clusters of populated cells via [terra::patches()] and selects
 #' the largest cluster by total population. If OSM road data is available
-#' (via `osm_roads`), it prefers cells within 200m of a road. This avoids
-#' placing the representative point on an isolated pixel with no road access.
+#' (via `osm_roads`), it applies **tiered road proximity refinement**:
+#' cells within 200m of well-connected road types (primary, secondary,
+#' tertiary, residential) are preferred over cells near isolated rural
+#' roads (tracks, paths). This reduces the chance of placing the
+#' representative point near a disconnected road fragment that r5r
+#' cannot route from.
 #'
 #' @param tracts_sf An `sf` polygon object containing census tract geometries.
 #' @param method Character. Method for computing representative points:
@@ -37,10 +41,12 @@
 #' @param tract_id Character. Name of the ID column in `tracts_sf`.
 #'   Default: `"id"`.
 #' @param osm_roads An `sf` object with OSM road geometries, or `NULL`.
-#'   When provided and `method = "pop_weighted"`, cells near roads (within
-#'   200m) are preferred within the largest population cluster. This reduces
-#'   the chance of placing the representative point in an area with no road
-#'   access. Typically read from the clipped PBF file by
+#'   When provided and `method = "pop_weighted"`, cells within 200m of
+#'   roads are preferred, using a tiered hierarchy: Tier 1 (primary,
+#'   secondary, tertiary, residential) > Tier 2 (unclassified, service) >
+#'   Tier 3 (track, path, footway). The algorithm tries the highest tier
+#'   first and falls back only if no cells are within 200m of that tier's
+#'   roads. Typically read from the clipped PBF file by
 #'   [compute_travel_times()].
 #' @param verbose Logical. Print progress messages? Default: `TRUE`.
 #'
@@ -53,7 +59,7 @@
 #'       to `point_on_surface` due to zero population.}
 #'     \item{`"pop_weighted_diagnostics"`}{Named list of per-tract diagnostic
 #'       records (cluster counts, patch populations, selected point, road
-#'       proximity info). See [plot_representative_points()].}
+#'       proximity info, road tier used). See [plot_representative_points()].}
 #'   }
 #'
 #' @seealso [plot_representative_points()] to visualize the selection process.
@@ -148,6 +154,21 @@ compute_representative_points <- function(
     attr(result, "pop_weighted_diagnostics") <- pop_diag
   }
   result
+}
+
+
+#' Classify OSM highway types into connectivity tiers
+#'
+#' Tier 1: main roads always connected to municipal network.
+#' Tier 2: usually connected but sometimes isolated.
+#' Tier 3: often disconnected (tracks, paths, footways).
+#' @noRd
+.road_tier <- function(highway) {
+  tier1 <- c("primary", "primary_link", "secondary", "secondary_link",
+             "tertiary", "tertiary_link", "residential", "living_street")
+  tier2 <- c("unclassified", "service")
+  ifelse(highway %in% tier1, 1L,
+         ifelse(highway %in% tier2, 2L, 3L))
 }
 
 
@@ -248,38 +269,54 @@ compute_representative_points <- function(
     best_rast <- terra::mask(tract_rast, best_patch_mask,
                               maskvalues = c(0, NA))
 
-    # Step 7: Road proximity refinement (if roads available)
+    # Step 7: Tiered road proximity refinement (if roads available)
+    # Prefer cells near well-connected road types (primary, secondary,
+    # tertiary, residential) over isolated rural roads (track, path).
     near_road <- FALSE
     has_roads <- FALSE
+    road_tier_used <- NA_integer_
     tract_road_idx <- if (!is.null(roads_per_tract)) roads_per_tract[[i]] else integer(0)
 
     if (length(tract_road_idx) > 0) {
       has_roads <- TRUE
-      # Extract all cells in the best patch with their coordinates
       best_cells <- terra::as.data.frame(best_rast, xy = TRUE, na.rm = TRUE)
       if (nrow(best_cells) > 1) {
-        # Build point geometry for cells in raster CRS
         cell_pts <- sf::st_as_sf(best_cells, coords = c("x", "y"),
                                   crs = sf::st_crs(raster_crs))
         cell_pts_wgs <- sf::st_transform(cell_pts, 4326)
-        # Buffer roads by 200m and check which cells are nearby
         tract_roads <- osm_roads[tract_road_idx, ]
-        road_buf <- tryCatch({
-          suppressWarnings(sf::st_buffer(tract_roads, dist = 200))
-        }, error = function(e) NULL)
-        if (!is.null(road_buf)) {
+
+        # Classify roads by connectivity tier
+        if ("highway" %in% names(tract_roads)) {
+          tract_roads$road_tier <- .road_tier(tract_roads$highway)
+        } else {
+          tract_roads$road_tier <- 2L
+        }
+
+        # Try tiers cumulatively: tier 1, then 1+2, then 1+2+3
+        for (tier in 1:3) {
+          tier_roads <- tract_roads[tract_roads$road_tier <= tier, ]
+          if (nrow(tier_roads) == 0) next
+
+          road_buf <- tryCatch(
+            suppressWarnings(sf::st_buffer(tier_roads, dist = 200)),
+            error = function(e) NULL
+          )
+          if (is.null(road_buf)) next
+
           road_union <- suppressWarnings(sf::st_union(road_buf))
           inside <- suppressWarnings(
             sf::st_intersects(cell_pts_wgs, road_union, sparse = FALSE)[, 1]
           )
           if (any(inside)) {
             near_road <- TRUE
-            # Among cells near roads, pick max population
+            road_tier_used <- tier
             near_cells <- best_cells[inside, , drop = FALSE]
             pop_col <- setdiff(names(near_cells), c("x", "y"))[1]
             best_near <- which.max(near_cells[[pop_col]])
             xy <- c(near_cells$x[best_near], near_cells$y[best_near])
             best_pop <- near_cells[[pop_col]][best_near]
+            break
           }
         }
       }
@@ -307,7 +344,8 @@ compute_representative_points <- function(
       selected_xy    = c(x = unname(xy[1]), y = unname(xy[2])),
       selected_pop   = best_pop,
       has_roads      = has_roads,
-      near_road      = near_road
+      near_road      = near_road,
+      road_tier      = road_tier_used
     )
   }
 
@@ -457,12 +495,19 @@ plot_representative_points <- function(result, tracts_sf = NULL,
   n_patches <- vapply(diag, `[[`, integer(1), "n_patches")
   has_roads <- vapply(diag, `[[`, logical(1), "has_roads")
   near_road <- vapply(diag, `[[`, logical(1), "near_road")
+  road_tiers <- vapply(diag, function(d) {
+    rt <- d$road_tier
+    if (is.null(rt) || length(rt) == 0) NA_integer_ else rt
+  }, integer(1))
 
   tract_id_col <- names(rep_pts)[1]
   tracts_sf$n_patches <- NA_integer_
   match_idx <- match(tract_ids, as.character(tracts_sf[[tract_id_col]]))
   tracts_sf$n_patches[match_idx[!is.na(match_idx)]] <-
     n_patches[!is.na(match_idx)]
+
+  # Road tier summary for subtitle
+  tier_counts <- table(factor(road_tiers[!is.na(road_tiers)], levels = 1:3))
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_sf(data = tracts_sf,
@@ -475,8 +520,9 @@ plot_representative_points <- function(result, tracts_sf = NULL,
     ggplot2::theme_minimal() +
     ggplot2::labs(title = "Representative points (pop_weighted)",
                   subtitle = sprintf(
-                    "%d tracts with diagnostics, %d with roads, %d placed near road",
-                    length(diag), sum(has_roads), sum(near_road)))
+                    "%d tracts, %d near road (tier1: %d, tier2: %d, tier3: %d)",
+                    length(diag), sum(near_road),
+                    tier_counts[1], tier_counts[2], tier_counts[3]))
 
   if (!is.null(osm_roads)) {
     p <- p + ggplot2::geom_sf(data = osm_roads, color = "steelblue",
@@ -562,7 +608,14 @@ plot_representative_points <- function(result, tracts_sf = NULL,
                     subtitle = sprintf(
                       "%d cluster(s), selected #%d (pop=%.0f)%s",
                       d$n_patches, d$selected_patch, d$selected_pop,
-                      if (d$near_road) " [near road]" else ""))
+                      if (d$near_road) {
+                        rt <- d$road_tier
+                        if (!is.null(rt) && !is.na(rt)) {
+                          sprintf(" [road tier %d]", rt)
+                        } else {
+                          " [near road]"
+                        }
+                      } else ""))
 
     # Add roads if available
     if (!is.null(osm_roads)) {
