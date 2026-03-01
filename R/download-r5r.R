@@ -157,6 +157,12 @@ download_r5r_data <- function(
       dir.create(osm_cache_dir, recursive = TRUE)
     }
 
+    # Set a generous timeout for large OSM files (state/region-level
+    # extracts can be 500+ MB). Restore the user's timeout afterward.
+    old_timeout <- getOption("timeout")
+    options(timeout = max(old_timeout, 1800))
+    on.exit(options(timeout = old_timeout), add = TRUE)
+
     osm_path <- tryCatch(
       suppressMessages(osmextract::oe_download(
         file_url = matched$url,
@@ -166,10 +172,19 @@ download_r5r_data <- function(
         quiet = TRUE
       )),
       error = function(e) {
+        # Remove partial download so next attempt starts fresh
+        partial <- file.path(
+          osm_cache_dir,
+          basename(matched$url)
+        )
+        if (file.exists(partial) && file.size(partial) < 1e6) {
+          unlink(partial)
+        }
         stop(
           "Failed to download OSM data from ", osm_provider, ".\n",
-          "Check your internet connection. Error: ",
-          conditionMessage(e),
+          "The file may be large (state/region-level extract). ",
+          "Check your internet connection and try again.\n",
+          "Error: ", conditionMessage(e),
           call. = FALSE
         )
       }
