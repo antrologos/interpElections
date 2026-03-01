@@ -11,8 +11,7 @@ optimize_alpha(
   row_targets = NULL,
   optim = optim_control(),
   offset = 1,
-  verbose = TRUE,
-  ...
+  verbose = TRUE
 )
 }
 \arguments{
@@ -40,12 +39,6 @@ alpha_init, alpha_min, use_gpu, device, dtype). Default:
 Default: 1.}
 
 \item{verbose}{Logical. Print progress messages? Default: TRUE.}
-
-\item{...}{\strong{Deprecated}. Old-style individual parameters
-(\code{alpha_init}, \code{max_epochs}, \code{lr_init}, \code{use_gpu}, \code{device}, \code{dtype},
-\code{convergence_tol}, \code{patience}, \code{barrier_mu}, \code{alpha_min}) are still
-accepted via \code{...} for backward compatibility, but will be removed
-in a future release. Use \code{optim = optim_control(...)} instead.}
 }
 \value{
 A list of class \code{"interpElections_optim"} with components:

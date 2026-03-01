@@ -383,13 +383,130 @@ download_r5r_data <- function(
 }
 
 
-#' Find a system tool on PATH
+#' Find a system tool on PATH, with extended search for osmium tools
+#'
+#' Wraps `Sys.which()` for general tools. For osmium-related tools
+#' (`osmium`, `osmconvert`, `osmconvert64`), falls back to scanning
+#' well-known installation locations when PATH lookup fails. This
+#' handles macOS apps (RStudio, Positron) that don't inherit the
+#' shell PATH.
+#'
 #' @param tool_name Name of the executable.
 #' @return Full path to the tool, or NULL if not found.
 #' @noRd
 .find_tool <- function(tool_name) {
   path <- Sys.which(tool_name)
-  if (nzchar(path)) path else NULL
+  if (nzchar(path)) return(unname(path))
+  if (tool_name %in% c("osmium", "osmconvert", "osmconvert64")) {
+    return(.find_tool_extended(tool_name))
+  }
+  NULL
+}
+
+
+#' Scan well-known filesystem locations for an osmium-related tool
+#'
+#' Called by `.find_tool()` when `Sys.which()` fails for osmium tools.
+#' Checks platform-specific directories where package managers install
+#' binaries. Only does `file.exists()` checks -- cheap and safe.
+#'
+#' @param tool_name One of `"osmium"`, `"osmconvert"`, `"osmconvert64"`.
+#' @return Full path to the tool, or NULL if not found.
+#' @noRd
+.find_tool_extended <- function(tool_name) {
+  sysname <- Sys.info()[["sysname"]]
+
+  if (sysname == "Darwin") {
+    # macOS: Homebrew on Apple Silicon (/opt/homebrew) and Intel (/usr/local)
+    for (d in c("/opt/homebrew/bin", "/usr/local/bin")) {
+      p <- file.path(d, tool_name)
+      if (file.exists(p)) return(p)
+    }
+    # Fallback: ask Homebrew for its prefix (non-standard installs)
+    for (brew_bin in c("/opt/homebrew/bin/brew", "/usr/local/bin/brew")) {
+      if (file.exists(brew_bin)) {
+        prefix <- tryCatch({
+          out <- system2(brew_bin, "--prefix",
+                         stdout = TRUE, stderr = TRUE)
+          if (length(out) > 0) trimws(out[1]) else NULL
+        }, error = function(e) NULL)
+        if (!is.null(prefix)) {
+          p <- file.path(prefix, "bin", tool_name)
+          if (file.exists(p)) return(p)
+        }
+        break
+      }
+    }
+  } else if (sysname == "Linux") {
+    for (d in c("/usr/bin", "/usr/local/bin")) {
+      p <- file.path(d, tool_name)
+      if (file.exists(p)) return(p)
+    }
+  } else if (.Platform$OS.type == "windows") {
+    bin_name <- paste0(tool_name, ".exe")
+    conda_dirs <- c(
+      file.path(Sys.getenv("USERPROFILE"), "miniconda3", "Library", "bin"),
+      file.path(Sys.getenv("USERPROFILE"), "anaconda3", "Library", "bin"),
+      file.path(Sys.getenv("LOCALAPPDATA"), "miniconda3", "Library", "bin")
+    )
+    for (d in conda_dirs) {
+      p <- file.path(d, bin_name)
+      if (file.exists(p)) return(p)
+    }
+  }
+
+  NULL
+}
+
+
+#' Discover a package manager even when it is not on R's PATH
+#'
+#' On macOS launched from apps (RStudio, Positron), Homebrew's `brew`
+#' may not be on PATH. This function checks well-known locations.
+#'
+#' @return A list with `method` (character: `"conda"`, `"brew"`, `"apt"`,
+#'   `"dnf"`, `"download"`, or NULL) and `bin` (full path to the package
+#'   manager binary, or NULL).
+#' @noRd
+.discover_package_manager <- function() {
+  is_windows <- .Platform$OS.type == "windows"
+  is_mac <- Sys.info()[["sysname"]] == "Darwin"
+
+  # conda (all platforms, usually on PATH)
+  conda <- Sys.which("conda")
+  if (nzchar(conda)) {
+    return(list(method = "conda", bin = unname(conda)))
+  }
+
+  if (is_mac) {
+    # Homebrew: check well-known locations
+    for (brew_bin in c("/opt/homebrew/bin/brew", "/usr/local/bin/brew")) {
+      if (file.exists(brew_bin)) {
+        return(list(method = "brew", bin = brew_bin))
+      }
+    }
+  }
+
+  if (!is_windows) {
+    # apt-get
+    apt <- Sys.which("apt-get")
+    if (nzchar(apt)) return(list(method = "apt", bin = unname(apt)))
+    if (file.exists("/usr/bin/apt-get")) {
+      return(list(method = "apt", bin = "/usr/bin/apt-get"))
+    }
+    # dnf
+    dnf <- Sys.which("dnf")
+    if (nzchar(dnf)) return(list(method = "dnf", bin = unname(dnf)))
+    if (file.exists("/usr/bin/dnf")) {
+      return(list(method = "dnf", bin = "/usr/bin/dnf"))
+    }
+  }
+
+  if (is_windows) {
+    return(list(method = "download", bin = NULL))
+  }
+
+  list(method = NULL, bin = NULL)
 }
 
 
@@ -432,17 +549,20 @@ download_r5r_data <- function(
 #'
 #' @keywords internal
 setup_osmium <- function(method = NULL, verbose = TRUE) {
-  # Check if already available
+  # 1. Extended check: find osmium even if not on R's PATH
+  #    (.find_tool now scans well-known locations via .find_tool_extended)
   osmium <- .find_tool("osmium")
   if (!is.null(osmium)) {
-    if (verbose) message("[ok] osmium-tool already installed: ", osmium)
+    if (verbose) message("[ok] osmium-tool found: ", osmium)
+    .activate_osmium_path(osmium, verbose = verbose)
     return(invisible(osmium))
   }
 
   osmconvert <- .find_tool("osmconvert")
   if (is.null(osmconvert)) osmconvert <- .find_tool("osmconvert64")
   if (!is.null(osmconvert)) {
-    if (verbose) message("[ok] osmconvert already installed: ", osmconvert)
+    if (verbose) message("[ok] osmconvert found: ", osmconvert)
+    .activate_osmium_path(osmconvert, verbose = verbose)
     return(invisible(osmconvert))
   }
 
@@ -457,22 +577,13 @@ setup_osmium <- function(method = NULL, verbose = TRUE) {
     return(invisible(cached_bin))
   }
 
+  # 2. Detect package manager (extended, not just PATH)
   is_windows <- .Platform$OS.type == "windows"
-  is_mac <- Sys.info()[["sysname"]] == "Darwin"
 
-  # Auto-detect method
   if (is.null(method)) {
-    has_conda <- nzchar(Sys.which("conda"))
-    if (has_conda) {
-      method <- "conda"
-    } else if (is_mac && nzchar(Sys.which("brew"))) {
-      method <- "brew"
-    } else if (!is_windows && nzchar(Sys.which("apt-get"))) {
-      method <- "apt"
-    } else if (!is_windows && nzchar(Sys.which("dnf"))) {
-      method <- "dnf"
-    } else if (is_windows) {
-      method <- "download"
+    pm <- .discover_package_manager()
+    if (!is.null(pm$method)) {
+      method <- pm$method
     } else {
       stop(
         "Could not detect a package manager.\n",
@@ -484,34 +595,46 @@ setup_osmium <- function(method = NULL, verbose = TRUE) {
         call. = FALSE
       )
     }
+  } else {
+    pm <- .discover_package_manager()
   }
 
   if (verbose) message("Installing via ", method, "...")
 
+  # 3. Install using the discovered package manager path
+  #    (use full path from pm$bin so brew works even off PATH)
   result <- switch(method,
     "conda" = {
-      rc <- system2("conda", c("install", "-y", "-c", "conda-forge",
-                                "osmium-tool"),
+      conda_bin <- if (!is.null(pm$bin) && pm$method == "conda") {
+        pm$bin
+      } else {
+        "conda"
+      }
+      rc <- system2(conda_bin,
+                     c("install", "-y", "-c", "conda-forge", "osmium-tool"),
                      stdout = if (verbose) "" else FALSE,
                      stderr = if (verbose) "" else FALSE)
       if (rc == 0) .find_tool("osmium") else NULL
     },
     "brew" = {
-      rc <- system2("brew", c("install", "osmium-tool"),
+      brew_bin <- if (!is.null(pm$bin) && pm$method == "brew") {
+        pm$bin
+      } else {
+        "brew"
+      }
+      rc <- system2(brew_bin, c("install", "osmium-tool"),
                      stdout = if (verbose) "" else FALSE,
                      stderr = if (verbose) "" else FALSE)
       if (rc == 0) .find_tool("osmium") else NULL
     },
     "apt" = {
-      rc <- system2("sudo", c("apt-get", "install", "-y",
-                               "osmium-tool"),
+      rc <- system2("sudo", c("apt-get", "install", "-y", "osmium-tool"),
                      stdout = if (verbose) "" else FALSE,
                      stderr = if (verbose) "" else FALSE)
       if (rc == 0) .find_tool("osmium") else NULL
     },
     "dnf" = {
-      rc <- system2("sudo", c("dnf", "install", "-y",
-                               "osmium-tool"),
+      rc <- system2("sudo", c("dnf", "install", "-y", "osmium-tool"),
                      stdout = if (verbose) "" else FALSE,
                      stderr = if (verbose) "" else FALSE)
       if (rc == 0) .find_tool("osmium") else NULL
@@ -522,18 +645,41 @@ setup_osmium <- function(method = NULL, verbose = TRUE) {
     stop("Unknown method: ", method, call. = FALSE)
   )
 
+  # 4. Post-install: fix PATH for current session
   if (!is.null(result)) {
+    .activate_osmium_path(result, verbose = verbose)
     if (verbose) message("[ok] Installed successfully: ", result)
   } else {
     message(
       "[!!] Installation failed. Try installing manually:\n",
       "  conda install -c conda-forge osmium-tool\n",
-      if (is_windows) "  Or download osmconvert from: https://wiki.openstreetmap.org/wiki/Osmconvert\n"
-      else ""
+      if (is_windows) {
+        "  Or download osmconvert from: https://wiki.openstreetmap.org/wiki/Osmconvert\n"
+      } else ""
     )
   }
 
   invisible(result)
+}
+
+
+#' Add an osmium tool's directory to the current session PATH
+#' @param tool_path Full path to the osmium/osmconvert binary.
+#' @param verbose Logical.
+#' @noRd
+.activate_osmium_path <- function(tool_path, verbose = TRUE) {
+  bin_dir <- normalizePath(dirname(tool_path), mustWork = FALSE)
+  current_path <- Sys.getenv("PATH")
+  path_entries <- unlist(strsplit(current_path, .Platform$path.sep,
+                                  fixed = TRUE))
+  already <- any(normalizePath(path_entries, mustWork = FALSE) == bin_dir)
+  if (!already) {
+    Sys.setenv(PATH = paste(bin_dir, current_path,
+                            sep = .Platform$path.sep))
+    if (verbose) {
+      message("  Added ", bin_dir, " to PATH for current R session.")
+    }
+  }
 }
 
 
@@ -613,15 +759,17 @@ setup_osmium <- function(method = NULL, verbose = TRUE) {
 .offer_osmium_install <- function(verbose = TRUE) {
   if (!interactive()) return(invisible(NULL))
 
-  if (verbose) {
-    message(
-      "\nNo OSM clipping tool found (osmium, osmconvert).\n",
-      "This is required to clip state-level OSM files for r5r routing."
+  choice <- utils::menu(
+    c("Yes, install osmium-tool automatically",
+      "No, I will install it myself"),
+    title = paste0(
+      "No OSM clipping tool found (osmium, osmconvert).\n",
+      "This is required to clip state-level OSM files for r5r routing.\n",
+      "Install osmium-tool now?"
     )
-  }
+  )
 
-  answer <- readline("Install osmium-tool now? (Y/n): ")
-  if (tolower(trimws(answer)) %in% c("", "y", "yes", "s", "sim")) {
+  if (choice == 1L) {
     setup_osmium(verbose = verbose)
   }
   invisible(NULL)

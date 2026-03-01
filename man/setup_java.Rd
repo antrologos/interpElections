@@ -8,7 +8,8 @@ setup_java(
   install_dir = file.path(tools::R_user_dir("interpElections", "data"), "java"),
   persist = interactive(),
   setup_rjava = TRUE,
-  verbose = TRUE
+  verbose = TRUE,
+  .ask_consent = TRUE
 )
 }
 \arguments{
@@ -34,8 +35,9 @@ level, optionally installs and configures rJava, and verifies the setup.
 \details{
 The function performs the following steps:
 \enumerate{
+\item Asks for consent (interactive mode only)
 \item Scans for existing Java installations on the system
-\item Warns about non-Java-21 versions that may conflict
+\item Offers to remove incompatible (non-21) Java versions
 \item Uses an existing Java 21 if found, or downloads Adoptium JDK 21
 \item Configures \code{JAVA_HOME} and \code{PATH} for the current R session
 \item Persists \code{JAVA_HOME} to \verb{~/.Renviron}

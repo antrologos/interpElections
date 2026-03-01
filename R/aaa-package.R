@@ -54,6 +54,25 @@ utils::globalVariables(c(
   )
   toset <- !(names(op_interpElections) %in% names(op))
   if (any(toset)) options(op_interpElections[toset])
+
+  # Fix PATH for osmium tools if found off-PATH.
+  # Common on macOS when R is launched from RStudio/Positron, which
+  # don't inherit the shell PATH (so /opt/homebrew/bin is missing).
+  for (tool in c("osmium", "osmconvert", "osmconvert64")) {
+    if (!nzchar(Sys.which(tool))) {
+      extended_path <- .find_tool_extended(tool)
+      if (!is.null(extended_path)) {
+        bin_dir <- dirname(extended_path)
+        current <- Sys.getenv("PATH")
+        if (!grepl(bin_dir, current, fixed = TRUE)) {
+          Sys.setenv(PATH = paste(bin_dir, current,
+                                  sep = .Platform$path.sep))
+        }
+        break
+      }
+    }
+  }
+
   invisible()
 }
 
@@ -65,9 +84,9 @@ utils::globalVariables(c(
                                logical(1), quietly = TRUE)]
 
   # Check for OSM clipping tools
-  has_clip <- !is.null(.find_tool_safe("osmium")) ||
-    !is.null(.find_tool_safe("osmconvert")) ||
-    !is.null(.find_tool_safe("osmconvert64")) ||
+  has_clip <- !is.null(.find_tool("osmium")) ||
+    !is.null(.find_tool("osmconvert")) ||
+    !is.null(.find_tool("osmconvert64")) ||
     file.exists(file.path(
       get_interpElections_cache_dir(), "bin",
       if (.Platform$OS.type == "windows") "osmconvert.exe"
@@ -109,11 +128,4 @@ utils::globalVariables(c(
       "\nThese are needed for the full interpolation pipeline."
     )
   }
-}
-
-# Safe version of .find_tool for use in .onAttach
-# (before the full package namespace is sealed)
-.find_tool_safe <- function(tool_name) {
-  path <- Sys.which(tool_name)
-  if (nzchar(path)) path else NULL
 }

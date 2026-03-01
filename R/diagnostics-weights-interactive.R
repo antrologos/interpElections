@@ -878,26 +878,3 @@ function(el, x) {
   )
   sf::st_transform(station_pts, 4326)
 }
-
-
-#' Create linestring sf for dominant connections
-#' @noRd
-.make_connection_lines <- function(result, W, centroids, station_coords) {
-  n <- nrow(W)
-  dom <- apply(W, 1, which.max)
-
-  # Build lines in the tracts CRS, then transform
-  lines <- lapply(seq_len(n), function(i) {
-    sf::st_linestring(matrix(
-      c(centroids[i, 1], centroids[i, 2],
-        station_coords[dom[i], 1], station_coords[dom[i], 2]),
-      ncol = 2, byrow = TRUE
-    ))
-  })
-
-  conn_sf <- sf::st_sf(
-    tract = seq_len(n),
-    geometry = sf::st_sfc(lines, crs = sf::st_crs(result$tracts_sf))
-  )
-  sf::st_transform(conn_sf, 4326)
-}

@@ -13,7 +13,7 @@
 #' @param year Integer. Election year (even integer).
 #' @param cargo Integer, character, or NULL. Electoral office(s). Accepts
 #'   aliases like `"presidente"`, `"vereador"` or TSE codes. NULL =
-#'   all offices for that year. See Details.
+#'   all offices for that year.
 #' @param turno Integer. Election round: 1 (default) or 2 (runoff).
 #' @param what Character vector. What to interpolate: `"candidates"`
 #'   (default), `"parties"`, `"turnout"`, `"demographics"`.
@@ -49,8 +49,7 @@
 #' @param ... Advanced arguments. `network_path` (character),
 #'   `cache` (logical, default TRUE), `osm_provider` (character),
 #'   `comparecimento_path`, `votacao_path`, `geocode_path`,
-#'   `interp_sources`. Also accepts **deprecated** old-style
-#'   parameters for backward compatibility.
+#'   `interp_sources`.
 #'
 #' @return An `interpElections_result` list. Key fields:
 #'   `$tracts_sf` (sf with interpolated columns),
@@ -112,41 +111,7 @@ interpolate_election_br <- function(
 ) {
   cl <- match.call()
   code_muni <- as.character(municipality)
-
-  # --- Backward compatibility: detect old-style params in ... ---
   dots <- list(...)
-  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
-                         "device", "dtype", "convergence_tol", "patience",
-                         "barrier_mu", "alpha_min")
-  routing_param_names <- c("point_method", "pop_raster",
-                           "min_area_for_pop_weight", "mode",
-                           "max_trip_duration", "fill_missing",
-                           "n_threads", "departure_datetime",
-                           "gtfs_zip_path", "osm_buffer_km")
-  old_optim <- intersect(names(dots), optim_param_names)
-  old_routing <- intersect(names(dots), routing_param_names)
-  if (length(old_optim) > 0) {
-    warning(
-      "Passing optimization parameters directly is deprecated.\n",
-      "Use optim = optim_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_optim, collapse = ", "),
-      call. = FALSE
-    )
-    ctrl_list <- unclass(optim)
-    ctrl_list[old_optim] <- dots[old_optim]
-    optim <- do.call(optim_control, ctrl_list)
-  }
-  if (length(old_routing) > 0) {
-    warning(
-      "Passing routing parameters directly is deprecated.\n",
-      "Use routing = routing_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_routing, collapse = ", "),
-      call. = FALSE
-    )
-    ctrl_list <- unclass(routing)
-    ctrl_list[old_routing] <- dots[old_routing]
-    routing <- do.call(routing_control, ctrl_list)
-  }
 
   # Extract from control objects
   gtfs_zip_path <- routing$gtfs_zip_path

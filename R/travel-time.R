@@ -18,12 +18,6 @@
 #'   departure_datetime, pop_raster, min_area_for_pop_weight,
 #'   osm_buffer_km, fill_missing). Default: `routing_control()`.
 #' @param verbose Logical. Default: TRUE.
-#' @param ... **Deprecated**. Old-style individual parameters
-#'   (`point_method`, `pop_raster`, `min_area_for_pop_weight`, `mode`,
-#'   `max_trip_duration`, `fill_missing`, `n_threads`,
-#'   `departure_datetime`, `gtfs_zip_path`) are still accepted via
-#'   `...` for backward compatibility but will be removed in a future
-#'   release. Use `routing = routing_control(...)` instead.
 #'
 #' @return A numeric matrix \[n_tracts x n_points\]. Travel times in minutes.
 #'   Row names = census tract IDs, column names = point IDs. Unreachable
@@ -66,29 +60,8 @@ compute_travel_times <- function(
     tract_id = "id",
     point_id = "id",
     routing = routing_control(),
-    verbose = TRUE,
-    ...
+    verbose = TRUE
 ) {
-  # --- Backward compatibility: detect old-style params in ... ---
-  dots <- list(...)
-  routing_param_names <- c("point_method", "pop_raster",
-                           "min_area_for_pop_weight", "mode",
-                           "max_trip_duration", "fill_missing",
-                           "n_threads", "departure_datetime",
-                           "gtfs_zip_path", "osm_buffer_km")
-  old_params <- intersect(names(dots), routing_param_names)
-  if (length(old_params) > 0) {
-    warning(
-      "Passing routing parameters directly is deprecated.\n",
-      "Use routing = routing_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_params, collapse = ", "),
-      call. = FALSE
-    )
-    ctrl_list <- unclass(routing)
-    ctrl_list[old_params] <- dots[old_params]
-    routing <- do.call(routing_control, ctrl_list)
-  }
-
   # Extract from control object
   point_method            <- routing$point_method
   pop_raster              <- routing$pop_raster

@@ -19,15 +19,14 @@ test_that("optimize_alpha returns W that produces valid interpolation", {
   storage.mode(pop_matrix) <- "double"
 
   # Optimize
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     time_matrix = time_matrix,
     pop_matrix = pop_matrix,
     source_matrix = source_matrix,
     offset = 0,
-    use_gpu = FALSE,
-    max_epochs = 50L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 50L),
     verbose = FALSE
-  ))
+  )
 
   expect_s3_class(result, "interpElections_optim")
   expect_true(all(result$alpha >= 0))
@@ -76,10 +75,11 @@ test_that("W from optimize_alpha matches compute_weight_matrix with same alpha",
   storage.mode(pop) <- "double"
   storage.mode(src) <- "double"
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     time_matrix, pop, src,
-    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
-  ))
+    optim = optim_control(use_gpu = FALSE, max_epochs = 30L),
+    verbose = FALSE
+  )
 
   W_recomputed <- compute_weight_matrix(
     time_matrix, result$alpha, pop, src,

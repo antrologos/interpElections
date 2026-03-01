@@ -38,7 +38,7 @@ in multiple states.}
 
 \item{cargo}{Integer, character, or NULL. Electoral office(s). Accepts
 aliases like \code{"presidente"}, \code{"vereador"} or TSE codes. NULL =
-all offices for that year. See Details.}
+all offices for that year.}
 
 \item{turno}{Integer. Election round: 1 (default) or 2 (runoff).}
 
@@ -91,8 +91,7 @@ are always kept. Options: \code{"pop_raster"}.}
 \item{...}{Advanced arguments. \code{network_path} (character),
 \code{cache} (logical, default TRUE), \code{osm_provider} (character),
 \code{comparecimento_path}, \code{votacao_path}, \code{geocode_path},
-\code{interp_sources}. Also accepts \strong{deprecated} old-style
-parameters for backward compatibility.}
+\code{interp_sources}.}
 }
 \value{
 An \code{interpElections_result} list. Key fields:

@@ -802,7 +802,3 @@ autoplot.interpElections_result <- function(object, ...) {
 
   list(xlim = xlim, ylim = ylim)
 }
-
-
-# Base R %||% operator if not available
-`%||%` <- function(x, y) if (is.null(x)) y else x

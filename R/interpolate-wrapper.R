@@ -45,9 +45,7 @@
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Advanced arguments. `network_path` (character) for
 #'   pre-downloaded OSM data, `elevation_path` (character) for
-#'   elevation GeoTIFF. Also accepts **deprecated** old-style
-#'   parameters (`max_epochs`, `alpha_min`, `use_gpu`, `mode`,
-#'   `gtfs_zip_path`, etc.) for backward compatibility.
+#'   elevation GeoTIFF.
 #'
 #' @return A list of class `"interpElections_result"` with components:
 #' \describe{
@@ -65,6 +63,8 @@
 #'   \item{time_matrix}{Travel time matrix. Always kept.}
 #'   \item{electoral_sf}{`sf` point object. Always kept.}
 #'   \item{rep_points}{Representative points `sf` object. Always kept.}
+#'   \item{kernel}{Character. Kernel type used (`"power"` or `"stretched_exp"`).}
+#'   \item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
 #'   \item{pop_raster}{Population raster or NULL (opt-in via `keep`).}
 #' }
 #'
@@ -131,40 +131,6 @@ interpolate_election <- function(
 ) {
   cl <- match.call()
   dots <- list(...)
-
-  # --- Backward compatibility: detect old-style params in ... ---
-  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
-                         "device", "dtype", "convergence_tol", "patience",
-                         "barrier_mu", "alpha_min")
-  routing_param_names <- c("point_method", "pop_raster",
-                           "min_area_for_pop_weight", "mode",
-                           "max_trip_duration", "fill_missing",
-                           "n_threads", "departure_datetime",
-                           "gtfs_zip_path", "osm_buffer_km")
-  old_optim <- intersect(names(dots), optim_param_names)
-  old_routing <- intersect(names(dots), routing_param_names)
-  if (length(old_optim) > 0) {
-    warning(
-      "Passing optimization parameters directly is deprecated.\n",
-      "Use optim = optim_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_optim, collapse = ", "),
-      call. = FALSE
-    )
-    ctrl_list <- unclass(optim)
-    ctrl_list[old_optim] <- dots[old_optim]
-    optim <- do.call(optim_control, ctrl_list)
-  }
-  if (length(old_routing) > 0) {
-    warning(
-      "Passing routing parameters directly is deprecated.\n",
-      "Use routing = routing_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_routing, collapse = ", "),
-      call. = FALSE
-    )
-    ctrl_list <- unclass(routing)
-    ctrl_list[old_routing] <- dots[old_routing]
-    routing <- do.call(routing_control, ctrl_list)
-  }
 
   # Extract from control objects
   use_gpu             <- optim$use_gpu

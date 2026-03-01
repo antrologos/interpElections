@@ -75,9 +75,7 @@ Options: \code{"pop_raster"}.}
 
 \item{...}{Advanced arguments. \code{network_path} (character) for
 pre-downloaded OSM data, \code{elevation_path} (character) for
-elevation GeoTIFF. Also accepts \strong{deprecated} old-style
-parameters (\code{max_epochs}, \code{alpha_min}, \code{use_gpu}, \code{mode},
-\code{gtfs_zip_path}, etc.) for backward compatibility.}
+elevation GeoTIFF.}
 }
 \value{
 A list of class \code{"interpElections_result"} with components:
@@ -96,6 +94,8 @@ A list of class \code{"interpElections_result"} with components:
 \item{time_matrix}{Travel time matrix. Always kept.}
 \item{electoral_sf}{\code{sf} point object. Always kept.}
 \item{rep_points}{Representative points \code{sf} object. Always kept.}
+\item{kernel}{Character. Kernel type used (\code{"power"} or \code{"stretched_exp"}).}
+\item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
 \item{pop_raster}{Population raster or NULL (opt-in via \code{keep}).}
 }
 }

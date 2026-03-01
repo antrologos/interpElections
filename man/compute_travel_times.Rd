@@ -11,8 +11,7 @@ compute_travel_times(
   tract_id = "id",
   point_id = "id",
   routing = routing_control(),
-  verbose = TRUE,
-  ...
+  verbose = TRUE
 )
 }
 \arguments{
@@ -36,13 +35,6 @@ departure_datetime, pop_raster, min_area_for_pop_weight,
 osm_buffer_km, fill_missing). Default: \code{routing_control()}.}
 
 \item{verbose}{Logical. Default: TRUE.}
-
-\item{...}{\strong{Deprecated}. Old-style individual parameters
-(\code{point_method}, \code{pop_raster}, \code{min_area_for_pop_weight}, \code{mode},
-\code{max_trip_duration}, \code{fill_missing}, \code{n_threads},
-\code{departure_datetime}, \code{gtfs_zip_path}) are still accepted via
-\code{...} for backward compatibility but will be removed in a future
-release. Use \code{routing = routing_control(...)} instead.}
 }
 \value{
 A numeric matrix [n_tracts x n_points]. Travel times in minutes.

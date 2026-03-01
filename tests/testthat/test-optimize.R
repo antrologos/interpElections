@@ -13,12 +13,11 @@ test_that("optimize_alpha finds lower objective than initial", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 200L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 200L),
     verbose = FALSE
-  ))
+  )
 
   expect_s3_class(result, "interpElections_optim")
   # alpha is an n × k matrix
@@ -42,12 +41,11 @@ test_that("optimize_alpha alpha is always positive (softplus reparameterization)
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 50L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 50L),
     verbose = FALSE
-  ))
+  )
 
   # alpha = alpha_min + softplus(theta): always strictly positive
   expect_true(all(result$alpha > 0))
@@ -65,12 +63,11 @@ test_that("optimize_alpha returns proper structure", {
   p_mat <- matrix(runif(n * k, 5, 20), nrow = n)
   s_mat <- matrix(runif(m * k, 5, 20), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 30L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 30L),
     verbose = FALSE
-  ))
+  )
 
   expect_true("alpha" %in% names(result))
   expect_true("value" %in% names(result))
@@ -104,12 +101,11 @@ test_that("optimize_alpha print method works", {
   p_mat <- matrix(runif(4), nrow = 4)
   s_mat <- matrix(runif(2), nrow = 2)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 30L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 30L),
     verbose = FALSE
-  ))
+  )
 
   expect_output(print(result), "interpElections optimization result")
 })
@@ -125,12 +121,11 @@ test_that("optimize_alpha auto-computes row_targets when NULL", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 30L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 30L),
     verbose = FALSE
-  ))
+  )
 
   # row_targets should be auto-computed
   expected_r <- rowSums(p_mat) / sum(p_mat) * m
@@ -156,12 +151,11 @@ test_that("optimize_alpha returns lr_history", {
   storage.mode(p_mat) <- "double"
   storage.mode(s_mat) <- "double"
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE,
-    max_epochs = 30L,
+    optim = optim_control(use_gpu = FALSE, max_epochs = 30L),
     verbose = FALSE
-  ))
+  )
 
   expect_true("lr_history" %in% names(result))
   expect_equal(length(result$lr_history), result$epochs)
@@ -181,11 +175,11 @@ test_that("optimize_alpha runs and returns valid structure", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    barrier_mu = 10,
-    use_gpu = FALSE, max_epochs = 30L, verbose = FALSE
-  ))
+    optim = optim_control(barrier_mu = 10, use_gpu = FALSE, max_epochs = 30L),
+    verbose = FALSE
+  )
 
   expect_s3_class(result, "interpElections_optim")
   expect_true(all(result$alpha > 0))
@@ -202,11 +196,11 @@ test_that("optimize_alpha with barrier_mu=0 works", {
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    barrier_mu = 0,
-    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
-  ))
+    optim = optim_control(barrier_mu = 0, use_gpu = FALSE, max_epochs = 10L),
+    verbose = FALSE
+  )
 
   expect_true(all(result$alpha > 0))
   expect_true(grepl("colnorm", result$method))
@@ -242,10 +236,11 @@ test_that("optimize_alpha uses 1 step per epoch (full-data gradient)", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE, max_epochs = 15L, verbose = FALSE
-  ))
+    optim = optim_control(use_gpu = FALSE, max_epochs = 15L),
+    verbose = FALSE
+  )
 
   # Colnorm: 1 gradient step per epoch, so steps == epochs
   expect_equal(result$steps, result$epochs)
@@ -264,10 +259,11 @@ test_that("optimize_alpha handles zero population brackets", {
   p_mat[, 2] <- 0
   s_mat[, 2] <- 0
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    use_gpu = FALSE, max_epochs = 20L, verbose = FALSE
-  ))
+    optim = optim_control(use_gpu = FALSE, max_epochs = 20L),
+    verbose = FALSE
+  )
 
   expect_true(all(is.finite(result$alpha)))
   expect_true(is.finite(result$value))
@@ -286,11 +282,11 @@ test_that("optimize_alpha alpha_min enforces lower bound", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    alpha_min = 2,
-    use_gpu = FALSE, max_epochs = 50L, verbose = FALSE
-  ))
+    optim = optim_control(alpha_min = 2, use_gpu = FALSE, max_epochs = 50L),
+    verbose = FALSE
+  )
 
   # Active brackets should respect alpha_min
   # (inactive brackets get default alpha=1, which may be < alpha_min)
@@ -307,11 +303,11 @@ test_that("optimize_alpha alpha_min=0 backward compatible", {
   p_mat <- matrix(runif(n * k, 10, 50), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 50), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    alpha_min = 0,
-    use_gpu = FALSE, max_epochs = 10L, verbose = FALSE
-  ))
+    optim = optim_control(alpha_min = 0, use_gpu = FALSE, max_epochs = 10L),
+    verbose = FALSE
+  )
 
   expect_true(all(result$alpha > 0))
   expect_equal(result$alpha_min, 0)
@@ -325,11 +321,13 @@ test_that("optimize_alpha rejects invalid alpha_min", {
   s_mat <- matrix(runif(m * k, 5, 20), nrow = m)
 
   expect_error(
-    optimize_alpha(t_mat, p_mat, s_mat, alpha_min = -1, verbose = FALSE),
+    optimize_alpha(t_mat, p_mat, s_mat,
+                   optim = optim_control(alpha_min = -1), verbose = FALSE),
     "alpha_min"
   )
   expect_error(
-    optimize_alpha(t_mat, p_mat, s_mat, alpha_min = Inf, verbose = FALSE),
+    optimize_alpha(t_mat, p_mat, s_mat,
+                   optim = optim_control(alpha_min = Inf), verbose = FALSE),
     "alpha_min"
   )
 })
@@ -343,11 +341,11 @@ test_that("optimize_alpha with alpha_min enforces lower bound (combined)", {
   p_mat <- matrix(runif(n * k, 10, 100), nrow = n)
   s_mat <- matrix(runif(m * k, 10, 100), nrow = m)
 
-  result <- suppressWarnings(optimize_alpha(
+  result <- optimize_alpha(
     t_mat, p_mat, s_mat,
-    alpha_min = 1,
-    use_gpu = FALSE, max_epochs = 50L, verbose = FALSE
-  ))
+    optim = optim_control(alpha_min = 1, use_gpu = FALSE, max_epochs = 50L),
+    verbose = FALSE
+  )
 
   active_cols <- which(colSums(p_mat) >= 0.5 & colSums(s_mat) >= 0.5)
   expect_true(all(result$alpha[, active_cols] >= 1 - 1e-6))

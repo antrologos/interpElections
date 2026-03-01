@@ -25,11 +25,6 @@
 #'   (power kernel only; ignored when `kernel = "exponential"`).
 #'   Default: 1.
 #' @param verbose Logical. Print progress messages? Default: TRUE.
-#' @param ... **Deprecated**. Old-style individual parameters
-#'   (`alpha_init`, `max_epochs`, `lr_init`, `use_gpu`, `device`, `dtype`,
-#'   `convergence_tol`, `patience`, `barrier_mu`, `alpha_min`) are still
-#'   accepted via `...` for backward compatibility, but will be removed
-#'   in a future release. Use `optim = optim_control(...)` instead.
 #'
 #' @return A list of class `"interpElections_optim"` with components:
 #' \describe{
@@ -122,28 +117,8 @@ optimize_alpha <- function(
     row_targets = NULL,
     optim = optim_control(),
     offset = 1,
-    verbose = TRUE,
-    ...
+    verbose = TRUE
 ) {
-  # --- Backward compatibility: detect old-style params in ... ---
-  dots <- list(...)
-  optim_param_names <- c("alpha_init", "max_epochs", "lr_init", "use_gpu",
-                         "device", "dtype", "convergence_tol", "patience",
-                         "barrier_mu", "alpha_min")
-  old_params <- intersect(names(dots), optim_param_names)
-  if (length(old_params) > 0) {
-    warning(
-      "Passing optimization parameters directly is deprecated.\n",
-      "Use optim = optim_control(...) instead.\n",
-      "Deprecated parameters: ", paste(old_params, collapse = ", "),
-      call. = FALSE
-    )
-    # Override control object fields with old-style params
-    ctrl_list <- unclass(optim)
-    ctrl_list[old_params] <- dots[old_params]
-    optim <- do.call(optim_control, ctrl_list)
-  }
-
   # Extract from control object
   alpha_init      <- optim$alpha_init
   max_epochs      <- optim$max_epochs
