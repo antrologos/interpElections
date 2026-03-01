@@ -10,6 +10,7 @@ compute_representative_points(
   pop_raster = NULL,
   min_area_for_pop_weight = 1,
   tract_id = "id",
+  osm_roads = NULL,
   verbose = TRUE
 )
 }
@@ -24,8 +25,9 @@ which can fall outside concave shapes.}
 \item{\code{"centroid"}}{Uses \code{\link[sf:geos_unary]{sf::st_centroid()}}. Classic geometric centroid.
 May fall outside concave polygons.}
 \item{\code{"pop_weighted"}}{Uses a population density raster (WorldPop
-Constrained 2020 by default) to find the most populated cell within
-each tract. Only applied to tracts with area >= \code{min_area_for_pop_weight};
+Constrained 2020 by default) to find the best representative point
+within each tract via cluster analysis and optional road proximity.
+Only applied to tracts with area >= \code{min_area_for_pop_weight};
 smaller tracts use \code{point_on_surface}. Requires the \code{terra} package.}
 }}
 
@@ -42,17 +44,39 @@ population-weighted method. Tracts smaller than this threshold use
 \item{tract_id}{Character. Name of the ID column in \code{tracts_sf}.
 Default: \code{"id"}.}
 
+\item{osm_roads}{An \code{sf} object with OSM road geometries, or \code{NULL}.
+When provided and \code{method = "pop_weighted"}, cells near roads (within
+200m) are preferred within the largest population cluster. This reduces
+the chance of placing the representative point in an area with no road
+access. Typically read from the clipped PBF file by
+\code{\link[=compute_travel_times]{compute_travel_times()}}.}
+
 \item{verbose}{Logical. Print progress messages? Default: \code{TRUE}.}
 }
 \value{
 An \code{sf} POINT object in WGS84 (EPSG:4326) with one row per tract,
-preserving the \code{tract_id} column. Carries an attribute \code{"point_method"}
-recording which method was used.
+preserving the \code{tract_id} column. Carries attributes:
+\describe{
+\item{\code{"point_method"}}{Character. Which method was used.}
+\item{\code{"pop_raster"}}{The SpatRaster object (if \code{pop_weighted}).}
+\item{\code{"no_pop_tracts"}}{Character vector of tract IDs that fell back
+to \code{point_on_surface} due to zero population.}
+\item{\code{"pop_weighted_diagnostics"}}{Named list of per-tract diagnostic
+records (cluster counts, patch populations, selected point, road
+proximity info). See \code{\link[=plot_representative_points]{plot_representative_points()}}.}
+}
 }
 \description{
 Computes a single representative point for each census tract polygon.
 Three methods are available: geometric point-on-surface (default),
 centroid, or population-density-weighted using WorldPop raster data.
+}
+\details{
+The \code{pop_weighted} method uses cluster-based selection: it identifies
+connected clusters of populated cells via \code{\link[terra:patches]{terra::patches()}} and selects
+the largest cluster by total population. If OSM road data is available
+(via \code{osm_roads}), it prefers cells within 200m of a road. This avoids
+placing the representative point on an isolated pixel with no road access.
 }
 \examples{
 \dontrun{
@@ -66,5 +90,8 @@ pts <- compute_representative_points(tracts)
 pts_pop <- compute_representative_points(tracts, method = "pop_weighted")
 }
 
+}
+\seealso{
+\code{\link[=plot_representative_points]{plot_representative_points()}} to visualize the selection process.
 }
 \keyword{internal}

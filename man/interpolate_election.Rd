@@ -69,7 +69,7 @@ when \code{kernel = "exponential"} in \code{optim}). Default: 1.}
 \item{keep}{Character vector or NULL. Names of extra intermediate
 objects to include in the result. \code{weights}, \code{time_matrix},
 \code{electoral_sf}, and \code{rep_points} are always kept.
-Options: \code{"pop_raster"}.}
+Options: \code{"pop_raster"}, \code{"osm_roads"}.}
 
 \item{verbose}{Logical. Print progress. Default: TRUE.}
 
@@ -97,6 +97,7 @@ A list of class \code{"interpElections_result"} with components:
 \item{kernel}{Character. Kernel type used (\code{"power"} or \code{"stretched_exp"}).}
 \item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
 \item{pop_raster}{Population raster or NULL (opt-in via \code{keep}).}
+\item{osm_roads}{OSM road network \code{sf} object or NULL (opt-in via \code{keep}).}
 }
 }
 \description{

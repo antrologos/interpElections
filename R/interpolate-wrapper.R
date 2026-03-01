@@ -41,7 +41,7 @@
 #' @param keep Character vector or NULL. Names of extra intermediate
 #'   objects to include in the result. `weights`, `time_matrix`,
 #'   `electoral_sf`, and `rep_points` are always kept.
-#'   Options: `"pop_raster"`.
+#'   Options: `"pop_raster"`, `"osm_roads"`.
 #' @param verbose Logical. Print progress. Default: TRUE.
 #' @param ... Advanced arguments. `network_path` (character) for
 #'   pre-downloaded OSM data, `elevation_path` (character) for
@@ -66,6 +66,7 @@
 #'   \item{kernel}{Character. Kernel type used (`"power"` or `"stretched_exp"`).}
 #'   \item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
 #'   \item{pop_raster}{Population raster or NULL (opt-in via `keep`).}
+#'   \item{osm_roads}{OSM road network `sf` object or NULL (opt-in via `keep`).}
 #' }
 #'
 #' @examples
@@ -266,8 +267,10 @@ interpolate_election <- function(
   #   Auto-download OSM:    5 steps (+ download OSM + compute travel times)
   step_num <- 1L + .step_offset
   total_steps <- if (!is.null(.step_total)) .step_total else 3L
-  pop_raster_obj <- NULL   # populated on cache miss when pop_weighted
-  rep_points_obj <- NULL   # populated on cache miss
+  pop_raster_obj     <- NULL   # populated on cache miss when pop_weighted
+  rep_points_obj     <- NULL   # populated on cache miss
+  osm_roads_obj      <- NULL   # populated on cache miss when pop_weighted
+  pw_diagnostics_obj <- NULL   # populated on cache miss when pop_weighted
 
   if (is.null(time_matrix)) {
     # Check for cached travel time matrix
@@ -295,6 +298,16 @@ interpolate_election <- function(
 
     if (tt_cache_valid) {
       time_matrix <- cached_tt
+      # Restore rep_points from cache (sf without SpatRaster attribute)
+      rep_points_obj <- attr(time_matrix, "rep_points")
+      attr(time_matrix, "rep_points") <- NULL
+      # Re-load pop_raster from disk cache on demand
+      if ("pop_raster" %in% keep && point_method == "pop_weighted") {
+        pop_raster_obj <- tryCatch(
+          .download_worldpop_raster(tracts_sf = tracts_sf, verbose = FALSE),
+          error = function(e) NULL
+        )
+      }
     }
 
     # Determine step counts based on which path we'll take
@@ -364,13 +377,25 @@ interpolate_election <- function(
         verbose = verbose
       )
 
-      # Extract heavy/non-serializable attributes before caching
-      # (SpatRaster and sf objects should not be serialized inside the
-      # travel time RDS cache)
+      # Extract non-serializable attributes before caching
+      # (SpatRaster objects cannot be saved with saveRDS)
       pop_raster_obj <- attr(time_matrix, "pop_raster")
       attr(time_matrix, "pop_raster") <- NULL
+
       rep_points_obj <- attr(time_matrix, "rep_points")
-      attr(time_matrix, "rep_points") <- NULL
+      # Extract diagnostics before stripping for cache
+      pw_diagnostics_obj <- attr(rep_points_obj, "pop_weighted_diagnostics")
+
+      # Strip SpatRaster and diagnostics from rep_points before caching;
+      # the sf POINT object itself serializes fine
+      rp_for_cache <- rep_points_obj
+      attr(rp_for_cache, "pop_raster") <- NULL
+      attr(rp_for_cache, "pop_weighted_diagnostics") <- NULL
+      attr(time_matrix, "rep_points") <- rp_for_cache
+
+      # Strip OSM roads (sf, can be large)
+      osm_roads_obj <- attr(time_matrix, "osm_roads")
+      attr(time_matrix, "osm_roads") <- NULL
 
       # Cache the computed travel time matrix with ID attributes
       attr(time_matrix, "zone_ids") <- zone_ids
@@ -548,8 +573,10 @@ interpolate_election <- function(
     time_matrix   = time_matrix,
     electoral_sf  = electoral_sf,
     rep_points    = rep_points_obj,
+    pop_weighted_diagnostics = pw_diagnostics_obj,
     # Heavy objects (opt-in)
     pop_raster    = if ("pop_raster" %in% keep) pop_raster_obj else NULL,
+    osm_roads     = if ("osm_roads" %in% keep) osm_roads_obj else NULL,
     # Brazilian metadata (NULL when called generically)
     code_muni      = NULL,
     nome_municipio = NULL,
@@ -650,11 +677,13 @@ print.interpElections_result <- function(x, ...) {
   has_s <- !is.null(x$electoral_sf)
   has_p <- !is.null(x$pop_raster)
   has_r <- !is.null(x$rep_points)
+  has_roads <- !is.null(x$osm_roads)
   if (has_w) cat("    result$weights         weight matrix\n")
   if (has_t) cat("    result$time_matrix     travel time matrix\n")
   if (has_s) cat("    result$electoral_sf    electoral locations (sf)\n")
   if (has_p) cat("    result$pop_raster      population density raster\n")
   if (has_r) cat("    result$rep_points      representative points (sf)\n")
+  if (has_roads) cat("    result$osm_roads       OSM road network (sf)\n")
 
   cat("  Methods: summary(), as.data.frame(), coef(), residuals()\n")
   cat("  Plotting: plot(result, variable = ..., quantity = ..., breaks = ...)\n")

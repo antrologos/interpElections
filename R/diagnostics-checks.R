@@ -39,10 +39,13 @@ diagnostics <- function(result, verbose = TRUE) {
   # ---- 6. Unreachable pairs ----
   checks$unreachable_pairs <- .diag_unreachable_pairs(result)
 
-  # ---- 7. Alpha spatial variation ----
+  # ---- 7. Representative point clusters ----
+  checks$rep_point_clusters <- .diag_rep_point_clusters(result)
+
+  # ---- 8. Alpha spatial variation ----
   checks$alpha_spatial_cv <- .diag_alpha_spatial_cv(result)
 
-  # ---- 8. Implied turnout ----
+  # ---- 9. Implied turnout ----
   checks$implied_turnout <- .diag_implied_turnout(result)
 
   out <- structure(
@@ -445,5 +448,49 @@ print.interpElections_diagnostics <- function(x, ...) {
     label = "Implied turnout",
     detail = detail,
     value = pct_over
+  )
+}
+
+
+#' @noRd
+.diag_rep_point_clusters <- function(result) {
+  diag <- result$pop_weighted_diagnostics
+  if (is.null(diag) || length(diag) == 0) {
+    return(list(
+      status = "skip",
+      label = "Rep point clusters",
+      detail = "no cluster diagnostics available (not pop_weighted?)",
+      value = NA
+    ))
+  }
+
+  n_tracts <- length(diag)
+  n_multi <- sum(vapply(diag, function(d) d$n_patches > 1L, logical(1)))
+  n_roads <- sum(vapply(diag, function(d) isTRUE(d$has_roads), logical(1)))
+  n_near  <- sum(vapply(diag, function(d) isTRUE(d$near_road), logical(1)))
+
+  detail <- sprintf(
+    "%d tracts clustered, %d multi-cluster, %d with roads, %d near-road",
+    n_tracts, n_multi, n_roads, n_near
+  )
+
+  # Warn if many tracts have no roads (suggests poor OSM coverage)
+  pct_no_roads <- if (n_tracts > 0) (1 - n_roads / n_tracts) * 100 else 0
+  status <- if (pct_no_roads > 50) "warn" else "pass"
+
+  if (status == "warn") {
+    detail <- paste0(detail, sprintf(" (%.0f%% without road data)", pct_no_roads))
+  }
+
+  list(
+    status = status,
+    label = "Rep point clusters",
+    detail = detail,
+    value = list(
+      n_tracts = n_tracts,
+      n_multi_cluster = n_multi,
+      n_with_roads = n_roads,
+      n_near_road = n_near
+    )
   )
 }

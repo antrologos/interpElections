@@ -220,6 +220,13 @@ compute_travel_times <- function(
     stop("Duplicate IDs found in points_sf[[point_id]]", call. = FALSE)
   }
 
+  # Read OSM roads for representative point refinement (pop_weighted only)
+  osm_roads <- if (point_method == "pop_weighted") {
+    .read_osm_roads(network_path, verbose = verbose)
+  } else {
+    NULL
+  }
+
   # Compute representative points for tracts
   rep_points <- compute_representative_points(
     tracts_sf = tracts_sf,
@@ -227,6 +234,7 @@ compute_travel_times <- function(
     pop_raster = pop_raster,
     min_area_for_pop_weight = min_area_for_pop_weight,
     tract_id = tract_id,
+    osm_roads = osm_roads,
     verbose = verbose
   )
   # rep_points already in WGS84 (guaranteed by compute_representative_points)
@@ -404,6 +412,15 @@ compute_travel_times <- function(
     attr(mat, "no_pop_tracts") <- no_pop
   }
   attr(mat, "rep_points") <- rep_points
+
+  # Propagate cluster diagnostics and OSM roads
+  pw_diag <- attr(rep_points, "pop_weighted_diagnostics")
+  if (!is.null(pw_diag)) {
+    attr(mat, "pop_weighted_diagnostics") <- pw_diag
+  }
+  if (!is.null(osm_roads)) {
+    attr(mat, "osm_roads") <- osm_roads
+  }
 
   if (verbose) {
     pct <- 100 * n_valid / n_total
