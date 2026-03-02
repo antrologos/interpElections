@@ -270,46 +270,45 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
       t_adj, device = device, dtype = torch_dtype)
   }
 
-  # Mask tensor for unreachable pairs (TRUE = reachable)
+  # Binary mask for unreachable pairs: 0/1 float tensor.
+  # Unreachable (NA) pairs get exactly zero weight.
   if (has_na) {
-    mask_torch <- torch::torch_tensor(
-      !na_mask, device = device, dtype = torch::torch_bool())
+    mask_float <- torch::torch_tensor(
+      ifelse(na_mask, 0, 1),
+      device = device, dtype = torch_dtype)           # (n, m)
   }
 
   alpha_torch <- torch::torch_tensor(
     alpha_active, device = device, dtype = torch_dtype)
 
-  log_V_b_torch <- torch::torch_tensor(
-    log(pmax(c_mat, 1e-30)),
-    device = device, dtype = torch_dtype)
+  # Voter counts per bracket per station — linear (not log)
+  c_mat_torch <- torch::torch_tensor(
+    c_mat, device = device, dtype = torch_dtype)      # (ka, m)
 
-  # Build 3D kernel: log_K_3d[b, i, j] = -alpha[i, b] * t_basis[i, j]
-  log_K_3d <- -alpha_torch$t()$unsqueeze(3L) *
-    t_basis$unsqueeze(1L)                             # (ka, n, m)
+  # 3D kernel: K^b[i,j] = exp(-alpha[i,b] * t_basis[i,j])
+  # $contiguous() after $t()$unsqueeze() to fix the MPS
+  # non-contiguous tensor bug.
+  alpha_3d <- alpha_torch$t()$unsqueeze(3L)$contiguous()  # (ka, n, 1)
+  log_K_3d <- -alpha_3d * t_basis$unsqueeze(1L)           # (ka, n, m)
+  K_3d <- torch::torch_exp(log_K_3d)                      # (ka, n, m)
 
-  # Mask unreachable pairs: use a large negative value so
-  # exp(log_K) ≈ 0.  We avoid -Inf because -Inf - (-Inf) = NaN
-  # and torch_isnan is unreliable on MPS (Apple Silicon).
+  # Binary mask: exactly zero weight for unreachable pairs.
   if (has_na) {
-    neg_large <- torch::torch_tensor(
-      -1e20, device = device, dtype = torch_dtype)
-    log_K_3d <- torch::torch_where(
-      mask_torch$unsqueeze(1L), log_K_3d, neg_large)
+    K_3d <- K_3d * mask_float$unsqueeze(1L)
   }
 
-  # Column normalization
+  # Column normalization in linear space
   torch::with_no_grad({
-    log_col_sum <- torch::torch_logsumexp(
-      log_K_3d, dim = 2L)                         # (ka, m)
-    log_W_3d <- log_K_3d -
-      log_col_sum$unsqueeze(2L)                   # (ka, n, m)
+    col_sum <- K_3d$sum(dim = 2L)                        # (ka, m)
+    col_sum <- torch::torch_clamp(col_sum, min = 1e-30)  # avoid /0
+    W_3d <- K_3d / col_sum$unsqueeze(2L)                 # (ka, n, m)
 
-    # Aggregate: W[i,j] = sum_b (W^b[i,j] * c[b,j]) / sum_b c[b,j]
-    log_T <- log_W_3d + log_V_b_torch$unsqueeze(2L)
-    log_c_agg <- torch::torch_logsumexp(log_V_b_torch, dim = 1L)
-    log_T_agg <- torch::torch_logsumexp(log_T, dim = 1L)
-    W <- as.matrix(torch::torch_exp(
-      log_T_agg - log_c_agg$unsqueeze(1L))$cpu())
+    # Aggregate: W[i,j] = sum_b(W^b[i,j] * c[b,j]) / sum_b(c[b,j])
+    c_3d <- c_mat_torch$unsqueeze(2L)                    # (ka, 1, m)
+    c_total <- c_mat_torch$sum(dim = 1L)                 # (m,)
+    W <- as.matrix(
+      ((W_3d * c_3d)$sum(dim = 1L) /
+         c_total$unsqueeze(1L))$cpu())                   # (n, m)
   })
 
   if (!is.null(dimnames(t_adj))) dimnames(W) <- dimnames(t_adj)

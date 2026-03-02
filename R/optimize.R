@@ -597,23 +597,24 @@ print.interpElections_optim <- function(x, ...) {
         time_matrix, device = device, dtype = torch_dtype)
     }
 
-    # Mask tensor for unreachable pairs (TRUE = reachable)
-    # neg_large: large negative constant for masking (avoids -Inf on MPS)
+    # Binary mask for unreachable pairs: 0/1 float tensor.
+    # Unreachable (NA) pairs get exactly zero weight — no offset,
+    # no alpha, nothing.  Multiplicative masking in linear space.
     if (has_na) {
-      mask_torch <- torch::torch_tensor(
-        !na_mask, device = device, dtype = torch::torch_bool())
-      neg_large <- torch::torch_tensor(
-        -1e20, device = device, dtype = torch_dtype)
-      gpu_tensors$mask <- mask_torch
-      gpu_tensors$neg_large <- neg_large
+      mask_float <- torch::torch_tensor(
+        ifelse(na_mask, 0, 1),
+        device = device, dtype = torch_dtype)           # (n, m)
+      gpu_tensors$mask <- mask_float
     }
 
     # --- Pre-computations ---
     p_mat_active <- P_cpu[, active, drop = FALSE]   # n × ka
 
-    log_V_b_torch <- torch::torch_tensor(
-      log(pmax(c_mat, 1e-30)),
-      device = device, dtype = torch_dtype)          # (ka, m)
+    # Voter counts per bracket per station — linear (not log)
+    c_mat_torch <- torch::torch_tensor(
+      c_mat, device = device, dtype = torch_dtype)    # (ka, m)
+    c_3d <- c_mat_torch$unsqueeze(2L)                 # (ka, 1, m)
+    c_total <- c_mat_torch$sum(dim = 1L)              # (m,)
 
     # Active-bracket population tensor for loss computation
     p_active_torch <- torch::torch_tensor(
@@ -677,10 +678,12 @@ print.interpElections_optim <- function(x, ...) {
       dev$sum() * scale_factor
     }
 
-    gpu_tensors$t_basis <- t_basis
-    gpu_tensors$p_act   <- p_active_torch
-    gpu_tensors$theta   <- theta_torch
-    gpu_tensors$log_V_b <- log_V_b_torch
+    gpu_tensors$t_basis  <- t_basis
+    gpu_tensors$p_act    <- p_active_torch
+    gpu_tensors$theta    <- theta_torch
+    gpu_tensors$c_mat    <- c_mat_torch
+    gpu_tensors$c_3d     <- c_3d
+    gpu_tensors$c_total  <- c_total
 
     optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
@@ -728,28 +731,24 @@ print.interpElections_optim <- function(x, ...) {
       optimizer$zero_grad()
 
       alpha_all <- alpha_fn(theta_torch)              # (n, ka)
-      log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
-        t_basis$unsqueeze(1L)                          # (ka, n, m)
 
-      # Mask unreachable pairs: use a large negative value so
-      # exp(log_K) ≈ 0.  We avoid -Inf because -Inf - (-Inf) = NaN
-      # and torch_isnan is unreliable on MPS (Apple Silicon).
-      # With -1e20, logsumexp treats masked entries as zero-weight
-      # and no NaN cleanup is needed.  neg_large is hoisted before
-      # the epoch loop to avoid per-epoch GPU allocation overhead.
+      # 3D kernel: K^b[i,j] = exp(-alpha[i,b] * t_basis[i,j]).
+      # $contiguous() after $t()$unsqueeze() to fix the MPS
+      # non-contiguous tensor bug (addcmul_/addcdiv_ silent failure).
+      alpha_3d <- alpha_all$t()$unsqueeze(3L)$contiguous()  # (ka, n, 1)
+      log_K_3d <- -alpha_3d * t_basis$unsqueeze(1L)         # (ka, n, m)
+      K_3d <- torch::torch_exp(log_K_3d)                    # (ka, n, m)
+
+      # Binary mask: exactly zero weight for unreachable pairs.
+      # No offset, no alpha — just zero.
       if (has_na) {
-        log_K_3d_full <- torch::torch_where(
-          mask_torch$unsqueeze(1L), log_K_3d_full, neg_large)
+        K_3d <- K_3d * mask_float$unsqueeze(1L)
       }
 
-      # Column normalization in log-space
-      log_col_sum_full <- torch::torch_logsumexp(
-        log_K_3d_full, dim = 2L)                      # (ka, m)
-      log_W_3d <- log_K_3d_full -
-        log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
-
-      # Voter counts per bracket per station (needed for V_hat and entropy)
-      log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
+      # Column normalization in linear space
+      col_sum <- K_3d$sum(dim = 2L)                         # (ka, m)
+      col_sum <- torch::torch_clamp(col_sum, min = 1e-30)   # avoid /0
+      W_3d <- K_3d / col_sum$unsqueeze(2L)                  # (ka, n, m)
 
       # --- Entropy penalty on AGGREGATED weights ---
       # Penalize the entropy of the aggregated weight matrix (voter-weighted
@@ -759,34 +758,21 @@ print.interpElections_optim <- function(x, ...) {
       # ascent steers, eliminating the Jensen's-inequality gap that caused
       # entropy_mu instability with per-bracket entropy.
       if (entropy_mu > 0 || adaptive) {
-        # Aggregate per-bracket column-normalized weights, weighted by
-        # station voter counts c[b,j]
-        #
-        # Mask unreachable pairs: log_W_3d has very large negative values
-        # (-1e20) for unreachable (i,j) entries.  logsumexp backward on
-        # these near-zero softmax entries can produce tiny but non-zero
-        # gradients.  torch_where routes unreachable entries to a detached
-        # finite fill so gradients for unreachable entries flow to the
-        # dead-end fill (discarded), leaving reachable gradients untouched.
-        if (has_na) {
-          reachable_3d <- mask_torch$unsqueeze(1L)                         # (1, n, m)
-          log_W_3d_ent <- torch::torch_where(reachable_3d, log_W_3d, neg_large)
-        } else {
-          log_W_3d_ent <- log_W_3d
-        }
-        log_T_ent <- log_W_3d_ent + log_c_3d                              # (ka, n, m)
-        log_T_agg <- torch::torch_logsumexp(log_T_ent, dim = 1L)          # (n, m)
-        log_c_agg <- torch::torch_logsumexp(log_V_b_torch, dim = 1L)      # (m,)
-        log_W_agg <- log_T_agg - log_c_agg$unsqueeze(1L)                  # (n, m)
+        # W_agg[i,j] = sum_b(W[b,i,j] * c[b,j]) / sum_b(c[b,j])
+        # Aggregated weights in linear space — unreachable pairs are
+        # already exactly zero from the binary mask above.
+        W_agg <- (W_3d * c_3d)$sum(dim = 1L) /
+          c_total$unsqueeze(1L)                                            # (n, m)
 
-        # Row-normalize for entropy.  Clamp for NaN-free gradient.
-        log_W_agg_c <- torch::torch_clamp(log_W_agg, min = -1e20)
-        log_p_agg <- log_W_agg_c -
-          torch::torch_logsumexp(log_W_agg_c, dim = 2L, keepdim = TRUE)   # (n, m)
+        # Row-normalize for entropy.  Clamp to avoid log(0).
+        row_sum <- torch::torch_clamp(
+          W_agg$sum(dim = 2L, keepdim = TRUE), min = 1e-30)
+        p_agg <- W_agg / row_sum                                          # (n, m)
+        p_safe <- torch::torch_clamp(p_agg, min = 1e-30)
 
         # H[i] = -sum_j p[i,j] * log(p[i,j])
         H_agg_torch <- -(
-          torch::torch_exp(log_p_agg) * log_p_agg)$sum(dim = 2L)          # (n,)
+          p_safe * torch::torch_log(p_safe))$sum(dim = 2L)                # (n,)
 
         if (entropy_mu > 0) {
           entropy_penalty <- entropy_mu * H_agg_torch$mean()
@@ -803,9 +789,7 @@ print.interpElections_optim <- function(x, ...) {
       }
 
       # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
-      V_hat_all <- torch::torch_exp(
-        torch::torch_logsumexp(
-          log_W_3d + log_c_3d, dim = 3L))$t()        # (n, ka)
+      V_hat_all <- (W_3d * c_3d)$sum(dim = 3L)$t()   # (n, ka)
 
       # Full-data loss (exact, no scaling needed)
       data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
@@ -833,6 +817,20 @@ print.interpElections_optim <- function(x, ...) {
       if (entropy_mu > 0) loss <- loss + entropy_penalty
       total_loss_val <- data_loss_val + barrier_val + entropy_val
 
+      # Early NaN check: if forward pass produced NaN, skip backward
+      # entirely to avoid wasting time and propagating NaN gradients.
+      if (!isTRUE(is.finite(total_loss_val))) {
+        nan_epoch_count <- nan_epoch_count + 1L
+        if (nan_epoch_count >= 5L) {
+          stop("Forward pass produced NaN for 5 consecutive epochs",
+               call. = FALSE)
+        }
+        epoch_losses[epoch] <- total_loss_val
+        grad_history[epoch] <- NA_real_
+        lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+        next
+      }
+      nan_epoch_count <- 0L  # reset on finite loss
 
       loss$backward()
 
@@ -868,18 +866,14 @@ print.interpElections_optim <- function(x, ...) {
       }
 
       # Extract W, alpha candidates (no extra forward pass needed).
-      # All come from pre-step tensors (alpha_all, log_W_3d
-      # were computed before optimizer$step()).
-      # Note: mean_eff_src is computed above in the differentiable
-      # entropy block (aggregated entropy on W_agg).
+      # All come from pre-step tensors (alpha_all, W_3d were computed
+      # before optimizer$step()).
+      # W_candidate: aggregated weight matrix (voter-weighted mixture)
+      # W[i,j] = sum_b(W^b[i,j] * c[b,j]) / sum_b(c[b,j])
       torch::with_no_grad({
-        log_T_cn <- log_W_3d$detach() + log_c_3d     # (ka, n, m)
-        log_c_agg_cn <- torch::torch_logsumexp(
-          log_V_b_torch, dim = 1L)                    # (m,)
-        log_T_agg_cn <- torch::torch_logsumexp(
-          log_T_cn, dim = 1L)                         # (n, m)
-        W_candidate <- as.matrix(torch::torch_exp(
-          log_T_agg_cn - log_c_agg_cn$unsqueeze(1L))$cpu())
+        W_candidate <- as.matrix(
+          ((W_3d$detach() * c_3d)$sum(dim = 1L) /
+             c_total$unsqueeze(1L))$cpu())              # (n, m)
         alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
       })
 
