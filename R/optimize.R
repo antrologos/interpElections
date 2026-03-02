@@ -134,6 +134,13 @@ optimize_alpha <- function(
   entropy_mu      <- optim$entropy_mu %||% 0
   target_eff_src  <- optim$target_eff_src
   dual_eta        <- optim$dual_eta %||% 0.05
+  # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
+  # at libtorch initialization; setting it after requireNamespace() is too late.
+  # Harmless on non-MPS platforms (only activated when an MPS op is missing).
+  if (isTRUE(use_gpu) || isTRUE(getOption("interpElections.use_gpu"))) {
+    Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
+  }
+
   # --- Check torch is available ---
   if (!requireNamespace("torch", quietly = TRUE)) {
     stop(
@@ -474,12 +481,6 @@ print.interpElections_optim <- function(x, ...) {
     return(result)
   }
 
-  # Best-effort: enable per-op MPS fallback in case torch hasn't been
-  # loaded yet in this R session (harmless if already loaded or non-MPS).
-  if (device == "mps") {
-    Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
-  }
-
   torch_dtype <- .resolve_dtype(dtype)
   n <- nrow(time_matrix)
   m <- ncol(time_matrix)
@@ -714,6 +715,7 @@ print.interpElections_optim <- function(x, ...) {
     # Convergence tracking
     patience_counter <- 0L
     converged        <- FALSE
+    nan_epoch_count  <- 0L         # consecutive NaN-gradient epochs (MPS guard)
 
     grad_history <- numeric(max_epochs)
 
@@ -834,16 +836,36 @@ print.interpElections_optim <- function(x, ...) {
 
       loss$backward()
 
-      # Capture pre-clip gradient norm, then clip
+      # Capture pre-clip gradient norm, then clip.
+      # Guard: nn_utils_clip_grad_norm_ has an unguarded
+      # `if (clip_coef$item() < 1)` that crashes with "missing value
+      # where TRUE/FALSE needed" when gradients are NaN — common on
+      # MPS (Apple Silicon) where some ops silently produce NaN.
+      # When gradients are unusable, skip clip + step to avoid
+      # poisoning the optimizer state.
       last_grad_norm <- tryCatch(
         as.numeric(theta_torch$grad$norm()$cpu()),
         error = function(e) NA_real_
       )
-      torch::nn_utils_clip_grad_norm_(
-        optim_params, max_norm = 1.0)
+      grad_ok <- tryCatch({
+        torch::nn_utils_clip_grad_norm_(
+          optim_params, max_norm = 1.0)
+        TRUE
+      }, error = function(e) FALSE)
 
-      optimizer$step()
-      step_counter <- step_counter + 1L
+      if (grad_ok) {
+        optimizer$step()
+        step_counter <- step_counter + 1L
+        nan_epoch_count <- 0L        # reset on success
+      } else {
+        # NaN gradients — zero them to prevent accumulation, skip step
+        optimizer$zero_grad()
+        nan_epoch_count <- nan_epoch_count + 1L
+        if (nan_epoch_count >= 5L) {
+          stop("Gradient computation produced NaN for 5 consecutive epochs",
+               call. = FALSE)
+        }
+      }
 
       # Extract W, alpha candidates (no extra forward pass needed).
       # All come from pre-step tensors (alpha_all, log_W_3d

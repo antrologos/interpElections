@@ -126,6 +126,12 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
     }
   }
 
+  # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
+  # at libtorch initialization; setting it after requireNamespace() is too late.
+  if (isTRUE(use_gpu) || isTRUE(getOption("interpElections.use_gpu"))) {
+    Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
+  }
+
   if (!requireNamespace("torch", quietly = TRUE)) {
     stop("The 'torch' package is required. Install with: setup_torch()",
          call. = FALSE)
@@ -218,12 +224,6 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
       ),
       show = verbose
     ))
-  }
-
-  # Best-effort: enable per-op MPS fallback in case torch hasn't been
-  # loaded yet in this R session (harmless if already loaded or non-MPS).
-  if (device == "mps") {
-    Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
   }
 
   # --- Torch computation ---
