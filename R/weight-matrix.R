@@ -148,13 +148,28 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   }
   dtype <- getOption("interpElections.dtype", default = "float32")
 
-  # --- Run via callr subprocess (same pattern as optimize_alpha) ---
-  .compute_W_subprocess(
-    t_adj = t_adj, alpha = alpha,
-    pop_matrix = pop_matrix, source_matrix = source_matrix,
-    kernel = kernel,
-    device = device, dtype = dtype, verbose = verbose
-  )
+  # --- Run via callr subprocess, with MPS-to-CPU fallback ---
+  .run_W <- function(dev) {
+    .compute_W_subprocess(
+      t_adj = t_adj, alpha = alpha,
+      pop_matrix = pop_matrix, source_matrix = source_matrix,
+      kernel = kernel,
+      device = dev, dtype = dtype, verbose = verbose
+    )
+  }
+
+  if (device == "mps") {
+    tryCatch(.run_W("mps"), error = function(e) {
+      warning(sprintf(
+        "MPS weight matrix computation failed (%s); retrying on CPU",
+        conditionMessage(e)
+      ), call. = FALSE)
+      if (verbose) message("  Falling back to CPU...")
+      .run_W("cpu")
+    })
+  } else {
+    .run_W(device)
+  }
 }
 
 
@@ -221,7 +236,12 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   alpha_active <- alpha[, active, drop = FALSE]  # (n, ka)
 
   # Torch tensors
-  on.exit(torch::cuda_empty_cache(), add = TRUE)
+  on.exit({
+    gc(verbose = FALSE)
+    if (requireNamespace("torch", quietly = TRUE)) {
+      tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
+    }
+  }, add = TRUE)
 
   # Detect unreachable pairs (NA in t_adj) and create mask
   na_mask <- is.na(t_adj)
@@ -255,12 +275,14 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
   log_K_3d <- -alpha_torch$t()$unsqueeze(3L) *
     t_basis$unsqueeze(1L)                             # (ka, n, m)
 
-  # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
+  # Mask unreachable pairs: use a large negative value so
+  # exp(log_K) ≈ 0.  We avoid -Inf because -Inf - (-Inf) = NaN
+  # and torch_isnan is unreliable on MPS (Apple Silicon).
   if (has_na) {
+    neg_large <- torch::torch_tensor(
+      -1e20, device = device, dtype = torch_dtype)
     log_K_3d <- torch::torch_where(
-      mask_torch$unsqueeze(1L), log_K_3d,
-      torch::torch_tensor(-Inf, device = device,
-                          dtype = torch_dtype))
+      mask_torch$unsqueeze(1L), log_K_3d, neg_large)
   }
 
   # Column normalization
@@ -269,15 +291,6 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
       log_K_3d, dim = 2L)                         # (ka, m)
     log_W_3d <- log_K_3d -
       log_col_sum$unsqueeze(2L)                   # (ka, n, m)
-
-    # Handle all-unreachable columns: -Inf - (-Inf) = NaN -> -Inf
-    if (has_na) {
-      log_W_3d <- torch::torch_where(
-        torch::torch_isnan(log_W_3d),
-        torch::torch_tensor(-Inf, device = device,
-                            dtype = torch_dtype),
-        log_W_3d)
-    }
 
     # Aggregate: W[i,j] = sum_b (W^b[i,j] * c[b,j]) / sum_b c[b,j]
     log_T <- log_W_3d + log_V_b_torch$unsqueeze(2L)

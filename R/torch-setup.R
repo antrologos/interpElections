@@ -154,6 +154,7 @@ use_gpu <- function(enable = TRUE, device = NULL, dtype = "float32") {
   nvsmi <- "nvidia-smi"
   if (.detect_platform()$os == "windows" && !nzchar(Sys.which(nvsmi))) {
     win_paths <- c(
+      "C:/Windows/System32/nvidia-smi.exe",
       "C:/Program Files/NVIDIA Corporation/NVSMI/nvidia-smi.exe",
       "C:/Program Files (x86)/NVIDIA Corporation/NVSMI/nvidia-smi.exe"
     )

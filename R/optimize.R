@@ -585,10 +585,14 @@ print.interpElections_optim <- function(x, ...) {
     }
 
     # Mask tensor for unreachable pairs (TRUE = reachable)
+    # neg_large: large negative constant for masking (avoids -Inf on MPS)
     if (has_na) {
       mask_torch <- torch::torch_tensor(
         !na_mask, device = device, dtype = torch::torch_bool())
+      neg_large <- torch::torch_tensor(
+        -1e20, device = device, dtype = torch_dtype)
       gpu_tensors$mask <- mask_torch
+      gpu_tensors$neg_large <- neg_large
     }
 
     # --- Pre-computations ---
@@ -644,6 +648,7 @@ print.interpElections_optim <- function(x, ...) {
     # alpha_fn: theta -> alpha (always >= alpha_min)
     alpha_min_t <- torch::torch_tensor(
       alpha_min, device = device, dtype = torch_dtype)
+    gpu_tensors$alpha_min_t <- alpha_min_t
     alpha_fn <- function(th) alpha_min_t + torch::nnf_softplus(th)
 
     # Loss computation: Poisson deviance
@@ -712,12 +717,15 @@ print.interpElections_optim <- function(x, ...) {
       log_K_3d_full <- -alpha_all$t()$unsqueeze(3L) *
         t_basis$unsqueeze(1L)                          # (ka, n, m)
 
-      # Mask unreachable pairs: set log_K = -Inf so exp(log_K) = 0
+      # Mask unreachable pairs: use a large negative value so
+      # exp(log_K) ≈ 0.  We avoid -Inf because -Inf - (-Inf) = NaN
+      # and torch_isnan is unreliable on MPS (Apple Silicon).
+      # With -1e20, logsumexp treats masked entries as zero-weight
+      # and no NaN cleanup is needed.  neg_large is hoisted before
+      # the epoch loop to avoid per-epoch GPU allocation overhead.
       if (has_na) {
         log_K_3d_full <- torch::torch_where(
-          mask_torch$unsqueeze(1L), log_K_3d_full,
-          torch::torch_tensor(-Inf, device = device,
-                              dtype = torch_dtype))
+          mask_torch$unsqueeze(1L), log_K_3d_full, neg_large)
       }
 
       # Column normalization in log-space
@@ -725,15 +733,6 @@ print.interpElections_optim <- function(x, ...) {
         log_K_3d_full, dim = 2L)                      # (ka, m)
       log_W_3d <- log_K_3d_full -
         log_col_sum_full$unsqueeze(2L)                # (ka, n, m)
-
-      # Handle all-unreachable columns: -Inf - (-Inf) = NaN -> -Inf
-      if (has_na) {
-        log_W_3d <- torch::torch_where(
-          torch::torch_isnan(log_W_3d),
-          torch::torch_tensor(-Inf, device = device,
-                              dtype = torch_dtype),
-          log_W_3d)
-      }
 
       # Voter counts per bracket per station (needed for V_hat and entropy)
       log_c_3d <- log_V_b_torch$unsqueeze(2L)        # (ka, 1, m)
@@ -749,18 +748,15 @@ print.interpElections_optim <- function(x, ...) {
         # Aggregate per-bracket column-normalized weights, weighted by
         # station voter counts c[b,j]
         #
-        # Mask unreachable pairs: log_W_3d has -Inf for unreachable (i,j)
-        # entries (from NaN-to-Inf cleanup).  logsumexp(-Inf, dim=1)
-        # backward computes softmax = 0/0 = NaN, poisoning gradients.
-        # torch_where routes unreachable entries to a detached finite fill
-        # so logsumexp backward gets well-defined softmax; gradients for
-        # unreachable entries flow to the dead-end fill (discarded),
-        # leaving reachable gradients untouched.
+        # Mask unreachable pairs: log_W_3d has very large negative values
+        # (-1e20) for unreachable (i,j) entries.  logsumexp backward on
+        # these near-zero softmax entries can produce tiny but non-zero
+        # gradients.  torch_where routes unreachable entries to a detached
+        # finite fill so gradients for unreachable entries flow to the
+        # dead-end fill (discarded), leaving reachable gradients untouched.
         if (has_na) {
           reachable_3d <- mask_torch$unsqueeze(1L)                         # (1, n, m)
-          fill_val <- torch::torch_tensor(
-            -1e20, device = device, dtype = torch_dtype)
-          log_W_3d_ent <- torch::torch_where(reachable_3d, log_W_3d, fill_val)
+          log_W_3d_ent <- torch::torch_where(reachable_3d, log_W_3d, neg_large)
         } else {
           log_W_3d_ent <- log_W_3d
         }
@@ -854,7 +850,7 @@ print.interpElections_optim <- function(x, ...) {
       })
 
       # --- Dual ascent: adapt entropy_mu to reach target eff_src ---
-      if (adaptive && !is.na(mean_eff_src) && mean_eff_src > 0) {
+      if (adaptive && isTRUE(is.finite(mean_eff_src)) && mean_eff_src > 0) {
         ratio <- mean_eff_src / target_eff_src
         entropy_mu <- entropy_mu * ratio ^ dual_eta
         entropy_mu <- max(entropy_mu, 1e-8)
@@ -871,7 +867,7 @@ print.interpElections_optim <- function(x, ...) {
       # that crash with "missing value where TRUE/FALSE needed" on NaN input
       # (observed on MPS backend where some ops produce NaN).
       sched_metric <- if (adaptive) data_loss_val else total_loss_val
-      if (is.finite(sched_metric)) {
+      if (isTRUE(is.finite(sched_metric))) {
         scheduler$step(sched_metric)
       }
 
@@ -888,7 +884,7 @@ print.interpElections_optim <- function(x, ...) {
       # For dual ascent: track deviance for patience (stable component)
       conv_metric <- if (adaptive) data_loss_val else total_loss_val
 
-      eff_near_target <- if (adaptive && !is.na(mean_eff_src)) {
+      eff_near_target <- if (adaptive && isTRUE(is.finite(mean_eff_src))) {
         abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
       } else {
         TRUE
@@ -1005,13 +1001,25 @@ print.interpElections_optim <- function(x, ...) {
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
         best_eff_src   <- mean_eff_src
-      } else if (!is.finite(best_data_loss)) {
+      } else if (isTRUE(!is.finite(best_data_loss))) {
         best_loss      <- total_loss_val
         best_data_loss <- data_loss_val
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
         best_eff_src   <- mean_eff_src
       }
+    }
+
+    # Non-adaptive fallback: if no epoch produced a finite loss (e.g.,
+    # all NaN on MPS), use the last epoch's W_candidate to avoid
+    # returning NULL and crashing downstream.
+    if (!adaptive && is.null(best_W)) {
+      warning("No epoch produced a finite loss; returning last-epoch weights",
+              call. = FALSE)
+      best_loss      <- total_loss_val
+      best_data_loss <- data_loss_val
+      best_alpha     <- alpha_candidate
+      best_W         <- W_candidate
     }
 
     if (adaptive && !converged && verbose) {
