@@ -600,10 +600,13 @@ print.interpElections_optim <- function(x, ...) {
     # Binary mask for unreachable pairs: 0/1 float tensor.
     # Unreachable (NA) pairs get exactly zero weight — no offset,
     # no alpha, nothing.  Multiplicative masking in linear space.
+    # All $unsqueeze() views are made $contiguous() because MPS
+    # (Apple Silicon) silently produces NaN on non-contiguous views.
     if (has_na) {
       mask_float <- torch::torch_tensor(
         ifelse(na_mask, 0, 1),
         device = device, dtype = torch_dtype)           # (n, m)
+      mask_3d <- mask_float$unsqueeze(1L)$contiguous()  # (1, n, m)
       gpu_tensors$mask <- mask_float
     }
 
@@ -613,8 +616,12 @@ print.interpElections_optim <- function(x, ...) {
     # Voter counts per bracket per station — linear (not log)
     c_mat_torch <- torch::torch_tensor(
       c_mat, device = device, dtype = torch_dtype)    # (ka, m)
-    c_3d <- c_mat_torch$unsqueeze(2L)                 # (ka, 1, m)
+    c_3d <- c_mat_torch$unsqueeze(2L)$contiguous()    # (ka, 1, m)
     c_total <- c_mat_torch$sum(dim = 1L)              # (m,)
+    c_total_2d <- c_total$unsqueeze(1L)$contiguous()  # (1, m)
+
+    # Pre-compute contiguous 3D view of t_basis for epoch loop
+    t_basis_3d <- t_basis$unsqueeze(1L)$contiguous()  # (1, n, m)
 
     # Active-bracket population tensor for loss computation
     p_active_torch <- torch::torch_tensor(
@@ -678,12 +685,14 @@ print.interpElections_optim <- function(x, ...) {
       dev$sum() * scale_factor
     }
 
-    gpu_tensors$t_basis  <- t_basis
-    gpu_tensors$p_act    <- p_active_torch
-    gpu_tensors$theta    <- theta_torch
-    gpu_tensors$c_mat    <- c_mat_torch
-    gpu_tensors$c_3d     <- c_3d
-    gpu_tensors$c_total  <- c_total
+    gpu_tensors$t_basis    <- t_basis
+    gpu_tensors$t_basis_3d <- t_basis_3d
+    gpu_tensors$p_act      <- p_active_torch
+    gpu_tensors$theta      <- theta_torch
+    gpu_tensors$c_mat      <- c_mat_torch
+    gpu_tensors$c_3d       <- c_3d
+    gpu_tensors$c_total    <- c_total
+    gpu_tensors$c_total_2d <- c_total_2d
 
     optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
@@ -733,22 +742,21 @@ print.interpElections_optim <- function(x, ...) {
       alpha_all <- alpha_fn(theta_torch)              # (n, ka)
 
       # 3D kernel: K^b[i,j] = exp(-alpha[i,b] * t_basis[i,j]).
-      # $contiguous() after $t()$unsqueeze() to fix the MPS
-      # non-contiguous tensor bug (addcmul_/addcdiv_ silent failure).
+      # All views made $contiguous() to prevent MPS (Apple Silicon)
+      # from silently producing NaN on non-contiguous tensors.
       alpha_3d <- alpha_all$t()$unsqueeze(3L)$contiguous()  # (ka, n, 1)
-      log_K_3d <- -alpha_3d * t_basis$unsqueeze(1L)         # (ka, n, m)
+      log_K_3d <- -alpha_3d * t_basis_3d                    # (ka, n, m)
       K_3d <- torch::torch_exp(log_K_3d)                    # (ka, n, m)
 
       # Binary mask: exactly zero weight for unreachable pairs.
-      # No offset, no alpha — just zero.
       if (has_na) {
-        K_3d <- K_3d * mask_float$unsqueeze(1L)
+        K_3d <- K_3d * mask_3d
       }
 
       # Column normalization in linear space
       col_sum <- K_3d$sum(dim = 2L)                         # (ka, m)
       col_sum <- torch::torch_clamp(col_sum, min = 1e-30)   # avoid /0
-      W_3d <- K_3d / col_sum$unsqueeze(2L)                  # (ka, n, m)
+      W_3d <- K_3d / col_sum$unsqueeze(2L)$contiguous()     # (ka, n, m)
 
       # --- Entropy penalty on AGGREGATED weights ---
       # Penalize the entropy of the aggregated weight matrix (voter-weighted
@@ -761,8 +769,7 @@ print.interpElections_optim <- function(x, ...) {
         # W_agg[i,j] = sum_b(W[b,i,j] * c[b,j]) / sum_b(c[b,j])
         # Aggregated weights in linear space — unreachable pairs are
         # already exactly zero from the binary mask above.
-        W_agg <- (W_3d * c_3d)$sum(dim = 1L) /
-          c_total$unsqueeze(1L)                                            # (n, m)
+        W_agg <- (W_3d * c_3d)$sum(dim = 1L) / c_total_2d                 # (n, m)
 
         # Row-normalize for entropy.  Clamp to avoid log(0).
         row_sum <- torch::torch_clamp(
@@ -789,7 +796,8 @@ print.interpElections_optim <- function(x, ...) {
       }
 
       # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
-      V_hat_all <- (W_3d * c_3d)$sum(dim = 3L)$t()   # (n, ka)
+      # $contiguous() after $t() — MPS NaN on non-contiguous views.
+      V_hat_all <- (W_3d * c_3d)$sum(dim = 3L)$t()$contiguous()  # (n, ka)
 
       # Full-data loss (exact, no scaling needed)
       data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
@@ -873,7 +881,7 @@ print.interpElections_optim <- function(x, ...) {
       torch::with_no_grad({
         W_candidate <- as.matrix(
           ((W_3d$detach() * c_3d)$sum(dim = 1L) /
-             c_total$unsqueeze(1L))$cpu())              # (n, m)
+             c_total_2d)$cpu())                         # (n, m)
         alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
       })
 

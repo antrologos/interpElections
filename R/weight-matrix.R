@@ -272,6 +272,8 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
 
   # Binary mask for unreachable pairs: 0/1 float tensor.
   # Unreachable (NA) pairs get exactly zero weight.
+  # All $unsqueeze() views are made $contiguous() because MPS
+  # (Apple Silicon) silently produces NaN on non-contiguous views.
   if (has_na) {
     mask_float <- torch::torch_tensor(
       ifelse(na_mask, 0, 1),
@@ -286,29 +288,30 @@ compute_weight_matrix <- function(time_matrix, alpha, pop_matrix,
     c_mat, device = device, dtype = torch_dtype)      # (ka, m)
 
   # 3D kernel: K^b[i,j] = exp(-alpha[i,b] * t_basis[i,j])
-  # $contiguous() after $t()$unsqueeze() to fix the MPS
-  # non-contiguous tensor bug.
-  alpha_3d <- alpha_torch$t()$unsqueeze(3L)$contiguous()  # (ka, n, 1)
-  log_K_3d <- -alpha_3d * t_basis$unsqueeze(1L)           # (ka, n, m)
-  K_3d <- torch::torch_exp(log_K_3d)                      # (ka, n, m)
+  # All views made $contiguous() to prevent MPS from silently
+  # producing NaN on non-contiguous tensors.
+  alpha_3d <- alpha_torch$t()$unsqueeze(3L)$contiguous()   # (ka, n, 1)
+  log_K_3d <- -alpha_3d *
+    t_basis$unsqueeze(1L)$contiguous()                     # (ka, n, m)
+  K_3d <- torch::torch_exp(log_K_3d)                       # (ka, n, m)
 
   # Binary mask: exactly zero weight for unreachable pairs.
   if (has_na) {
-    K_3d <- K_3d * mask_float$unsqueeze(1L)
+    K_3d <- K_3d * mask_float$unsqueeze(1L)$contiguous()
   }
 
   # Column normalization in linear space
   torch::with_no_grad({
-    col_sum <- K_3d$sum(dim = 2L)                        # (ka, m)
-    col_sum <- torch::torch_clamp(col_sum, min = 1e-30)  # avoid /0
-    W_3d <- K_3d / col_sum$unsqueeze(2L)                 # (ka, n, m)
+    col_sum <- K_3d$sum(dim = 2L)                          # (ka, m)
+    col_sum <- torch::torch_clamp(col_sum, min = 1e-30)    # avoid /0
+    W_3d <- K_3d / col_sum$unsqueeze(2L)$contiguous()      # (ka, n, m)
 
     # Aggregate: W[i,j] = sum_b(W^b[i,j] * c[b,j]) / sum_b(c[b,j])
-    c_3d <- c_mat_torch$unsqueeze(2L)                    # (ka, 1, m)
-    c_total <- c_mat_torch$sum(dim = 1L)                 # (m,)
+    c_3d <- c_mat_torch$unsqueeze(2L)$contiguous()         # (ka, 1, m)
+    c_total <- c_mat_torch$sum(dim = 1L)                   # (m,)
     W <- as.matrix(
       ((W_3d * c_3d)$sum(dim = 1L) /
-         c_total$unsqueeze(1L))$cpu())                   # (n, m)
+         c_total$unsqueeze(1L)$contiguous())$cpu())        # (n, m)
   })
 
   if (!is.null(dimnames(t_adj))) dimnames(W) <- dimnames(t_adj)
