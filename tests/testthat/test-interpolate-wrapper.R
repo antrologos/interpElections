@@ -41,6 +41,26 @@
 }
 
 
+test_that(".check_dots() warns on unknown arguments", {
+  expect_warning(
+    .check_dots(list(route = 1), c("network_path"), "test_fn"),
+    "unknown argument.*'route'"
+  )
+  expect_warning(
+    .check_dots(list(route = 1, foo = 2), c("network_path"), "test_fn"),
+    "unknown argument.*'route'.*'foo'"
+  )
+  # Known args should not warn
+  expect_silent(
+    .check_dots(list(network_path = "x"), c("network_path"), "test_fn")
+  )
+  # Empty dots should not warn
+  expect_silent(
+    .check_dots(list(), c("network_path"), "test_fn")
+  )
+})
+
+
 test_that("interpolate_election() with pre-computed time_matrix matches manual pipeline", {
   skip_if_not_installed("sf")
 

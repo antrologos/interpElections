@@ -6,6 +6,24 @@ if (!exists("%||%", baseenv())) {
   `%||%` <- function(x, y) if (is.null(x)) y else x
 }
 
+#' Warn about unrecognized arguments in `...`
+#' @param dots Named list from `list(...)`.
+#' @param known Character vector of recognized `...` arg names.
+#' @param call_name Function name for the warning message.
+#' @noRd
+.check_dots <- function(dots, known, call_name) {
+  unknown <- setdiff(names(dots), known)
+  if (length(unknown) > 0) {
+    warning(
+      sprintf("%s(): unknown argument(s) ignored: %s",
+              call_name, paste0("'", unknown, "'", collapse = ", ")),
+      "\n  These were passed via `...` and are not recognized. ",
+      "Check for typos (e.g., 'route' instead of 'routing').",
+      call. = FALSE
+    )
+  }
+}
+
 # Column-standardize a matrix so each column sums to 1
 # Maps to: t(t(inv_W_alpha)/colSums(inv_W_alpha)) pattern in the original code
 .col_standardize <- function(mat) {

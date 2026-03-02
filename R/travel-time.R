@@ -332,7 +332,6 @@ compute_travel_times <- function(
     row_idx <- match(to_ids, tract_ids)
     col_idx <- match(from_ids, point_ids)
   }
-  swapped <- (fwd_tract < rev_tract)
   valid <- !is.na(row_idx) & !is.na(col_idx)
 
   # r5r column name varies by version
@@ -403,23 +402,34 @@ compute_travel_times <- function(
     attr(mat, "unreachable_tracts") <- unreachable_ids
   }
 
-  # Retry unreachable tracts when r5r swapped routing direction.
-  # When r5r routes destination→origin instead of origin→destination,
-  # some tracts may appear unreachable due to road network asymmetry.
-  # A small retry set (< n_destinations) prevents r5r from swapping again.
-  if (n_unreachable > 0 && swapped) {
-    retry_origins <- origins[origins$id %in% unreachable_ids, , drop = FALSE]
-    if (nrow(retry_origins) > 0 && nrow(retry_origins) < nrow(destinations)) {
+  # Retry unreachable tracts with centroid-based representative points.
+  # The road-snapped point may fall on a disconnected road fragment that
+  # r5r cannot route from.  Tract centroids are more likely to be near
+  # the main connected network.
+  if (n_unreachable > 0) {
+    unreachable_sf <- tracts_sf[
+      as.character(tracts_sf[[tract_id]]) %in% unreachable_ids, ]
+
+    if (nrow(unreachable_sf) > 0) {
+      centroid_pts <- suppressWarnings(
+        sf::st_point_on_surface(sf::st_transform(unreachable_sf, 4326))
+      )
+      centroid_origins <- data.frame(
+        id  = as.character(centroid_pts[[tract_id]]),
+        lon = sf::st_coordinates(centroid_pts)[, 1],
+        lat = sf::st_coordinates(centroid_pts)[, 2]
+      )
+
       if (verbose) {
         message(sprintf(
-          "  Retrying %d unreachable tract(s) in forward direction...",
-          nrow(retry_origins)))
+          "  Retrying %d unreachable tract(s) with centroid fallback...",
+          nrow(centroid_origins)))
       }
 
       if (use_subprocess) {
         tt2 <- .run_r5r_subprocess(
           network_path       = network_path,
-          origins            = retry_origins,
+          origins            = centroid_origins,
           destinations       = destinations,
           mode               = mode,
           max_trip_duration  = max_trip_duration,
@@ -429,12 +439,12 @@ compute_travel_times <- function(
       } else {
         retry_args <- list(
           r5r_core,
-          origins = retry_origins,
-          destinations = destinations,
-          mode = mode,
-          max_trip_duration = max_trip_duration,
-          verbose = FALSE,
-          max_rides = 1L
+          origins            = centroid_origins,
+          destinations       = destinations,
+          mode               = mode,
+          max_trip_duration  = max_trip_duration,
+          verbose            = FALSE,
+          max_rides          = 1L
         )
         if (!is.null(departure_datetime)) {
           retry_args$departure_datetime <- departure_datetime
@@ -452,12 +462,11 @@ compute_travel_times <- function(
           mat[cbind(row2[valid2], col2[valid2])] <- tt2[[tt_col[1]]][valid2]
         }
 
-        # Re-check unreachable tracts
         all_na <- rowSums(!is.na(mat)) == 0L
         n_fixed <- n_unreachable - sum(all_na)
         n_unreachable <- sum(all_na)
         if (n_fixed > 0 && verbose) {
-          message(sprintf("  Recovered %d tract(s) via forward-direction retry",
+          message(sprintf("  Recovered %d tract(s) via centroid fallback",
                           n_fixed))
         }
         if (n_unreachable > 0) {
@@ -465,7 +474,6 @@ compute_travel_times <- function(
         } else {
           attr(mat, "unreachable_tracts") <- NULL
         }
-        # Update valid count for verbose output
         n_valid <- sum(!is.na(mat))
       }
     }

@@ -112,6 +112,10 @@ interpolate_election_br <- function(
   cl <- match.call()
   code_muni <- as.character(municipality)
   dots <- list(...)
+  .check_dots(dots,
+              c("network_path", "comparecimento_path", "votacao_path",
+                "interp_sources", "osm_provider", "cache", "geocode_path"),
+              "interpolate_election_br")
 
   # Extract from control objects
   gtfs_zip_path <- routing$gtfs_zip_path
@@ -362,8 +366,6 @@ interpolate_election_br <- function(
     keep = keep,
     verbose = verbose,
     network_path = network_path,
-    osm_provider = osm_provider,
-    osm_url = osm_url,
     .progress = list(offset = .outer_steps, total = .total_steps)
   )
 

@@ -244,25 +244,43 @@ optimize_alpha <- function(
 
   start_time <- Sys.time()
 
-  raw <- .optimize_torch(
-    time_matrix    = t_adj,
-    pop_matrix     = pop_matrix,
-    source_matrix  = source_matrix,
-    alpha_init     = alpha_init,
-    max_epochs     = max_epochs,
-    lr_init        = lr_init,
-    device         = resolved_device,
-    dtype          = resolved_dtype,
-    convergence_tol = convergence_tol,
-    patience       = as.integer(patience),
-    barrier_mu     = barrier_mu,
-    alpha_min      = alpha_min,
-    kernel         = kernel,
-    entropy_mu     = entropy_mu,
-    target_eff_src = target_eff_src,
-    dual_eta       = dual_eta,
-    verbose        = verbose
-  )
+  .run_torch <- function(dev) {
+    .optimize_torch(
+      time_matrix    = t_adj,
+      pop_matrix     = pop_matrix,
+      source_matrix  = source_matrix,
+      alpha_init     = alpha_init,
+      max_epochs     = max_epochs,
+      lr_init        = lr_init,
+      device         = dev,
+      dtype          = resolved_dtype,
+      convergence_tol = convergence_tol,
+      patience       = as.integer(patience),
+      barrier_mu     = barrier_mu,
+      alpha_min      = alpha_min,
+      kernel         = kernel,
+      entropy_mu     = entropy_mu,
+      target_eff_src = target_eff_src,
+      dual_eta       = dual_eta,
+      verbose        = verbose
+    )
+  }
+
+  # Run optimization with automatic MPS-to-CPU fallback.
+  # MPS (Apple Silicon) has known issues with some torch ops that can
+  # produce NaN or unsupported-operation errors.
+  raw <- if (resolved_device == "mps") {
+    tryCatch(.run_torch("mps"), error = function(e) {
+      warning(sprintf(
+        "MPS optimization failed (%s); retrying on CPU",
+        conditionMessage(e)
+      ), call. = FALSE)
+      if (verbose) message("  Falling back to CPU...")
+      .run_torch("cpu")
+    })
+  } else {
+    .run_torch(resolved_device)
+  }
 
   elapsed <- Sys.time() - start_time
 
@@ -848,11 +866,13 @@ print.interpElections_optim <- function(x, ...) {
       epoch_losses[epoch] <- total_loss_val
 
       # LR scheduler: when dual ascent is active, track deviance only
-      # (entropy_mu changes make total_loss unstable for plateau detection)
-      if (adaptive) {
-        scheduler$step(data_loss_val)
-      } else {
-        scheduler$step(total_loss_val)
+      # (entropy_mu changes make total_loss unstable for plateau detection).
+      # Guard against NaN/NA: scheduler$step() has internal if-comparisons
+      # that crash with "missing value where TRUE/FALSE needed" on NaN input
+      # (observed on MPS backend where some ops produce NaN).
+      sched_metric <- if (adaptive) data_loss_val else total_loss_val
+      if (is.finite(sched_metric)) {
+        scheduler$step(sched_metric)
       }
 
       grad_history[epoch] <- last_grad_norm
@@ -874,21 +894,22 @@ print.interpElections_optim <- function(x, ...) {
         TRUE
       }
 
-      if (is.finite(conv_metric) && epoch >= 5L) {
-        if (!eff_near_target) {
+      if (isTRUE(is.finite(conv_metric)) && epoch >= 5L) {
+        if (!isTRUE(eff_near_target)) {
           # Far from target: can't converge, reset patience
           patience_counter <- 0L
-        } else if (is.finite(best_data_loss) &&
-                   conv_metric < best_data_loss -
-                     convergence_tol * abs(best_data_loss)) {
+        } else if (isTRUE(is.finite(best_data_loss)) &&
+                   isTRUE(conv_metric < best_data_loss -
+                     convergence_tol * abs(best_data_loss))) {
           # Near target and deviance improving: reset patience
           patience_counter <- 0L
-        } else if (eff_near_target) {
+        } else if (isTRUE(eff_near_target)) {
           # Near target, no improvement: count patience
           patience_counter <- patience_counter + 1L
         }
 
-        if (lr_at_min && patience_counter >= patience && eff_near_target) {
+        if (isTRUE(lr_at_min) && patience_counter >= patience &&
+            isTRUE(eff_near_target)) {
           converged <- TRUE
           if (verbose) {
             eff_conv <- if ((entropy_mu > 0 || adaptive) &&
@@ -921,10 +942,10 @@ print.interpElections_optim <- function(x, ...) {
       # Track best near-target model only as fallback for non-convergence.
       # At convergence, we override with the final epoch (see after loop).
       if (adaptive) {
-        eff_ok <- !is.na(mean_eff_src) &&
-          abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
-        if (eff_ok && is.finite(data_loss_val) &&
-            data_loss_val < best_data_loss) {
+        eff_ok <- isTRUE(!is.na(mean_eff_src) &&
+          abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2)
+        if (eff_ok && isTRUE(is.finite(data_loss_val)) &&
+            isTRUE(data_loss_val < best_data_loss)) {
           best_loss       <- total_loss_val
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate
@@ -933,8 +954,8 @@ print.interpElections_optim <- function(x, ...) {
         }
       } else {
         # Non-adaptive: fixed objective, standard best-model tracking
-        if (is.finite(total_loss_val) &&
-            total_loss_val < best_loss) {
+        if (isTRUE(is.finite(total_loss_val)) &&
+            isTRUE(total_loss_val < best_loss)) {
           best_loss       <- total_loss_val
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate

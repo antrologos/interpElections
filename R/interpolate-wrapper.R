@@ -132,6 +132,8 @@ interpolate_election <- function(
 ) {
   cl <- match.call()
   dots <- list(...)
+  .check_dots(dots, c("network_path", "elevation_path", ".progress"),
+              "interpolate_election")
 
   # Extract from control objects
   use_gpu             <- optim$use_gpu

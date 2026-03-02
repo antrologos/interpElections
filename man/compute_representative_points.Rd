@@ -45,10 +45,12 @@ population-weighted method. Tracts smaller than this threshold use
 Default: \code{"id"}.}
 
 \item{osm_roads}{An \code{sf} object with OSM road geometries, or \code{NULL}.
-When provided and \code{method = "pop_weighted"}, cells near roads (within
-200m) are preferred within the largest population cluster. This reduces
-the chance of placing the representative point in an area with no road
-access. Typically read from the clipped PBF file by
+When provided and \code{method = "pop_weighted"}, cells within 200m of
+roads are preferred, using a tiered hierarchy: Tier 1 (primary,
+secondary, tertiary, residential) > Tier 2 (unclassified, service) >
+Tier 3 (track, path, footway). The algorithm tries the highest tier
+first and falls back only if no cells are within 200m of that tier's
+roads. Typically read from the clipped PBF file by
 \code{\link[=compute_travel_times]{compute_travel_times()}}.}
 
 \item{verbose}{Logical. Print progress messages? Default: \code{TRUE}.}
@@ -63,7 +65,7 @@ preserving the \code{tract_id} column. Carries attributes:
 to \code{point_on_surface} due to zero population.}
 \item{\code{"pop_weighted_diagnostics"}}{Named list of per-tract diagnostic
 records (cluster counts, patch populations, selected point, road
-proximity info). See \code{\link[=plot_representative_points]{plot_representative_points()}}.}
+proximity info, road tier used). See \code{\link[=plot_representative_points]{plot_representative_points()}}.}
 }
 }
 \description{
@@ -75,8 +77,12 @@ centroid, or population-density-weighted using WorldPop raster data.
 The \code{pop_weighted} method uses cluster-based selection: it identifies
 connected clusters of populated cells via \code{\link[terra:patches]{terra::patches()}} and selects
 the largest cluster by total population. If OSM road data is available
-(via \code{osm_roads}), it prefers cells within 200m of a road. This avoids
-placing the representative point on an isolated pixel with no road access.
+(via \code{osm_roads}), it applies \strong{tiered road proximity refinement}:
+cells within 200m of well-connected road types (primary, secondary,
+tertiary, residential) are preferred over cells near isolated rural
+roads (tracks, paths). This reduces the chance of placing the
+representative point near a disconnected road fragment that r5r
+cannot route from.
 }
 \examples{
 \dontrun{
