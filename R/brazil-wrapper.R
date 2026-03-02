@@ -366,6 +366,7 @@ interpolate_election_br <- function(
     keep = keep,
     verbose = verbose,
     network_path = network_path,
+    osm_url = osm_url,
     .progress = list(offset = .outer_steps, total = .total_steps)
   )
 

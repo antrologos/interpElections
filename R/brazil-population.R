@@ -135,8 +135,7 @@ br_prepare_population <- function(code_muni, year = 2010) {
     censobr::read_tracts(2000, "Instrucao"),
     error = function(e) {
       warning(sprintf(
-        "Could not download Census 2000 Instrucao data: %s. ",
-        "Gender x literacy columns will be missing.",
+        "Could not download Census 2000 Instrucao data: %s. Gender x literacy columns will be missing.",
         e$message
       ), call. = FALSE)
       NULL
@@ -419,8 +418,7 @@ br_prepare_population <- function(code_muni, year = 2010) {
     censobr::read_tracts(2022, "Pessoas"),
     error = function(e) {
       warning(sprintf(
-        "Could not re-download Census 2022 Pessoas data: %s. ",
-        "Gender x literacy columns will be missing.",
+        "Could not re-download Census 2022 Pessoas data: %s. Gender x literacy columns will be missing.",
         e$message
       ), call. = FALSE)
       NULL

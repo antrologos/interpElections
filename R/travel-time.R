@@ -274,6 +274,7 @@ compute_travel_times <- function(
       destinations       = destinations,
       mode               = mode,
       max_trip_duration  = max_trip_duration,
+      n_threads          = n_threads,
       departure_datetime = departure_datetime,
       verbose            = verbose
     )
@@ -292,6 +293,7 @@ compute_travel_times <- function(
       destinations = destinations,
       mode = mode,
       max_trip_duration = max_trip_duration,
+      n_threads = n_threads,
       verbose = FALSE,
       max_rides = 1L
     )
@@ -433,6 +435,7 @@ compute_travel_times <- function(
           destinations       = destinations,
           mode               = mode,
           max_trip_duration  = max_trip_duration,
+          n_threads          = n_threads,
           departure_datetime = departure_datetime,
           verbose            = FALSE
         )
@@ -443,6 +446,7 @@ compute_travel_times <- function(
           destinations       = destinations,
           mode               = mode,
           max_trip_duration  = max_trip_duration,
+          n_threads          = n_threads,
           verbose            = FALSE,
           max_rides          = 1L
         )
@@ -548,12 +552,13 @@ compute_travel_times <- function(
 #' @param destinations Data frame with id, lon, lat columns.
 #' @param mode Travel mode string.
 #' @param max_trip_duration Numeric.
+#' @param n_threads Integer. Number of threads for r5r.
 #' @param departure_datetime POSIXct or NULL.
 #' @param verbose Logical.
 #' @return Data frame with travel times (from r5r::travel_time_matrix).
 #' @noRd
 .run_r5r_subprocess <- function(network_path, origins, destinations,
-                                mode, max_trip_duration,
+                                mode, max_trip_duration, n_threads,
                                 departure_datetime, verbose) {
   java_home   <- Sys.getenv("JAVA_HOME", "")
   java_params <- getOption("java.parameters")
@@ -563,7 +568,7 @@ compute_travel_times <- function(
 
   callr::r(
     function(network_path, origins, destinations, mode,
-             max_trip_duration, departure_datetime,
+             max_trip_duration, n_threads, departure_datetime,
              java_home, java_params) {
       # Configure JVM before loading r5r
       if (nzchar(java_home)) {
@@ -585,6 +590,7 @@ compute_travel_times <- function(
         destinations = destinations,
         mode = mode,
         max_trip_duration = max_trip_duration,
+        n_threads = n_threads,
         verbose = FALSE,
         max_rides = 1L
       )
@@ -600,6 +606,7 @@ compute_travel_times <- function(
       destinations       = destinations,
       mode               = mode,
       max_trip_duration  = max_trip_duration,
+      n_threads          = n_threads,
       departure_datetime = departure_datetime,
       java_home          = java_home,
       java_params        = java_params

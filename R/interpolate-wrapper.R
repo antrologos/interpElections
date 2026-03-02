@@ -132,11 +132,10 @@ interpolate_election <- function(
 ) {
   cl <- match.call()
   dots <- list(...)
-  .check_dots(dots, c("network_path", "elevation_path", ".progress"),
+  .check_dots(dots, c("network_path", "elevation_path", "osm_url", ".progress"),
               "interpolate_election")
 
   # Extract from control objects
-  use_gpu             <- optim$use_gpu
   mode                <- routing$mode
   max_trip_duration   <- routing$max_trip_duration
   point_method        <- routing$point_method
@@ -151,6 +150,7 @@ interpolate_election <- function(
   # Extract advanced args from dots
   network_path   <- dots$network_path
   elevation_path <- dots$elevation_path
+  osm_url        <- dots$osm_url
 
   # --- Check all dependencies upfront ---
   missing_pkgs <- character(0)
@@ -349,7 +349,7 @@ interpolate_election <- function(
       if (!dir.exists(r5r_dir)) dir.create(r5r_dir, recursive = TRUE)
       r5r_data <- download_r5r_data(
         area_sf = expanded_area, output_dir = r5r_dir,
-        elevation = FALSE, verbose = verbose
+        elevation = FALSE, osm_url = osm_url, verbose = verbose
       )
       network_path <- r5r_data$output_dir
 
