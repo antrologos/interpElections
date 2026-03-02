@@ -424,6 +424,12 @@ print.interpElections_optim <- function(x, ...) {
                target_eff_src, dual_eta,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
+        # Enable per-op MPS fallback BEFORE torch loads (env var is read
+        # at libtorch initialization).  This lets unsupported Metal ops
+        # silently fall back to CPU instead of crashing the whole run.
+        if (device == "mps") {
+          Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
+        }
         if (nzchar(pkg_path) && file.exists(file.path(pkg_path, "DESCRIPTION"))) {
           pkgload::load_all(pkg_path, quiet = TRUE)
         } else {
@@ -466,6 +472,12 @@ print.interpElections_optim <- function(x, ...) {
       show = verbose
     )
     return(result)
+  }
+
+  # Best-effort: enable per-op MPS fallback in case torch hasn't been
+  # loaded yet in this R session (harmless if already loaded or non-MPS).
+  if (device == "mps") {
+    Sys.setenv(PYTORCH_ENABLE_MPS_FALLBACK = "1")
   }
 
   torch_dtype <- .resolve_dtype(dtype)
