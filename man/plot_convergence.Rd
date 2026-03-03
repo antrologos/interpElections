@@ -15,7 +15,8 @@ plot_convergence(
 \item{result}{An \code{interpElections_result} object.}
 
 \item{which}{Character vector. Which panels to show: any combination of
-\code{"loss"}, \code{"gradient"}, \code{"lr"}. Default: all three.}
+\code{"loss"}, \code{"gradient"}, \code{"lr"}. Default: all three. The \code{"loss"} panel
+shows all non-zero loss components as separate colored lines.}
 
 \item{log_y}{Logical. Use log scale for y-axis? Default: TRUE.}
 
@@ -26,5 +27,7 @@ A ggplot object (invisibly). Prints the plot.
 }
 \description{
 Multi-panel plot showing loss history, gradient norm, and learning rate
-per epoch.
+per epoch. The loss panel decomposes the total objective into its
+components (Poisson deviance, barrier penalty, entropy penalty), so
+you can see how each term evolves during training.
 }

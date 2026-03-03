@@ -1,6 +1,7 @@
 # Tests for plot_convergence() function
 
-# Helper: build a mock result with optimization histories
+# Helper: build a mock result with optimization histories (includes component
+# histories and best_epoch for the decomposed loss panel).
 .mock_convergence_result <- function(n = 10, m = 5, k = 2, p = 3,
                                       n_epochs = 20) {
   set.seed(42)
@@ -30,6 +31,12 @@
 
   alpha <- runif(n, 0.5, 3)
 
+  # Component histories: deviance decreases, barrier/entropy non-zero
+  deviance_vals <- seq(80, 40, length.out = n_epochs)
+  barrier_vals  <- seq(15, 8, length.out = n_epochs)
+  entropy_vals  <- seq(5, 2, length.out = n_epochs)
+  total_vals    <- deviance_vals + barrier_vals + entropy_vals
+
   result <- list(
     interpolated = interp_mat,
     alpha = alpha,
@@ -40,7 +47,11 @@
       value = 50.0,
       convergence = 0L,
       epochs = n_epochs,
-      history = seq(100, 50, length.out = n_epochs),
+      history = total_vals,
+      deviance_history = deviance_vals,
+      barrier_history = barrier_vals,
+      entropy_history = entropy_vals,
+      best_epoch = 18L,
       grad_history = seq(10, 0.1, length.out = n_epochs),
       lr_history = rep(0.05, n_epochs)
     ),
@@ -58,6 +69,18 @@
   )
   class(result) <- "interpElections_result"
   result
+}
+
+# Helper: build a legacy mock without component histories (backward compat)
+.mock_convergence_result_legacy <- function(n_epochs = 20) {
+  obj <- .mock_convergence_result(n_epochs = n_epochs)
+  obj$optimization$deviance_history <- NULL
+  obj$optimization$barrier_history  <- NULL
+  obj$optimization$entropy_history  <- NULL
+  obj$optimization$best_epoch       <- NULL
+  # Restore simple total history
+  obj$optimization$history <- seq(100, 50, length.out = n_epochs)
+  obj
 }
 
 
@@ -88,6 +111,88 @@ test_that("plot_convergence with two panels works", {
 
   p <- plot_convergence(obj, which = c("loss", "gradient"))
   expect_s3_class(p, "ggplot")
+})
+
+
+# --- Loss decomposition ---
+
+test_that("loss panel has multiple components when histories available", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result()
+
+  p <- plot_convergence(obj, which = "loss")
+  # The plot data should have component traces
+  pdata <- ggplot2::ggplot_build(p)$data[[1]]
+  # Multiple groups = multiple lines
+
+  expect_gt(length(unique(pdata$group)), 1L)
+})
+
+test_that("loss panel skips zero-valued component traces", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result()
+  # Zero out entropy so it should be excluded
+  obj$optimization$entropy_history <- rep(0, 20)
+
+  p <- plot_convergence(obj, which = "loss")
+  pdata <- ggplot2::ggplot_build(p)$data[[1]]
+  n_groups <- length(unique(pdata$group))
+  # Total + Deviance + Barrier = 3 (no Entropy)
+  expect_equal(n_groups, 3L)
+})
+
+
+# --- Best epoch ---
+
+test_that("best_epoch uses stored value from optimizer", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result()
+  obj$optimization$best_epoch <- 15L
+
+  p <- plot_convergence(obj, which = "loss")
+  # The vline layer should have xintercept = 15
+  vline_layers <- Filter(
+    function(l) inherits(l$geom, "GeomVline"),
+    p$layers
+  )
+  expect_length(vline_layers, 1L)
+  expect_equal(vline_layers[[1]]$aes_params$xintercept %||%
+               vline_layers[[1]]$data$xintercept, 15L)
+})
+
+test_that("best_epoch falls back to which.min for legacy results", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result_legacy()
+
+  p <- plot_convergence(obj, which = "loss")
+  # Should still produce a vline at the minimum of history
+  vline_layers <- Filter(
+    function(l) inherits(l$geom, "GeomVline"),
+    p$layers
+  )
+  expected_best <- which.min(obj$optimization$history)
+  expect_length(vline_layers, 1L)
+  expect_equal(vline_layers[[1]]$aes_params$xintercept %||%
+               vline_layers[[1]]$data$xintercept, expected_best)
+})
+
+
+# --- Backward compatibility ---
+
+test_that("legacy result without component histories produces single-line loss", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result_legacy()
+
+  p <- plot_convergence(obj, which = "loss")
+  expect_s3_class(p, "ggplot")
+  # Single line = only one group
+  pdata <- ggplot2::ggplot_build(p)$data[[1]]
+  expect_equal(length(unique(pdata$group)), 1L)
 })
 
 

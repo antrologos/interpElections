@@ -321,6 +321,10 @@ optimize_alpha <- function(
     elapsed             = elapsed,
     message             = raw$message %||% "",
     history             = raw$history %||% NULL,
+    deviance_history    = raw$deviance_history %||% NULL,
+    barrier_history     = raw$barrier_history %||% NULL,
+    entropy_history     = raw$entropy_history %||% NULL,
+    best_epoch          = raw$best_epoch %||% NULL,
     grad_norm_final     = raw$grad_norm_final %||% NULL,
     grad_history        = raw$grad_history %||% NULL,
     lr_history          = raw$lr_history %||% NULL,
@@ -716,10 +720,14 @@ print.interpElections_optim <- function(x, ...) {
       alpha_fn(theta_torch)$detach()$cpu())            # (n, ka)
     best_W     <- NULL                                   # n × m R matrix
     epoch_losses     <- numeric(max_epochs)
+    deviance_history <- numeric(max_epochs)
+    barrier_history  <- numeric(max_epochs)
+    entropy_history  <- numeric(max_epochs)
     lr_history       <- numeric(max_epochs)
     last_grad_norm   <- NA_real_
     step_counter     <- 0L
     epoch            <- 0L
+    best_epoch       <- 1L
 
     mean_eff_src     <- NA_real_
     entropy_mu_history <- numeric(max_epochs)
@@ -833,9 +841,12 @@ print.interpElections_optim <- function(x, ...) {
           stop("Forward pass produced NaN for 5 consecutive epochs",
                call. = FALSE)
         }
-        epoch_losses[epoch] <- total_loss_val
-        grad_history[epoch] <- NA_real_
-        lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+        epoch_losses[epoch]     <- total_loss_val
+        deviance_history[epoch] <- data_loss_val
+        barrier_history[epoch]  <- barrier_val
+        entropy_history[epoch]  <- entropy_val
+        grad_history[epoch]     <- NA_real_
+        lr_history[epoch]       <- optimizer$param_groups[[1]]$lr
         next
       }
       nan_epoch_count <- 0L  # reset on finite loss
@@ -895,7 +906,10 @@ print.interpElections_optim <- function(x, ...) {
       }
       entropy_mu_history[epoch] <- entropy_mu
 
-      epoch_losses[epoch] <- total_loss_val
+      epoch_losses[epoch]     <- total_loss_val
+      deviance_history[epoch] <- data_loss_val
+      barrier_history[epoch]  <- barrier_val
+      entropy_history[epoch]  <- entropy_val
 
       # LR scheduler: when dual ascent is active, track deviance only
       # (entropy_mu changes make total_loss unstable for plateau detection).
@@ -983,6 +997,7 @@ print.interpElections_optim <- function(x, ...) {
           best_alpha      <- alpha_candidate
           best_W          <- W_candidate
           best_eff_src    <- mean_eff_src
+          best_epoch      <- epoch
         }
       } else {
         # Non-adaptive: fixed objective, standard best-model tracking
@@ -992,6 +1007,7 @@ print.interpElections_optim <- function(x, ...) {
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate
           best_W          <- W_candidate
+          best_epoch      <- epoch
         }
       }
 
@@ -1037,25 +1053,26 @@ print.interpElections_optim <- function(x, ...) {
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
         best_eff_src   <- mean_eff_src
+        best_epoch     <- epoch
       } else if (isTRUE(!is.finite(best_data_loss))) {
         best_loss      <- total_loss_val
         best_data_loss <- data_loss_val
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
         best_eff_src   <- mean_eff_src
+        best_epoch     <- epoch
       }
     }
 
     # Non-adaptive fallback: if no epoch produced a finite loss (e.g.,
     # all NaN on MPS), use the last epoch's W_candidate to avoid
     # returning NULL and crashing downstream.
-    if (!adaptive && is.null(best_W)) {
-      warning("No epoch produced a finite loss; returning last-epoch weights",
-              call. = FALSE)
+    if (!adaptive && !isTRUE(is.finite(best_loss))) {
       best_loss      <- total_loss_val
       best_data_loss <- data_loss_val
       best_alpha     <- alpha_candidate
       best_W         <- W_candidate
+      best_epoch     <- epoch
     }
 
     if (adaptive && !converged && verbose) {
@@ -1090,6 +1107,10 @@ print.interpElections_optim <- function(x, ...) {
         "%d brackets, full-data gradient"),
         device, dtype, epoch, step_counter, ka),
       history             = epoch_losses[seq_len(epoch)],
+      deviance_history    = deviance_history[seq_len(epoch)],
+      barrier_history     = barrier_history[seq_len(epoch)],
+      entropy_history     = entropy_history[seq_len(epoch)],
+      best_epoch          = best_epoch,
       grad_norm_final     = last_grad_norm,
       grad_history        = grad_history[seq_len(epoch)],
       lr_history          = lr_history[seq_len(epoch)],
