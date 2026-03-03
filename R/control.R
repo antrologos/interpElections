@@ -5,17 +5,17 @@
 #'
 #' @param max_epochs Integer. Maximum number of epochs (full passes through
 #'   all tracts). The optimizer may stop earlier if convergence is detected.
-#'   Default: 2000.
+#'   Default: 10000.
 #' @param lr_init Numeric. Initial ADAM learning rate. Reduced automatically
 #'   via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.
 #' @param convergence_tol Numeric. Relative change in epoch loss below which
-#'   the optimizer considers the solution converged. Default: 1e-4.
+#'   the optimizer considers the solution converged. Default: 1e-6.
 #' @param patience Integer. Number of consecutive epochs with no improvement
 #'   (at minimum learning rate) before early stopping. The LR scheduler
-#'   uses `2 * patience` as its own patience. Default: 50.
+#'   uses `2 * patience` as its own patience. Default: 200.
 #' @param barrier_mu Numeric. Strength of the log-barrier penalty that
 #'   prevents any census tract from receiving zero predicted voters.
-#'   Set to 0 to disable. Default: 10.
+#'   Set to 0 to disable. Default: 1.
 #' @param entropy_mu Numeric. Strength of the Shannon entropy penalty that
 #'   discourages diffuse weight distributions (many effective sources per
 #'   tract). Higher values push the optimizer to concentrate weights on
@@ -70,11 +70,11 @@
 #'
 #' @export
 optim_control <- function(
-    max_epochs      = 2000L,
+    max_epochs      = 10000L,
     lr_init         = 0.05,
-    convergence_tol = 1e-4,
-    patience        = 50L,
-    barrier_mu      = 10,
+    convergence_tol = 1e-6,
+    patience        = 200L,
+    barrier_mu      = 1,
     entropy_mu      = 0,
     target_eff_src  = NULL,
     dual_eta        = 0.05,
@@ -178,7 +178,7 @@ optim_control <- function(
 #'   point_on_surface. Default: 1.
 #' @param max_trip_duration Integer. Maximum trip duration in minutes.
 #'   Pairs beyond this threshold are not routed and receive zero weight.
-#'   Default: 180 (3 hours walking).
+#'   Default: 120 (2 hours walking).
 #' @param n_threads Integer. Number of parallel threads for the r5r routing
 #'   engine. Default: 4.
 #' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
@@ -202,7 +202,7 @@ optim_control <- function(
 #'   per parameter.
 #'
 #' @examples
-#' # Default settings (walking, 3h max)
+#' # Default settings (walking, 2h max)
 #' routing_control()
 #'
 #' # Transit mode with GTFS
@@ -222,7 +222,7 @@ routing_control <- function(
     mode                    = "WALK",
     point_method            = "pop_weighted",
     min_area_for_pop_weight = 1,
-    max_trip_duration       = 180L,
+    max_trip_duration       = 120L,
     n_threads               = 4L,
     gtfs_zip_path           = NULL,
     departure_datetime      = NULL,

@@ -8,7 +8,7 @@ routing_control(
   mode = "WALK",
   point_method = "pop_weighted",
   min_area_for_pop_weight = 1,
-  max_trip_duration = 180L,
+  max_trip_duration = 120L,
   n_threads = 4L,
   gtfs_zip_path = NULL,
   departure_datetime = NULL,
@@ -34,7 +34,7 @@ point_on_surface. Default: 1.}
 
 \item{max_trip_duration}{Integer. Maximum trip duration in minutes.
 Pairs beyond this threshold are not routed and receive zero weight.
-Default: 180 (3 hours walking).}
+Default: 120 (2 hours walking).}
 
 \item{n_threads}{Integer. Number of parallel threads for the r5r routing
 engine. Default: 4.}
@@ -70,7 +70,7 @@ Creates a control object for travel-time computation in
 override only what you need.
 }
 \examples{
-# Default settings (walking, 3h max)
+# Default settings (walking, 2h max)
 routing_control()
 
 # Transit mode with GTFS

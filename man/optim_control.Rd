@@ -5,11 +5,11 @@
 \title{Optimization control parameters}
 \usage{
 optim_control(
-  max_epochs = 2000L,
+  max_epochs = 10000L,
   lr_init = 0.05,
-  convergence_tol = 1e-04,
-  patience = 50L,
-  barrier_mu = 10,
+  convergence_tol = 1e-06,
+  patience = 200L,
+  barrier_mu = 1,
   entropy_mu = 0,
   target_eff_src = NULL,
   dual_eta = 0.05,
@@ -24,21 +24,21 @@ optim_control(
 \arguments{
 \item{max_epochs}{Integer. Maximum number of epochs (full passes through
 all tracts). The optimizer may stop earlier if convergence is detected.
-Default: 2000.}
+Default: 10000.}
 
 \item{lr_init}{Numeric. Initial ADAM learning rate. Reduced automatically
 via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.}
 
 \item{convergence_tol}{Numeric. Relative change in epoch loss below which
-the optimizer considers the solution converged. Default: 1e-4.}
+the optimizer considers the solution converged. Default: 1e-6.}
 
 \item{patience}{Integer. Number of consecutive epochs with no improvement
 (at minimum learning rate) before early stopping. The LR scheduler
-uses \code{2 * patience} as its own patience. Default: 50.}
+uses \code{2 * patience} as its own patience. Default: 200.}
 
 \item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
 prevents any census tract from receiving zero predicted voters.
-Set to 0 to disable. Default: 10.}
+Set to 0 to disable. Default: 1.}
 
 \item{entropy_mu}{Numeric. Strength of the Shannon entropy penalty that
 discourages diffuse weight distributions (many effective sources per
