@@ -104,11 +104,30 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 #'     \item{`"set_dir"`}{Set a custom cache directory via `path`.
 #'       Pass `path = NULL` to reset to the OS default.}
 #'   }
-#' @param category Character (for `action = "clean"`). Which category to
-#'   clear. One of: `"all"`, `"downloads"`, `"processed"`, `"networks"`,
-#'   `"travel_times"`, `"pop_raster"`, `"votes"`, `"turnout"`, `"geocode"`,
-#'   `"profile"`, `"hidalgo"`, `"osm"`, `"electoral"`, `"tracts"`, `"r5r"`.
-#'   Default: `"all"`.
+#' @param category Character vector (for `action = "clean"`). One or more
+#'   categories to delete. Default: `"all"`.
+#'   \describe{
+#'     \item{`"all"`}{Delete the entire cache directory.}
+#'     \item{`"downloads"`}{All raw downloads (votes, turnout, geocode,
+#'       profile, hidalgo, OSM, population rasters).}
+#'     \item{`"processed"`}{All processed/cleaned data (electoral and tracts).}
+#'     \item{`"networks"`}{All routing network files (r5r).}
+#'     \item{`"votes"`}{Raw candidate vote ZIP files from TSE.}
+#'     \item{`"turnout"`}{Raw voter turnout ZIP files from TSE.}
+#'     \item{`"geocode"`}{Raw polling-station geocode ZIP files from TSE.}
+#'     \item{`"profile"`}{Raw voter-profile (age/gender) ZIP files from TSE.}
+#'     \item{`"hidalgo"`}{Geocoded polling-station coordinates from
+#'       Hidalgo (2022).}
+#'     \item{`"osm"`}{OpenStreetMap `.pbf` extracts used to build routing
+#'       networks.}
+#'     \item{`"pop_raster"`}{WorldPop population raster files.}
+#'     \item{`"electoral"`}{Processed/cleaned electoral `sf` objects (merged
+#'       votes, turnout, geocodes, and voter profiles).}
+#'     \item{`"tracts"`}{Processed/cleaned census-tract `sf` objects.}
+#'     \item{`"travel_times"`}{Precomputed travel-time matrices.}
+#'     \item{`"r5r"`}{Built r5r routing network files (`.dat`, `.mapdb`,
+#'       etc.).}
+#'   }
 #' @param path Character or NULL (for `action = "set_dir"`). Directory
 #'   path for cached files. Created if it does not exist. `NULL` resets to
 #'   the default.
@@ -151,8 +170,11 @@ set_interpElections_cache_dir <- function(path = NULL, verbose = TRUE) {
 #' # Reset to default directory
 #' interpElections_cache("set_dir", path = NULL)
 #'
-#' # Clean by category
+#' # Clean a single category
 #' interpElections_cache("clean", category = "votes")
+#'
+#' # Clean multiple categories at once
+#' interpElections_cache("clean", category = c("networks", "travel_times"))
 #'
 #' # Clean everything
 #' interpElections_cache("clean", category = "all")
@@ -273,7 +295,7 @@ interpElections_cache <- function(
 #' Use `interpElections_cache("clean", category = "votes")` instead
 #' of calling this directly.
 #'
-#' @param category Character. Which category to clear.
+#' @param category Character vector. One or more categories to clear.
 #' @param verbose Logical. Print messages. Default: TRUE.
 #'
 #' @return Invisibly returns the path(s) that were deleted.
@@ -287,7 +309,7 @@ interpElections_cache_clean <- function(
                  "tracts", "r5r"),
     verbose = TRUE
 ) {
-  category <- match.arg(category)
+  category <- match.arg(category, several.ok = TRUE)
   cache_dir <- get_interpElections_cache_dir()
 
   if (!dir.exists(cache_dir)) {
@@ -295,7 +317,7 @@ interpElections_cache_clean <- function(
     return(invisible(character(0)))
   }
 
-  if (category == "all") {
+  if ("all" %in% category) {
     unlink(cache_dir, recursive = TRUE)
     dir.create(cache_dir, recursive = TRUE)
     if (verbose) message("Deleted entire cache directory: ", cache_dir)
@@ -304,38 +326,41 @@ interpElections_cache_clean <- function(
 
   # Map category to subdirectory path(s)
   subdirs <- .cache_subdirs()
-  target_dirs <- switch(category,
-    downloads    = file.path(cache_dir, "downloads"),
-    processed    = file.path(cache_dir, "processed"),
-    networks     = file.path(cache_dir, "networks"),
-    travel_times = file.path(cache_dir, subdirs$travel_times),
-    pop_raster   = file.path(cache_dir, subdirs$pop_raster),
-    votes        = file.path(cache_dir, subdirs$votes),
-    turnout      = file.path(cache_dir, subdirs$turnout),
-    geocode      = file.path(cache_dir, subdirs$geocode),
-    profile      = file.path(cache_dir, subdirs$profile),
-    hidalgo      = file.path(cache_dir, subdirs$hidalgo),
-    osm          = file.path(cache_dir, subdirs$osm),
-    electoral    = file.path(cache_dir, subdirs$electoral),
-    tracts       = file.path(cache_dir, subdirs$tracts),
-    r5r          = file.path(cache_dir, subdirs$r5r)
-  )
-
   deleted <- character(0)
-  for (td in target_dirs) {
-    if (dir.exists(td)) {
-      n_files <- length(list.files(td, recursive = TRUE))
-      size_mb <- sum(file.size(
-        list.files(td, recursive = TRUE, full.names = TRUE)
-      ), na.rm = TRUE) / 1e6
-      unlink(td, recursive = TRUE)
-      deleted <- c(deleted, td)
-      if (verbose) {
-        message(sprintf("Deleted %s/ (%.1f MB, %d files)",
-                        category, size_mb, n_files))
+
+  for (cat in category) {
+    target_dirs <- switch(cat,
+      downloads    = file.path(cache_dir, "downloads"),
+      processed    = file.path(cache_dir, "processed"),
+      networks     = file.path(cache_dir, "networks"),
+      travel_times = file.path(cache_dir, subdirs$travel_times),
+      pop_raster   = file.path(cache_dir, subdirs$pop_raster),
+      votes        = file.path(cache_dir, subdirs$votes),
+      turnout      = file.path(cache_dir, subdirs$turnout),
+      geocode      = file.path(cache_dir, subdirs$geocode),
+      profile      = file.path(cache_dir, subdirs$profile),
+      hidalgo      = file.path(cache_dir, subdirs$hidalgo),
+      osm          = file.path(cache_dir, subdirs$osm),
+      electoral    = file.path(cache_dir, subdirs$electoral),
+      tracts       = file.path(cache_dir, subdirs$tracts),
+      r5r          = file.path(cache_dir, subdirs$r5r)
+    )
+
+    for (td in target_dirs) {
+      if (dir.exists(td)) {
+        n_files <- length(list.files(td, recursive = TRUE))
+        size_mb <- sum(file.size(
+          list.files(td, recursive = TRUE, full.names = TRUE)
+        ), na.rm = TRUE) / 1e6
+        unlink(td, recursive = TRUE)
+        deleted <- c(deleted, td)
+        if (verbose) {
+          message(sprintf("Deleted %s/ (%.1f MB, %d files)",
+                          cat, size_mb, n_files))
+        }
+      } else {
+        if (verbose) message(sprintf("No cached data for category '%s'", cat))
       }
-    } else {
-      if (verbose) message(sprintf("No cached data for category '%s'", category))
     }
   }
 

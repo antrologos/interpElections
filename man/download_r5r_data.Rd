@@ -81,8 +81,6 @@ run at the start, before any downloads begin.
 \code{\link[=setup_osmium]{setup_osmium()}} to install the required clipping tool.
 
 Other spatial: 
-\code{\link{areal_interpolate}()},
-\code{\link{areal_weights}()},
 \code{\link{compute_travel_times}()}
 }
 \concept{spatial}

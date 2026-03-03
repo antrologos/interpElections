@@ -24,11 +24,30 @@ return cached file paths. Supports \code{delete_file} and \code{details}.}
 Pass \code{path = NULL} to reset to the OS default.}
 }}
 
-\item{category}{Character (for \code{action = "clean"}). Which category to
-clear. One of: \code{"all"}, \code{"downloads"}, \code{"processed"}, \code{"networks"},
-\code{"travel_times"}, \code{"pop_raster"}, \code{"votes"}, \code{"turnout"}, \code{"geocode"},
-\code{"profile"}, \code{"hidalgo"}, \code{"osm"}, \code{"electoral"}, \code{"tracts"}, \code{"r5r"}.
-Default: \code{"all"}.}
+\item{category}{Character vector (for \code{action = "clean"}). One or more
+categories to delete. Default: \code{"all"}.
+\describe{
+\item{\code{"all"}}{Delete the entire cache directory.}
+\item{\code{"downloads"}}{All raw downloads (votes, turnout, geocode,
+profile, hidalgo, OSM, population rasters).}
+\item{\code{"processed"}}{All processed/cleaned data (electoral and tracts).}
+\item{\code{"networks"}}{All routing network files (r5r).}
+\item{\code{"votes"}}{Raw candidate vote ZIP files from TSE.}
+\item{\code{"turnout"}}{Raw voter turnout ZIP files from TSE.}
+\item{\code{"geocode"}}{Raw polling-station geocode ZIP files from TSE.}
+\item{\code{"profile"}}{Raw voter-profile (age/gender) ZIP files from TSE.}
+\item{\code{"hidalgo"}}{Geocoded polling-station coordinates from
+Hidalgo (2022).}
+\item{\code{"osm"}}{OpenStreetMap \code{.pbf} extracts used to build routing
+networks.}
+\item{\code{"pop_raster"}}{WorldPop population raster files.}
+\item{\code{"electoral"}}{Processed/cleaned electoral \code{sf} objects (merged
+votes, turnout, geocodes, and voter profiles).}
+\item{\code{"tracts"}}{Processed/cleaned census-tract \code{sf} objects.}
+\item{\code{"travel_times"}}{Precomputed travel-time matrices.}
+\item{\code{"r5r"}}{Built r5r routing network files (\code{.dat}, \code{.mapdb},
+etc.).}
+}}
 
 \item{path}{Character or NULL (for \code{action = "set_dir"}). Directory
 path for cached files. Created if it does not exist. \code{NULL} resets to
@@ -82,8 +101,11 @@ interpElections_cache("set_dir", path = "/tmp/my_cache")
 # Reset to default directory
 interpElections_cache("set_dir", path = NULL)
 
-# Clean by category
+# Clean a single category
 interpElections_cache("clean", category = "votes")
+
+# Clean multiple categories at once
+interpElections_cache("clean", category = c("networks", "travel_times"))
 
 # Clean everything
 interpElections_cache("clean", category = "all")

@@ -369,24 +369,6 @@ if (requireNamespace("spdep", quietly = TRUE)) {
 }
 
 
-# ── Section 8: Baseline comparisons ──────────────────────────────────────────
-
-message("\n===== Section 8: Baseline comparisons =====")
-
-save_txt(compare_baselines(result_vga),
-         "diag-s8-baselines-vga.txt")
-save_txt(compare_baselines(result_bh,
-                           methods = c("nearest", "uniform")),
-         "diag-s8-baselines-bh.txt")
-save_txt(compare_baselines(result_igr),
-         "diag-s8-baselines-igr.txt")
-
-save_txt(leave_one_out(result_igr),
-         "diag-s8-loo-igr.txt")
-save_txt(leave_one_out(result_vga),
-         "diag-s8-loo-vga.txt")
-
-
 # ── Section 9: Ecological validation ─────────────────────────────────────────
 
 message("\n===== Section 9a: Turnout rates =====")

@@ -304,47 +304,6 @@ result_nit$dictionary
 head(result_nit$sources)
 ```
 
-## Areal Aggregation: From Tracts to Neighborhoods
-
-Tract-level results can be reaggregated into larger zones (neighborhoods,
-administrative regions, custom polygons) using `areal_weights()` and
-`areal_interpolate()`.
-
-**Example: Belo Horizonte tracts to neighborhoods**
-
-```{r areal, eval = FALSE}
-library(sf)
-library(geobr)
-
-# Download BH neighborhood boundaries
-bairros <- read_neighborhood(year = 2010)
-bairros <- bairros[bairros$code_muni == 3106200, ]
-
-# Compute area-weighted intersection matrix
-W_areal <- areal_weights(
-  target_sf = bairros,
-  source_sf = result_bh$tracts_sf,
-  target_id = "code_neighborhood",
-  source_id = "code_tract"
-)
-
-# Aggregate interpolated data
-vote_data <- result_bh$interpolated
-aggregated <- areal_interpolate(vote_data, W_areal)
-
-# Conservation check
-colSums(aggregated)[1:3]
-colSums(vote_data)[1:3]   # should match
-```
-
-The weight matrix `W_areal` is `[n_neighborhoods x n_tracts]`. Each
-column sums to 1 (each tract's data is distributed proportionally to
-the area overlap). `areal_interpolate()` is simply `W_areal %*% data`.
-
-This approach preserves total conservation: the neighborhood-level
-totals equal the tract-level totals, which equal the original
-municipality totals.
-
 ## The `keep` Parameter
 
 Control which intermediate objects are retained in the result:

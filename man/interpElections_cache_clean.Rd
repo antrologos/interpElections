@@ -12,7 +12,7 @@ interpElections_cache_clean(
 )
 }
 \arguments{
-\item{category}{Character. Which category to clear.}
+\item{category}{Character vector. One or more categories to clear.}
 
 \item{verbose}{Logical. Print messages. Default: TRUE.}
 }

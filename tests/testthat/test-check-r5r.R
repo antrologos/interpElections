@@ -100,23 +100,23 @@ test_that(".recommend_heap_size returns a valid size string", {
 })
 
 
-# --- interpElections:::set_java_memory() -------------------------------------------------------
+# --- set_java_memory() -------------------------------------------------------
 
 test_that("set_java_memory sets java.parameters option", {
   old <- getOption("java.parameters")
   on.exit(options(java.parameters = old))
 
-  suppressWarnings(interpElections:::set_java_memory("2g", persist = FALSE))
+  suppressWarnings(set_java_memory("2g", persist = FALSE))
   expect_equal(getOption("java.parameters"), "-Xmx2g")
 
-  suppressWarnings(interpElections:::set_java_memory("512m", persist = FALSE))
+  suppressWarnings(set_java_memory("512m", persist = FALSE))
   expect_equal(getOption("java.parameters"), "-Xmx512m")
 })
 
 test_that("set_java_memory validates input", {
-  expect_error(interpElections:::set_java_memory("abc"), "number followed by")
-  expect_error(interpElections:::set_java_memory("4"), "number followed by")
-  expect_error(interpElections:::set_java_memory("g4"), "number followed by")
+  expect_error(set_java_memory("abc"), "number followed by")
+  expect_error(set_java_memory("4"), "number followed by")
+  expect_error(set_java_memory("g4"), "number followed by")
 })
 
 test_that("set_java_memory returns previous value invisibly", {
@@ -125,7 +125,7 @@ test_that("set_java_memory returns previous value invisibly", {
 
   options(java.parameters = "-Xmx1g")
   prev <- suppressWarnings(
-    interpElections:::set_java_memory("2g", persist = FALSE)
+    set_java_memory("2g", persist = FALSE)
   )
   expect_equal(prev, "-Xmx1g")
 })

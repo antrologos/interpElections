@@ -668,42 +668,6 @@ message("\n[BH] Generating figures...")
 p <- plot(result_bh, variable = "Lula")
 save_fig(p, "wr-bh-lula.png")
 
-# Areal aggregation example: BH regionais
-message("\n[BH] Areal aggregation example...")
-tryCatch({
-  # Download BH bairros or regionais from geobr
-  bairros_bh <- geobr::read_neighborhood(year = 2010)
-  bairros_bh <- bairros_bh[bairros_bh$code_muni == 3106200, ]
-
-  if (nrow(bairros_bh) > 0) {
-    # Match CRS (geobr uses SIRGAS 2000 / 4674, tracts may use EPSG:5880)
-    bairros_bh <- st_transform(bairros_bh, st_crs(result_bh$tracts_sf))
-
-    # Compute areal weights
-    W_areal <- areal_weights(
-      bairros_bh, result_bh$tracts_sf,
-      target_id = "code_neighborhood", source_id = "code_tract"
-    )
-
-    # Aggregate candidate votes
-    vote_data <- result_bh$interpolated
-    aggregated <- areal_interpolate(vote_data, W_areal)
-
-    # Save for vignette
-    saveRDS(list(
-      bairros_sf = bairros_bh,
-      W_areal = W_areal,
-      aggregated = aggregated
-    ), file.path(out_data, "bh_areal_2022.rds"))
-
-    # Side-by-side maps (tract vs bairro) — generate later in vignette
-    message("  Areal aggregation data saved.")
-  }
-}, error = function(e) {
-  message("  Areal aggregation failed: ", conditionMessage(e))
-})
-
-
 # ═════════════════════════════════════════════════════════════════════
 # 5. SAO PAULO (SP) — Representative points comparison (South)
 # ═════════════════════════════════════════════════════════════════════

@@ -90,7 +90,6 @@ demographics via **torch ADAM** with a log-barrier penalty.
 | **Interpolation** | `interpolate_election_br()`, `interpolate_election()`, `reinterpolate()`, `optimize_alpha()`, `compute_weight_matrix()`, `compute_travel_times()` |
 | **Control** | `optim_control()`, `routing_control()` |
 | **Results** | `summary()`, `plot()`, `autoplot()`, `coef()`, `residuals()`, `as.data.frame()`, `plot_interactive()` |
-| **Spatial** | `areal_weights()`, `areal_interpolate()` |
 | **Setup** | `setup_torch()`, `use_gpu()`, `setup_java()`, `interpElections_cache()` |
 
 ## GPU acceleration

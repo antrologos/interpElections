@@ -824,67 +824,9 @@ knitr::include_graphics("figures/diag-s7-lisa-nit-pt.png")
 - **HL/LH clusters**: Spatial outliers --- tracts with high vote share surrounded by low (or vice versa). May indicate local effects or data irregularities.
 
 
-## 8. Baseline Comparisons: `compare_baselines()` + `leave_one_out()`
+## 8. Ecological Validation
 
-### Intuition
-
-Is the optimized IDW actually better than simpler alternatives? And how robust is the interpolation to removing individual stations?
-
-### Formal definition
-
-**Baselines**:
-- **Nearest**: $W_{ij^*} = 1$ for $j^* = \arg\min_j t_{ij}$, $W_{ij} = 0$ otherwise (binary assignment to closest station)
-- **Uniform**: $W_{ij} = 1/m$ (equal weight to all stations, column-normalized)
-- **Areal**: $W$ based on spatial intersection areas between tract and station Voronoi cells
-
-**Leave-one-out**: Remove station $j$, predict its demographics using remaining $m-1$ stations with the full-model alpha values. Compare predicted vs actual. This is the only form of out-of-sample validation possible (there is no tract-level ground truth).
-
-### Applied examples: `compare_baselines()`
-
-```{r s8-base-vga, eval = FALSE}
-compare_baselines(result_vga)
-```
-
-```{r s8-base-vga-out, echo = FALSE}
-cat(readLines("figures/diag-s8-baselines-vga.txt"), sep = "\n")
-```
-
-```{r s8-base-bh, eval = FALSE}
-compare_baselines(result_bh, methods = c("nearest", "uniform"))
-```
-
-```{r s8-base-bh-out, echo = FALSE}
-cat(readLines("figures/diag-s8-baselines-bh.txt"), sep = "\n")
-```
-
-### Applied examples: `leave_one_out()`
-
-```{r s8-loo-igr, eval = FALSE}
-leave_one_out(result_igr)
-```
-
-```{r s8-loo-igr-out, echo = FALSE}
-cat(readLines("figures/diag-s8-loo-igr.txt"), sep = "\n")
-```
-
-```{r s8-loo-vga, eval = FALSE}
-leave_one_out(result_vga)
-```
-
-```{r s8-loo-vga-out, echo = FALSE}
-cat(readLines("figures/diag-s8-loo-vga.txt"), sep = "\n")
-```
-
-### Interpretation
-
-- **Positive improvement %**: The optimized IDW has lower RMSE/deviance than the baseline. The optimization adds value.
-- **Negative improvement %**: This should not happen. If it does, the optimization may have overfitted or the data has issues.
-- **LOO degradation**: LOO RMSE should be comparable to full-model RMSE. If LOO RMSE is much larger, the model may be overfitting to specific station configurations.
-
-
-## 9. Ecological Validation
-
-### 9a. Implied Turnout Rates: `plot_turnout_rates()`
+### 8a. Implied Turnout Rates: `plot_turnout_rates()`
 
 #### Intuition
 
@@ -940,7 +882,7 @@ knitr::include_graphics("figures/diag-s9-turnout-vga-hist.png")
 - **Optional brackets lower**: 16--17 and 70+ should show lower turnout.
 - **Rates > 100%**: Voters registered in one municipality who may actually reside in another (commuters, students). These boundary effects are a known limitation of the model.
 
-### 9b. Income-Vote Correlation: `plot_income()`
+### 8b. Income-Vote Correlation: `plot_income()`
 
 #### Intuition
 
@@ -990,7 +932,7 @@ plot_income(result_nit, variable = "Lula", type = "map")
 knitr::include_graphics("figures/diag-s9-income-nit-map.png")
 ```
 
-### 9c. Cross-Round Consistency: `plot_ecological()`
+### 8c. Cross-Round Consistency: `plot_ecological()`
 
 #### Intuition
 
@@ -1024,7 +966,7 @@ knitr::include_graphics("figures/diag-s9-ecol-vga-map.png")
 - **Weak or no correlation**: The interpolation may be injecting noise rather than recovering signal. Investigate whether the travel time data or optimization is causing problems.
 
 
-## 10. Quick Reference
+## 9. Quick Reference
 
 | Function | Question it answers | Key arguments | When to worry |
 |:---------|:--------------------|:--------------|:--------------|
@@ -1039,8 +981,6 @@ knitr::include_graphics("figures/diag-s9-ecol-vga-map.png")
 | `plot_travel_times()` | Is the travel time matrix clean? | `type`, `tract` | Large spike at max value |
 | `plot_residual_autocorrelation()` | Are residuals spatially clustered? | `residual_type`, `summary_fn` | Significant Moran's I (p < 0.05) |
 | `plot_moran()` | Is vote geography realistic? | `variable`, `type` | No spatial clustering |
-| `compare_baselines()` | Is IDW better than naive methods? | `methods` | Negative improvement |
-| `leave_one_out()` | Is the model overfitting? | `max_stations` | LOO RMSE >> full RMSE |
 | `plot_turnout_rates()` | Are implied turnout rates plausible? | `type` | Many tracts > 100% |
 | `plot_income()` | Does the PT-income gradient hold? | `variable`, `type` | Wrong sign on correlation |
 | `plot_ecological()` | Are spatial patterns consistent? | `variable`, `type` | Weak cross-round correlation |

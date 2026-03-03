@@ -156,35 +156,57 @@ check_r5r <- function() {
 
 #' Set Java heap memory for r5r
 #'
-#' Configures the maximum heap size for the Java Virtual Machine used by r5r.
-#' Large travel-time matrices can require several gigabytes of JVM heap.
+#' Configures the maximum heap size for the Java Virtual Machine (JVM) used
+#' by r5r when computing travel-time matrices. Large matrices can require
+#' several gigabytes of heap space; insufficient memory causes R to crash
+#' with no useful error message.
 #'
-#' @param size Character. Memory size with unit suffix, e.g. `"4g"` for
-#'   4 GB, `"512m"` for 512 MB, `"8g"` for 8 GB.
-#' @param persist Logical. Also write to `~/.Renviron` so the setting
-#'   persists across R sessions. Default: TRUE in interactive sessions.
+#' @param size Character. Memory size with a unit suffix: `"g"` for
+#'   gigabytes or `"m"` for megabytes. Examples: `"4g"` (4 GB),
+#'   `"512m"` (512 MB), `"8g"` (8 GB).
+#' @param persist Logical. If `TRUE`, also write the setting to
+#'   `~/.Renviron` so it persists across R sessions. Default: `TRUE` in
+#'   interactive sessions, `FALSE` otherwise.
 #'
 #' @details
-#' This sets `options(java.parameters = "-Xmx{size}")`. It **must** be called
-#' before `r5r` (or `rJava`) is loaded — once the JVM starts, heap size
-#' cannot be changed without restarting R.
+#' This sets `options(java.parameters = "-Xmx<size>")`. It **must** be
+#' called before `r5r` (or `rJava`) is loaded — once the JVM starts, the
+#' heap size cannot be changed without restarting R. If rJava is already
+#' loaded, a warning is issued.
 #'
-#' A rule of thumb: allocate \eqn{\ge 2} GB per million OD pairs you expect
-#' in your travel-time matrix. For a municipality with 5,000 census tracts
-#' and 200 polling locations, that's 1 million pairs — 2-4 GB is usually
-#' enough. Larger cities (e.g. Sao Paulo) may need 8-16 GB.
+#' **How much memory do I need?**
+#'
+#' A rule of thumb: allocate \eqn{\ge 2} GB per million origin-destination
+#' pairs in your travel-time matrix.
+#'
+#' | Scenario | OD pairs | Recommended heap |
+#' | --- | --- | --- |
+#' | Small municipality (500 tracts, 50 stations) | 25 k | `"2g"` |
+#' | Medium municipality (5,000 tracts, 200 stations) | 1 M | `"4g"` |
+#' | Large city (50,000 tracts, 2,000 stations) | 100 M | `"8g"`--`"16g"` |
+#'
+#' When `persist = TRUE`, the value is appended to (or updated in)
+#' `~/.Renviron` as `_JAVA_OPTIONS=-Xmx<size>`, so every future R session
+#' starts with the same heap limit.
 #'
 #' @return Invisibly, the previous value of `getOption("java.parameters")`.
 #'
 #' @examples
 #' \dontrun{
-#' set_java_memory("4g")
-#' set_java_memory("8g", persist = TRUE)
+#' # Set 4 GB for the current session only
+#' set_java_memory("4g", persist = FALSE)
+#'
+#' # Set 8 GB and save to ~/.Renviron for future sessions
+#' set_java_memory("8g")
+#'
+#' # Then compute travel times as usual
+#' tt <- compute_travel_times(tracts_sf, points_sf, network_path = "path/to/network")
 #' }
 #'
-#' @seealso [check_r5r()] to see current memory settings.
+#' @seealso [setup_java()] to install Java 21,
+#'   [compute_travel_times()] which uses the JVM heap configured here.
 #'
-#' @keywords internal
+#' @export
 set_java_memory <- function(size, persist = interactive()) {
   if (!grepl("^[0-9]+[mgMG]$", size)) {
     stop("size must be a number followed by 'm' or 'g', e.g. '4g' or '512m'",

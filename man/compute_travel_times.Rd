@@ -76,8 +76,6 @@ tt <- compute_travel_times(
 \code{\link[=download_r5r_data]{download_r5r_data()}} to download OSM and elevation data.
 
 Other spatial: 
-\code{\link{areal_interpolate}()},
-\code{\link{areal_weights}()},
 \code{\link{download_r5r_data}()}
 }
 \concept{spatial}

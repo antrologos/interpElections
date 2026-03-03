@@ -82,17 +82,9 @@ reference:
       - plot_travel_times
       - plot_residual_autocorrelation
       - plot_moran
-      - compare_baselines
-      - leave_one_out
       - plot_income
       - plot_turnout_rates
       - plot_ecological
-
-  - title: Spatial Utilities
-    desc: Reaggregate interpolated results into larger zones.
-    contents:
-      - areal_weights
-      - areal_interpolate
 
   - title: Setup
     desc: Configure GPU, Java, and cache.
