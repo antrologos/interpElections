@@ -9,10 +9,15 @@
 #' @param lr_init Numeric. Initial ADAM learning rate. Follows a cosine
 #'   annealing schedule with warm restarts (SGDR), cycling between
 #'   `lr_init` and `lr_init * 0.01`. Default: 0.05.
-#' @param convergence_tol Numeric. Relative change in epoch loss below which
-#'   the optimizer considers the solution converged. Default: 1e-5.
-#' @param patience Integer. Number of consecutive epochs with no improvement
-#'   before early stopping (patience-based convergence). Works alongside a
+#' @param convergence_tol Numeric. Minimum relative improvement over the
+#'   patience window for the optimizer to keep running. If the deviance
+#'   (or total loss in non-adaptive mode) improves by less than
+#'   `convergence_tol` fraction over the last `patience` epochs, the
+#'   optimizer converges. Default: 1e-5.
+#' @param patience Integer. Lookback window (in epochs) for the window-based
+#'   convergence criterion. The optimizer compares the current deviance
+#'   against the deviance `patience` epochs ago and converges when the
+#'   relative improvement is less than `convergence_tol`. Works alongside a
 #'   gradient-based criterion that triggers when the relative gradient norm
 #'   is small for several consecutive epochs. Default: 100.
 #' @param barrier_mu Numeric. Strength of the log-barrier penalty that

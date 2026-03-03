@@ -55,7 +55,7 @@ via \verb{W \\\%*\\\% data}. Column sums are approximately 1.}
 \item{method}{Character. Method used (e.g.,
 \code{"pb_sgd_colnorm_cpu"}, \code{"pb_sgd_colnorm_cuda"}).}
 \item{convergence}{Integer. 0 = converged (gradient-based or
-patience-based early stopping); 1 = stopped at max_epochs.}
+window-based early stopping); 1 = stopped at max_epochs.}
 \item{epochs}{Integer. Number of epochs completed.}
 \item{steps}{Integer. Total number of SGD gradient steps.}
 \item{elapsed}{\code{difftime} object. Wall-clock time.}

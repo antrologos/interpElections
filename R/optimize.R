@@ -40,7 +40,7 @@
 #'   \item{method}{Character. Method used (e.g.,
 #'     `"pb_sgd_colnorm_cpu"`, `"pb_sgd_colnorm_cuda"`).}
 #'   \item{convergence}{Integer. 0 = converged (gradient-based or
-#'     patience-based early stopping); 1 = stopped at max_epochs.}
+#'     window-based early stopping); 1 = stopped at max_epochs.}
 #'   \item{epochs}{Integer. Number of epochs completed.}
 #'   \item{steps}{Integer. Total number of SGD gradient steps.}
 #'   \item{elapsed}{`difftime` object. Wall-clock time.}
@@ -746,7 +746,6 @@ print.interpElections_optim <- function(x, ...) {
     entropy_mu_history <- numeric(max_epochs)
 
     # Convergence tracking
-    patience_counter   <- 0L
     grad_conv_counter  <- 0L        # consecutive epochs with small rel_grad
     converged          <- FALSE
     nan_epoch_count    <- 0L        # consecutive NaN-gradient epochs (MPS guard)
@@ -944,9 +943,8 @@ print.interpElections_optim <- function(x, ...) {
       # --- Convergence check (two-tier) ---
       current_lr <- optimizer$param_groups[[1]]$lr
 
-      # Warm restart detection: reset patience when LR jumps up
+      # Warm restart detection: reset gradient convergence counter
       if (current_lr > prev_lr * 1.5) {
-        patience_counter  <- 0L
         grad_conv_counter <- 0L
       }
       prev_lr <- current_lr
@@ -1003,48 +1001,49 @@ print.interpElections_optim <- function(x, ...) {
         grad_conv_counter <- 0L
       }
 
-      # Tier 2: Patience-based convergence (plateau detection).
-      # Tracks deviance in dual ascent mode (stable component).
-      # Requires at least one full cosine cycle (lr_T_0 epochs) to give
-      # the optimizer a fair shot with warm restarts.
+      # Tier 2: Window-based convergence (stagnation detection).
+      # Compare the current deviance (or total loss in non-adaptive mode)
+      # against its value `patience` epochs ago. Converge when the relative
+      # improvement over the window is less than convergence_tol.
+      # This measures actual trend rather than comparing against a noisy
+      # absolute minimum — robust to epoch-to-epoch oscillations caused
+      # by dual ascent adjustments.
+      # Only active in the refinement phase (LR < 10% of lr_init) to avoid
+      # triggering during high-LR exploration after warm restarts.
       conv_metric <- if (adaptive) data_loss_val else total_loss_val
+      lr_in_refinement <- current_lr < lr_init * 0.1
 
-      if (isTRUE(is.finite(conv_metric)) && epoch >= 5L) {
-        if (!isTRUE(eff_near_target)) {
-          patience_counter <- 0L
-        } else if (isTRUE(is.finite(best_data_loss)) &&
-                   isTRUE(conv_metric < best_data_loss -
-                     convergence_tol * abs(best_data_loss))) {
-          patience_counter <- 0L
-        } else if (isTRUE(eff_near_target)) {
-          patience_counter <- patience_counter + 1L
-        }
-
-        if (patience_counter >= patience && epoch >= lr_T_0 &&
-            isTRUE(eff_near_target)) {
-          converged <- TRUE
-          if (verbose) {
-            eff_conv <- if ((entropy_mu > 0 || adaptive) &&
-                            !is.na(mean_eff_src)) {
-              sprintf(", eff_src=%.1f", mean_eff_src)
-            } else ""
-            dual_conv <- if (adaptive) {
-              sprintf(", entropy_mu=%.4f", entropy_mu)
-            } else ""
-            message(sprintf(paste0(
-              "  Converged at epoch %d (loss=%s",
-              " [deviance=%s, barrier=%s, entropy=%s]%s%s, ",
-              "lr=%.1e, no improvement for %d epochs)"),
-              epoch,
-              format(round(total_loss_val), big.mark = ","),
-              format(round(data_loss_val), big.mark = ","),
-              format(round(barrier_val), big.mark = ","),
-              format(round(entropy_val), big.mark = ","),
-              eff_conv,
-              dual_conv,
-              current_lr, patience))
+      if (epoch > patience && lr_in_refinement && epoch >= lr_T_0 &&
+          isTRUE(eff_near_target) && isTRUE(is.finite(conv_metric))) {
+        lookback <- if (adaptive) deviance_history[epoch - patience]
+                    else epoch_losses[epoch - patience]
+        if (isTRUE(is.finite(lookback)) && abs(lookback) > 1e-10) {
+          window_rel_change <- (lookback - conv_metric) / abs(lookback)
+          if (isTRUE(abs(window_rel_change) < convergence_tol)) {
+            converged <- TRUE
+            if (verbose) {
+              eff_conv <- if ((entropy_mu > 0 || adaptive) &&
+                              !is.na(mean_eff_src)) {
+                sprintf(", eff_src=%.1f", mean_eff_src)
+              } else ""
+              dual_conv <- if (adaptive) {
+                sprintf(", entropy_mu=%.4f", entropy_mu)
+              } else ""
+              message(sprintf(paste0(
+                "  Converged at epoch %d (loss=%s",
+                " [deviance=%s, barrier=%s, entropy=%s]%s%s, ",
+                "lr=%.1e, %.6f%% change over last %d epochs)"),
+                epoch,
+                format(round(total_loss_val), big.mark = ","),
+                format(round(data_loss_val), big.mark = ","),
+                format(round(barrier_val), big.mark = ","),
+                format(round(entropy_val), big.mark = ","),
+                eff_conv,
+                dual_conv,
+                current_lr, abs(window_rel_change) * 100, patience))
+            }
+            break
           }
-          break
         }
       }
 
