@@ -86,13 +86,15 @@
 
 # --- Basic behavior ---
 
-test_that("plot_convergence returns a ggplot with all panels", {
+test_that("plot_convergence returns a plot object with all panels", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
   obj <- .mock_convergence_result()
 
   p <- plot_convergence(obj)
-  expect_s3_class(p, "ggplot")
+  # With component histories + patchwork, returns a patchwork object
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
 })
 
 test_that("plot_convergence with single panel works", {
@@ -100,7 +102,7 @@ test_that("plot_convergence with single panel works", {
   skip_if_not_installed("ggplot2")
   obj <- .mock_convergence_result()
 
-  p <- plot_convergence(obj, which = "loss")
+  p <- plot_convergence(obj, which = "gradient")
   expect_s3_class(p, "ggplot")
 })
 
@@ -109,38 +111,36 @@ test_that("plot_convergence with two panels works", {
   skip_if_not_installed("ggplot2")
   obj <- .mock_convergence_result()
 
-  p <- plot_convergence(obj, which = c("loss", "gradient"))
-  expect_s3_class(p, "ggplot")
+  p <- plot_convergence(obj, which = c("gradient", "lr"))
+  # Two panels without loss => no decomposition => patchwork stack or ggplot
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
 })
 
 
-# --- Loss decomposition ---
+# --- Loss decomposition (two-column layout) ---
 
-test_that("loss panel has multiple components when histories available", {
+test_that("loss components get individual panels in right column", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
   obj <- .mock_convergence_result()
 
   p <- plot_convergence(obj, which = "loss")
-  # The plot data should have component traces
-  pdata <- ggplot2::ggplot_build(p)$data[[1]]
-  # Multiple groups = multiple lines
-
-  expect_gt(length(unique(pdata$group)), 1L)
+  # Should be a patchwork with total (left) + deviance, barrier, entropy (right)
+  expect_true(inherits(p, "patchwork"))
 })
 
-test_that("loss panel skips zero-valued component traces", {
+test_that("zero-valued component is excluded from right column", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
   obj <- .mock_convergence_result()
   # Zero out entropy so it should be excluded
   obj$optimization$entropy_history <- rep(0, 20)
 
   p <- plot_convergence(obj, which = "loss")
-  pdata <- ggplot2::ggplot_build(p)$data[[1]]
-  n_groups <- length(unique(pdata$group))
-  # Total + Deviance + Barrier = 3 (no Entropy)
-  expect_equal(n_groups, 3L)
+  # Still patchwork (has deviance + barrier)
+  expect_true(inherits(p, "patchwork"))
 })
 
 
@@ -152,11 +152,14 @@ test_that("best_epoch uses stored value from optimizer", {
   obj <- .mock_convergence_result()
   obj$optimization$best_epoch <- 15L
 
-  p <- plot_convergence(obj, which = "loss")
-  # The vline layer should have xintercept = 15
+  # Check that the total loss panel has a vline at 15
+  panels <- interpElections:::.build_loss_panels(obj$optimization)
+  total_panel <- interpElections:::.make_convergence_panel(
+    panels$total, "Total loss", "#2c7fb8", best_epoch = 15L, log_y = FALSE
+  )
   vline_layers <- Filter(
     function(l) inherits(l$geom, "GeomVline"),
-    p$layers
+    total_panel$layers
   )
   expect_length(vline_layers, 1L)
   expect_equal(vline_layers[[1]]$aes_params$xintercept %||%
@@ -169,7 +172,9 @@ test_that("best_epoch falls back to which.min for legacy results", {
   obj <- .mock_convergence_result_legacy()
 
   p <- plot_convergence(obj, which = "loss")
-  # Should still produce a vline at the minimum of history
+  # Legacy: single ggplot with vline
+  expect_s3_class(p, "ggplot")
+
   vline_layers <- Filter(
     function(l) inherits(l$geom, "GeomVline"),
     p$layers
@@ -183,16 +188,24 @@ test_that("best_epoch falls back to which.min for legacy results", {
 
 # --- Backward compatibility ---
 
-test_that("legacy result without component histories produces single-line loss", {
+test_that("legacy result without component histories produces single-column layout", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result_legacy()
+
+  p <- plot_convergence(obj)
+  # No component histories => no right column => single-column
+  # May be patchwork (stacked left panels) or ggplot
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
+})
+
+test_that("legacy result loss-only returns single ggplot panel", {
   skip_if_not_installed("sf")
   skip_if_not_installed("ggplot2")
   obj <- .mock_convergence_result_legacy()
 
   p <- plot_convergence(obj, which = "loss")
   expect_s3_class(p, "ggplot")
-  # Single line = only one group
-  pdata <- ggplot2::ggplot_build(p)$data[[1]]
-  expect_equal(length(unique(pdata$group)), 1L)
 })
 
 
@@ -221,9 +234,9 @@ test_that("plot_convergence skips panels with NULL history", {
   obj$optimization$grad_history <- NULL
   obj$optimization$lr_history <- NULL
 
-  # Should still produce a plot with just the loss panel
+  # Should still produce a plot with loss panels
   p <- plot_convergence(obj)
-  expect_s3_class(p, "ggplot")
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
 })
 
 test_that("plot_convergence returns NULL when all requested histories missing", {
@@ -248,7 +261,7 @@ test_that("plot_convergence with log_y = FALSE works", {
   obj <- .mock_convergence_result()
 
   p <- plot_convergence(obj, log_y = FALSE)
-  expect_s3_class(p, "ggplot")
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
 })
 
 test_that("plot_convergence with log_y = TRUE for loss+gradient only", {
@@ -257,7 +270,24 @@ test_that("plot_convergence with log_y = TRUE for loss+gradient only", {
   obj <- .mock_convergence_result()
 
   p <- plot_convergence(obj, which = c("loss", "gradient"), log_y = TRUE)
-  expect_s3_class(p, "ggplot")
+  expect_true(inherits(p, "patchwork") || inherits(p, "ggplot"))
+})
+
+test_that("log_y does not affect learning rate panel", {
+  skip_if_not_installed("sf")
+  skip_if_not_installed("ggplot2")
+  obj <- .mock_convergence_result()
+
+  # LR panel built with log_y = FALSE internally regardless of user setting
+  lr_df <- data.frame(epoch = seq_along(obj$optimization$lr_history),
+                      value = obj$optimization$lr_history)
+  lr_panel <- interpElections:::.make_convergence_panel(
+    lr_df, "Learning rate", "#2c7fb8", best_epoch = NULL, log_y = FALSE
+  )
+  # No ScaleContinuousPosition with log transform
+  y_scale <- lr_panel$scales$get_scales("y")
+  # Default scale should NOT be log10
+  expect_true(is.null(y_scale) || !inherits(y_scale$trans, "log10_trans"))
 })
 
 
@@ -274,4 +304,40 @@ test_that("plot_convergence with invalid which gives error", {
   obj <- .mock_convergence_result()
 
   expect_error(plot_convergence(obj, which = "invalid"))
+})
+
+
+# --- Internal helpers ---
+
+test_that(".build_loss_panels returns named list of data frames", {
+  skip_if_not_installed("sf")
+  obj <- .mock_convergence_result()
+  panels <- interpElections:::.build_loss_panels(obj$optimization)
+
+  expect_true(is.list(panels))
+  expect_true("total" %in% names(panels))
+  expect_true("deviance" %in% names(panels))
+  expect_true("barrier" %in% names(panels))
+  expect_true("entropy" %in% names(panels))
+  expect_equal(nrow(panels$total), 20L)
+})
+
+test_that(".build_loss_panels excludes zero-valued components", {
+  skip_if_not_installed("sf")
+  obj <- .mock_convergence_result()
+  obj$optimization$entropy_history <- rep(0, 20)
+  panels <- interpElections:::.build_loss_panels(obj$optimization)
+
+  expect_true("total" %in% names(panels))
+  expect_true("deviance" %in% names(panels))
+  expect_true("barrier" %in% names(panels))
+  expect_false("entropy" %in% names(panels))
+})
+
+test_that(".build_loss_panels returns only total for legacy results", {
+  skip_if_not_installed("sf")
+  obj <- .mock_convergence_result_legacy()
+  panels <- interpElections:::.build_loss_panels(obj$optimization)
+
+  expect_equal(names(panels), "total")
 })

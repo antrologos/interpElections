@@ -15,19 +15,27 @@ plot_convergence(
 \item{result}{An \code{interpElections_result} object.}
 
 \item{which}{Character vector. Which panels to show: any combination of
-\code{"loss"}, \code{"gradient"}, \code{"lr"}. Default: all three. The \code{"loss"} panel
-shows all non-zero loss components as separate colored lines.}
+\code{"loss"}, \code{"gradient"}, \code{"lr"}. Default: all three. Selecting \code{"loss"}
+adds both the total loss panel (left column) and the individual
+component panels (right column).}
 
-\item{log_y}{Logical. Use log scale for y-axis? Default: TRUE.}
+\item{log_y}{Logical. Use log scale for y-axis on loss and gradient
+panels? Default: TRUE. Learning rate is always on linear scale.}
 
 \item{...}{Ignored.}
 }
 \value{
-A ggplot object (invisibly). Prints the plot.
+A ggplot or patchwork object (invisibly). Prints the plot.
 }
 \description{
-Multi-panel plot showing loss history, gradient norm, and learning rate
-per epoch. The loss panel decomposes the total objective into its
-components (Poisson deviance, barrier penalty, entropy penalty), so
-you can see how each term evolves during training.
+Two-column diagnostic plot. The left column shows operational metrics
+(total loss, gradient norm, learning rate); the right column decomposes
+the total loss into its components (Poisson deviance, barrier penalty,
+entropy penalty), each with its own y-axis so every term is clearly
+visible regardless of scale.
+}
+\details{
+When component histories are unavailable (legacy result objects) or
+the \pkg{patchwork} package is not installed, the function falls back
+to a single-column layout.
 }
