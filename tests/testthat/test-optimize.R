@@ -160,8 +160,10 @@ test_that("optimize_alpha returns lr_history", {
   expect_true("lr_history" %in% names(result))
   expect_equal(length(result$lr_history), result$epochs)
   expect_true(all(result$lr_history > 0))
-  # LR should be non-increasing (ReduceLROnPlateau only decreases)
-  expect_true(all(diff(result$lr_history) <= 1e-10))
+  # LR follows cosine annealing: all values in [lr_init * eta_min_ratio, lr_init]
+  lr_init <- 0.05
+  expect_true(all(result$lr_history >= lr_init * 0.01 - 1e-10))
+  expect_true(all(result$lr_history <= lr_init + 1e-10))
 })
 
 # --- Column-normalization method tests ---

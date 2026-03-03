@@ -1097,8 +1097,10 @@ initialized as `theta = log(alpha_init)`. This ensures:
 - Gradient `d(alpha)/d(theta) = alpha` --- no saturation at any boundary
 - Corner solutions due to hard boundary constraints cannot occur
 
-The learning rate is reduced by half when the epoch loss plateaus
-(ReduceLROnPlateau with patience = 2 x early-stop patience).
+The learning rate follows a cosine annealing schedule with warm restarts
+(SGDR), cycling between `lr_init` and `lr_init * 0.01`. This deterministic
+schedule is decoupled from loss values, which is critical for dual ascent
+mode where entropy_mu changes make the loss non-stationary.
 
 ```{r optimize-call, eval = FALSE}
 optim_result <- optimize_alpha(
@@ -1108,7 +1110,7 @@ optim_result <- optimize_alpha(
   row_targets   = row_targets,
   optim = optim_control(
     max_epochs = 200,      # maximum epochs
-    lr_init    = 0.05,     # initial learning rate (auto-reduced on plateau)
+    lr_init    = 0.05,     # initial learning rate (cosine annealing)
     use_gpu    = FALSE     # CPU for small problems
   )
 )
@@ -1128,8 +1130,8 @@ Tuning parameters are grouped in `optim_control()`:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `max_epochs` | 2000 | Maximum epochs. |
-| `lr_init` | 0.05 | Initial learning rate. Auto-reduced when loss plateaus. |
+| `max_epochs` | 10000 | Maximum epochs. |
+| `lr_init` | 0.05 | Initial learning rate. Cosine annealing with warm restarts. |
 | `dtype` | `"float32"` | `"float64"` for more precision (2x memory). |
 | `alpha_min` | 1 | Lower bound for alpha (via softplus reparameterization). |
 | `use_gpu` | `FALSE` | Enable GPU acceleration (CUDA/MPS). |

@@ -39,8 +39,8 @@
 #'     via `W \%*\% data`. Column sums are approximately 1.}
 #'   \item{method}{Character. Method used (e.g.,
 #'     `"pb_sgd_colnorm_cpu"`, `"pb_sgd_colnorm_cuda"`).}
-#'   \item{convergence}{Integer. 0 = early-stopped (improvement plateau
-#'     detected); 1 = stopped at max_epochs.}
+#'   \item{convergence}{Integer. 0 = converged (gradient-based or
+#'     patience-based early stopping); 1 = stopped at max_epochs.}
 #'   \item{epochs}{Integer. Number of epochs completed.}
 #'   \item{steps}{Integer. Total number of SGD gradient steps.}
 #'   \item{elapsed}{`difftime` object. Wall-clock time.}
@@ -516,8 +516,14 @@ print.interpElections_optim <- function(x, ...) {
 
   c_mat <- c_mat[active, , drop = FALSE]
 
-  # LR schedule: ReduceLROnPlateau — halve LR when epoch loss plateaus.
-  min_lr <- lr_init * 1e-3
+  # LR schedule: Cosine annealing with warm restarts (SGDR).
+  # Deterministic schedule decoupled from loss values — critical for dual
+
+  # ascent where entropy_mu changes make the loss non-stationary.
+  lr_T_0         <- 500L           # first cycle length
+  lr_T_mult      <- 2L             # cycle length multiplier
+  lr_eta_min_rat <- 0.01           # floor at 1% of lr_init
+  min_lr         <- lr_init * lr_eta_min_rat
 
   # Verbose: print ~20 lines regardless of epoch count
   report_every <- max(1L, max_epochs %/% 20L)
@@ -702,16 +708,22 @@ print.interpElections_optim <- function(x, ...) {
     optimizer <- torch::optim_adam(
       optim_params, lr = lr_init, betas = c(0.9, 0.99))
 
-    scheduler <- torch::lr_reduce_on_plateau(
-      optimizer,
-      mode       = "min",
-      factor     = 0.5,
-      patience   = as.integer(patience * 2L),
-      threshold  = convergence_tol,
-      threshold_mode = "rel",
-      min_lr     = min_lr,
-      verbose    = FALSE
-    )
+    # SGDR cosine annealing with warm restarts (Loshchilov & Hutter, 2017).
+    # lr_lambda receives epoch index (0-based from init, then 1, 2, ...),
+    # returns a multiplier in [eta_min_ratio, 1.0].
+    .sgdr_T_0    <- lr_T_0
+    .sgdr_T_mult <- lr_T_mult
+    .sgdr_eta    <- lr_eta_min_rat
+    sgdr_lambda <- function(epoch) {
+      T_cur <- epoch
+      T_i   <- .sgdr_T_0
+      while (T_cur >= T_i) {
+        T_cur <- T_cur - T_i
+        T_i   <- T_i * .sgdr_T_mult
+      }
+      .sgdr_eta + (1 - .sgdr_eta) * 0.5 * (1 + cos(pi * T_cur / T_i))
+    }
+    scheduler <- torch::lr_lambda(optimizer, lr_lambda = sgdr_lambda)
 
     best_loss        <- Inf
     best_data_loss   <- Inf
@@ -730,12 +742,15 @@ print.interpElections_optim <- function(x, ...) {
     best_epoch       <- 1L
 
     mean_eff_src     <- NA_real_
+    eff_src_ema      <- NA_real_    # EMA-smoothed eff_src for dual ascent
     entropy_mu_history <- numeric(max_epochs)
 
     # Convergence tracking
-    patience_counter <- 0L
-    converged        <- FALSE
-    nan_epoch_count  <- 0L         # consecutive NaN-gradient epochs (MPS guard)
+    patience_counter   <- 0L
+    grad_conv_counter  <- 0L        # consecutive epochs with small rel_grad
+    converged          <- FALSE
+    nan_epoch_count    <- 0L        # consecutive NaN-gradient epochs (MPS guard)
+    prev_lr            <- lr_init   # for warm restart detection
 
     grad_history <- numeric(max_epochs)
 
@@ -846,6 +861,7 @@ print.interpElections_optim <- function(x, ...) {
         barrier_history[epoch]  <- barrier_val
         entropy_history[epoch]  <- entropy_val
         grad_history[epoch]     <- NA_real_
+        scheduler$step()  # keep cosine schedule synchronized on NaN epochs
         lr_history[epoch]       <- optimizer$param_groups[[1]]$lr
         next
       }
@@ -897,12 +913,19 @@ print.interpElections_optim <- function(x, ...) {
       })
 
       # --- Dual ascent: adapt entropy_mu to reach target eff_src ---
+      # EMA smoothing on eff_src prevents wild oscillations in entropy_mu
+      # (without EMA, single-epoch spikes in eff_src cause orders-of-magnitude
+      # swings in entropy_mu, destabilizing the loss landscape).
       if (adaptive && isTRUE(is.finite(mean_eff_src)) && mean_eff_src > 0) {
-        ratio <- mean_eff_src / target_eff_src
+        if (is.na(eff_src_ema)) {
+          eff_src_ema <- mean_eff_src
+        } else {
+          eff_src_ema <- 0.95 * eff_src_ema + 0.05 * mean_eff_src
+        }
+        ratio <- eff_src_ema / target_eff_src
         entropy_mu <- entropy_mu * ratio ^ dual_eta
         entropy_mu <- max(entropy_mu, 1e-8)
         entropy_mu <- min(entropy_mu, 1e6)
-
       }
       entropy_mu_history[epoch] <- entropy_mu
 
@@ -911,50 +934,93 @@ print.interpElections_optim <- function(x, ...) {
       barrier_history[epoch]  <- barrier_val
       entropy_history[epoch]  <- entropy_val
 
-      # LR scheduler: when dual ascent is active, track deviance only
-      # (entropy_mu changes make total_loss unstable for plateau detection).
-      # Guard against NaN/NA: scheduler$step() has internal if-comparisons
-      # that crash with "missing value where TRUE/FALSE needed" on NaN input
-      # (observed on MPS backend where some ops produce NaN).
-      sched_metric <- if (adaptive) data_loss_val else total_loss_val
-      if (isTRUE(is.finite(sched_metric))) {
-        scheduler$step(sched_metric)
-      }
+      # LR scheduler: cosine annealing is epoch-based (no metric needed).
+      # Always step to keep the schedule synchronized with the loop counter.
+      scheduler$step()
 
       grad_history[epoch] <- last_grad_norm
       lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
 
-      # --- Convergence check ---
-      # Converge when LR has been reduced to min_lr AND no improvement
-      # for `patience` consecutive epochs at that LR.
-      # In dual ascent mode, also require eff_src near target.
+      # --- Convergence check (two-tier) ---
       current_lr <- optimizer$param_groups[[1]]$lr
-      lr_at_min  <- (current_lr <= min_lr * 1.01)
 
-      # For dual ascent: track deviance for patience (stable component)
-      conv_metric <- if (adaptive) data_loss_val else total_loss_val
+      # Warm restart detection: reset patience when LR jumps up
+      if (current_lr > prev_lr * 1.5) {
+        patience_counter  <- 0L
+        grad_conv_counter <- 0L
+      }
+      prev_lr <- current_lr
 
+      # eff_near_target: 20% tolerance (patience tier), 5% (gradient tier)
       eff_near_target <- if (adaptive && isTRUE(is.finite(mean_eff_src))) {
         abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
       } else {
         TRUE
       }
+      eff_near_target_tight <- if (adaptive && isTRUE(is.finite(mean_eff_src))) {
+        abs(mean_eff_src - target_eff_src) / target_eff_src < 0.05
+      } else {
+        TRUE
+      }
+
+      # Tier 1: Gradient-based convergence (true stationarity).
+      # rel_grad = |grad|_2 / (1 + |theta|_2) is scale-invariant.
+      # Require 5 consecutive epochs to filter transient cancellations
+      # in the non-stationary objective (entropy_mu changes each epoch).
+      if (isTRUE(is.finite(last_grad_norm)) && epoch >= 20L && grad_ok) {
+        theta_norm <- tryCatch(
+          as.numeric(theta_torch$detach()$norm()$cpu()),
+          error = function(e) NA_real_
+        )
+        rel_grad <- if (isTRUE(is.finite(theta_norm))) {
+          last_grad_norm / (1 + theta_norm)
+        } else {
+          NA_real_
+        }
+
+        if (isTRUE(rel_grad < 1e-4) && isTRUE(eff_near_target_tight)) {
+          grad_conv_counter <- grad_conv_counter + 1L
+        } else {
+          grad_conv_counter <- 0L
+        }
+
+        if (grad_conv_counter >= 5L) {
+          converged <- TRUE
+          if (verbose) {
+            message(sprintf(paste0(
+              "  Converged at epoch %d (gradient criterion: ",
+              "rel_grad=%.2e for 5 epochs, loss=%s",
+              " [deviance=%s, barrier=%s, entropy=%s])"),
+              epoch, rel_grad,
+              format(round(total_loss_val), big.mark = ","),
+              format(round(data_loss_val), big.mark = ","),
+              format(round(barrier_val), big.mark = ","),
+              format(round(entropy_val), big.mark = ",")))
+          }
+          break
+        }
+      } else {
+        grad_conv_counter <- 0L
+      }
+
+      # Tier 2: Patience-based convergence (plateau detection).
+      # Tracks deviance in dual ascent mode (stable component).
+      # Requires at least one full cosine cycle (lr_T_0 epochs) to give
+      # the optimizer a fair shot with warm restarts.
+      conv_metric <- if (adaptive) data_loss_val else total_loss_val
 
       if (isTRUE(is.finite(conv_metric)) && epoch >= 5L) {
         if (!isTRUE(eff_near_target)) {
-          # Far from target: can't converge, reset patience
           patience_counter <- 0L
         } else if (isTRUE(is.finite(best_data_loss)) &&
                    isTRUE(conv_metric < best_data_loss -
                      convergence_tol * abs(best_data_loss))) {
-          # Near target and deviance improving: reset patience
           patience_counter <- 0L
         } else if (isTRUE(eff_near_target)) {
-          # Near target, no improvement: count patience
           patience_counter <- patience_counter + 1L
         }
 
-        if (isTRUE(lr_at_min) && patience_counter >= patience &&
+        if (patience_counter >= patience && epoch >= lr_T_0 &&
             isTRUE(eff_near_target)) {
           converged <- TRUE
           if (verbose) {

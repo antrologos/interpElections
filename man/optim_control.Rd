@@ -7,8 +7,8 @@
 optim_control(
   max_epochs = 10000L,
   lr_init = 0.05,
-  convergence_tol = 1e-06,
-  patience = 200L,
+  convergence_tol = 1e-05,
+  patience = 100L,
   barrier_mu = 1,
   entropy_mu = 0,
   target_eff_src = NULL,
@@ -26,15 +26,17 @@ optim_control(
 all tracts). The optimizer may stop earlier if convergence is detected.
 Default: 10000.}
 
-\item{lr_init}{Numeric. Initial ADAM learning rate. Reduced automatically
-via ReduceLROnPlateau when the epoch loss plateaus. Default: 0.05.}
+\item{lr_init}{Numeric. Initial ADAM learning rate. Follows a cosine
+annealing schedule with warm restarts (SGDR), cycling between
+\code{lr_init} and \code{lr_init * 0.01}. Default: 0.05.}
 
 \item{convergence_tol}{Numeric. Relative change in epoch loss below which
-the optimizer considers the solution converged. Default: 1e-6.}
+the optimizer considers the solution converged. Default: 1e-5.}
 
 \item{patience}{Integer. Number of consecutive epochs with no improvement
-(at minimum learning rate) before early stopping. The LR scheduler
-uses \code{2 * patience} as its own patience. Default: 200.}
+before early stopping (patience-based convergence). Works alongside a
+gradient-based criterion that triggers when the relative gradient norm
+is small for several consecutive epochs. Default: 100.}
 
 \item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
 prevents any census tract from receiving zero predicted voters.
@@ -101,7 +103,7 @@ optim_control()
 optim_control(use_gpu = TRUE, max_epochs = 5000)
 
 # Stricter convergence
-optim_control(convergence_tol = 1e-6, patience = 100)
+optim_control(convergence_tol = 1e-6, patience = 200)
 
 }
 \seealso{

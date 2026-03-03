@@ -171,7 +171,7 @@ knitr::include_graphics("figures/diag-s2-conv-vga-log.png")
 
 - **Good convergence**: Smooth, monotonically decreasing loss that plateaus. Gradient norm approaches zero. The vertical dashed red line marks the best epoch.
 - **Poor convergence**: Oscillating loss, gradient that doesn't shrink, or loss that hasn't plateaued by the last epoch. Consider increasing `max_epochs` or adjusting the learning rate.
-- **Learning rate**: If using cosine annealing, you'll see a decaying pattern. Flat LR = constant step size throughout.
+- **Learning rate**: The default cosine annealing with warm restarts produces a sawtooth pattern — LR decays to a floor then jumps back up at each restart cycle.
 
 
 ## 3. Alpha Decay Parameters: `plot_alpha()`
