@@ -6,9 +6,11 @@
 #' @param max_epochs Integer. Maximum number of epochs (full passes through
 #'   all tracts). The optimizer may stop earlier if convergence is detected.
 #'   Default: 10000.
-#' @param lr_init Numeric. Initial ADAM learning rate. Follows a cosine
-#'   annealing schedule with warm restarts (SGDR), cycling between
-#'   `lr_init` and `lr_init * 0.01`. Default: 0.05.
+#' @param lr_init Numeric. Initial ADAM learning rate. In adaptive mode
+#'   (`target_eff_src` set), uses gradient-based step decay: LR is halved
+#'   when the gradient EMA stops decreasing (oscillation detection).
+#'   In non-adaptive mode, follows SGDR cosine annealing with warm restarts.
+#'   Default: 0.05.
 #' @param convergence_tol Numeric. Minimum relative improvement over the
 #'   patience window for the optimizer to keep running. If the deviance
 #'   (or total loss in non-adaptive mode) improves by less than
@@ -27,18 +29,23 @@
 #'   discourages diffuse weight distributions (many effective sources per
 #'   tract). Higher values push the optimizer to concentrate weights on
 #'   fewer nearby stations, reducing effective sources at the cost of
-#'   higher Poisson deviance. The penalty uses the mean entropy per
-#'   bracket-tract pair, making entropy_mu scale-independent across
-#'   different problem sizes. Set to 0 to disable. Default: 0.
+#'   higher Poisson deviance. The penalty uses the sum of per-tract
+#'   entropies, consistent with the deviance and barrier terms.
+#'   Set to 0 to disable. Default: 0.
 #'   Ignored when `target_eff_src` is set (dual ascent mode).
 #' @param target_eff_src Numeric or NULL. Target number of effective sources
 #'   per tract. When set (not NULL), enables dual ascent: the optimizer
 #'   automatically adapts `entropy_mu` during training to reach this target.
 #'   Must be > 1. Mutually exclusive with manual `entropy_mu` tuning.
 #'   Default: NULL (disabled).
-#' @param dual_eta Numeric. Learning rate for the dual ascent update of
-#'   `entropy_mu`. Controls how quickly `entropy_mu` adapts: higher values
-#'   mean faster adaptation but risk oscillation. Default: 0.05.
+#' @param dual_eta Numeric. Scaling factor for the per-epoch additive dual
+#'   update of `entropy_mu` (augmented Lagrangian). Each epoch:
+#'   `entropy_mu += dual_eta * rho / T_cycle * (mean_H - log(target))`,
+#'   where `rho = entropy_mu_init = m / target_eff_src`. Dampened by the
+#'   current cosine cycle length `T_cycle` so one full ALM dual step
+#'   (`rho * mean_error`) accumulates per cosine cycle. The quadratic
+#'   penalty `(rho/2) * n * (mean_H - log(target))^2` in the loss does
+#'   the heavy lifting; this dual update ensures exactness. Default: 1.0.
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all tracts and
 #'   brackets. Default: 2.
@@ -84,7 +91,7 @@ optim_control <- function(
     barrier_mu      = 1,
     entropy_mu      = 0,
     target_eff_src  = NULL,
-    dual_eta        = 0.05,
+    dual_eta        = 1.0,
     alpha_init      = 2,
     alpha_min       = NULL,
     kernel          = "power",
@@ -119,8 +126,8 @@ optim_control <- function(
     }
   }
   if (!is.numeric(dual_eta) || length(dual_eta) != 1 ||
-      dual_eta <= 0 || dual_eta > 1) {
-    stop("`dual_eta` must be a number in (0, 1]", call. = FALSE)
+      dual_eta <= 0 || dual_eta > 5) {
+    stop("`dual_eta` must be a number in (0, 5]", call. = FALSE)
   }
   if (!is.numeric(alpha_init)) {
     stop("`alpha_init` must be numeric", call. = FALSE)

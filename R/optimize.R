@@ -133,7 +133,7 @@ optimize_alpha <- function(
   kernel          <- optim$kernel %||% "power"
   entropy_mu      <- optim$entropy_mu %||% 0
   target_eff_src  <- optim$target_eff_src
-  dual_eta        <- optim$dual_eta %||% 0.05
+  dual_eta        <- optim$dual_eta %||% 1.0
   # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
   # at libtorch initialization; setting it after requireNamespace() is too late.
   # Harmless on non-MPS platforms (only activated when an MPS op is missing).
@@ -387,6 +387,10 @@ print.interpElections_optim <- function(x, ...) {
   cat(sprintf("  Epochs:      %d\n", x$epochs %||% NA))
   cat(sprintf("  Elapsed:     %.1f secs\n",
               as.numeric(x$elapsed, units = "secs")))
+  if (!is.null(x$target_eff_src)) {
+    cat(sprintf("  Dual ascent: target_eff_src=%.1f, final_eff_src=%.1f, entropy_mu=%.4f\n",
+                x$target_eff_src, x$mean_eff_sources, x$entropy_mu_final))
+  }
   invisible(x)
 }
 
@@ -410,7 +414,7 @@ print.interpElections_optim <- function(x, ...) {
                              kernel,
                              entropy_mu = 0,
                              target_eff_src = NULL,
-                             dual_eta = 0.05,
+                             dual_eta = 1.0,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -523,7 +527,7 @@ print.interpElections_optim <- function(x, ...) {
   lr_T_0         <- 500L           # first cycle length
   lr_T_mult      <- 2L             # cycle length multiplier
   lr_eta_min_rat <- 0.01           # floor at 1% of lr_init
-  min_lr         <- lr_init * lr_eta_min_rat
+  min_lr         <- if (!is.null(target_eff_src)) 1e-6 else lr_init * lr_eta_min_rat
 
   # Verbose: print ~20 lines regardless of epoch count
   report_every <- max(1L, max_epochs %/% 20L)
@@ -555,7 +559,16 @@ print.interpElections_optim <- function(x, ...) {
 
   # --- Dual ascent setup ---
   adaptive <- !is.null(target_eff_src)
-  if (adaptive && entropy_mu <= 0) entropy_mu <- 0.01
+  if (adaptive && entropy_mu <= 0) entropy_mu <- m / target_eff_src
+
+  # Augmented Lagrangian: quadratic penalty (rho/2)*n*(mean_H - h_target)^2.
+  # rho = m: the crossover (where quadratic restoring force balances the linear
+  # entropy penalty) occurs at delta = entropy_mu_init / m = 1/target nats,
+  # i.e., eff_src ≈ target * exp(-1/target). For target=5, crossover at eff_src≈4.1.
+  # This prevents overshoot while allowing the dual update to fine-tune.
+  h_target <- if (adaptive) log(target_eff_src) else NULL
+  entropy_mu_init <- entropy_mu
+  rho_quad <- if (adaptive) m else 0
 
   if (adaptive && target_eff_src > m * 0.8) {
     warning(sprintf(paste0(
@@ -567,7 +580,7 @@ print.interpElections_optim <- function(x, ...) {
 
   if (verbose) {
     if (adaptive) {
-      entropy_msg <- sprintf(", target_eff_src=%.1f (dual ascent)", target_eff_src)
+      entropy_msg <- sprintf(", target_eff_src=%.1f (dual ascent, rho=%.1f)", target_eff_src, rho_quad)
     } else if (entropy_mu > 0) {
       entropy_msg <- sprintf(", entropy_mu=%.2f", entropy_mu)
     } else {
@@ -714,16 +727,29 @@ print.interpElections_optim <- function(x, ...) {
     .sgdr_T_0    <- lr_T_0
     .sgdr_T_mult <- lr_T_mult
     .sgdr_eta    <- lr_eta_min_rat
+    .sgdr_decay <- 0.7  # max LR decays by this factor each restart
     sgdr_lambda <- function(epoch) {
       T_cur <- epoch
       T_i   <- .sgdr_T_0
+      n_restart <- 0L
       while (T_cur >= T_i) {
         T_cur <- T_cur - T_i
         T_i   <- T_i * .sgdr_T_mult
+        n_restart <- n_restart + 1L
       }
-      .sgdr_eta + (1 - .sgdr_eta) * 0.5 * (1 + cos(pi * T_cur / T_i))
+      max_mult  <- .sgdr_decay ^ n_restart
+      eta_floor <- .sgdr_eta * max_mult
+      eta_floor + (max_mult - eta_floor) * 0.5 * (1 + cos(pi * T_cur / T_i))
     }
-    scheduler <- torch::lr_lambda(optimizer, lr_lambda = sgdr_lambda)
+    if (adaptive) {
+      # Gradient-based step decay: halve LR when gradient EMA stops decreasing.
+      # No fixed schedule — the optimizer finds its own pace.
+      scheduler <- NULL
+      grad_ema_lr <- NA_real_
+      grad_ema_checkpoint <- NA_real_
+    } else {
+      scheduler <- torch::lr_lambda(optimizer, lr_lambda = sgdr_lambda)
+    }
 
     best_loss        <- Inf
     best_data_loss   <- Inf
@@ -741,7 +767,8 @@ print.interpElections_optim <- function(x, ...) {
     epoch            <- 0L
     best_epoch       <- 1L
 
-    mean_eff_src     <- NA_real_
+    median_eff_src     <- NA_real_
+    mean_eff_src       <- NA_real_
     eff_src_ema      <- NA_real_    # EMA-smoothed eff_src for dual ascent
     entropy_mu_history <- numeric(max_epochs)
 
@@ -750,6 +777,7 @@ print.interpElections_optim <- function(x, ...) {
     converged          <- FALSE
     nan_epoch_count    <- 0L        # consecutive NaN-gradient epochs (MPS guard)
     prev_lr            <- lr_init   # for warm restart detection
+    dual_cycle_T       <- lr_T_0    # current cosine cycle length for dual normalization
 
     grad_history <- numeric(max_epochs)
 
@@ -804,17 +832,32 @@ print.interpElections_optim <- function(x, ...) {
           p_safe * torch::torch_log(p_safe))$sum(dim = 2L)                # (n,)
 
         if (entropy_mu > 0) {
-          entropy_penalty <- entropy_mu * H_agg_torch$mean()
+          entropy_penalty <- entropy_mu * H_agg_torch$sum()
         } else {
           entropy_penalty <- 0
         }
 
         # eff_src = exp(median entropy) — matches weight_summary()
-        mean_eff_src <- as.numeric(
+        median_eff_src <- as.numeric(
           torch::torch_exp(H_agg_torch$median())$item())
+        # mean-based eff_src for dual ascent (proper subgradient of sum penalty)
+        mean_eff_src <- as.numeric(
+          torch::torch_exp(H_agg_torch$mean())$item())
+
+        # Augmented Lagrangian quadratic penalty: (rho/2)*n*(mean_H - h_target)^2
+        # Immediate gradient toward target — prevents entropy_mu overshoot.
+        quad_penalty <- 0
+        quad_val <- 0
+        if (adaptive) {
+          mean_H_torch <- H_agg_torch$mean()
+          quad_penalty <- (rho_quad / 2) * n * (mean_H_torch - h_target)^2
+          quad_val <- as.numeric(quad_penalty$item())
+        }
 
       } else {
         entropy_penalty <- 0
+        quad_penalty <- 0
+        quad_val <- 0
       }
 
       # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
@@ -841,11 +884,12 @@ print.interpElections_optim <- function(x, ...) {
 
       entropy_val <- if (entropy_mu > 0) as.numeric(entropy_penalty$item()) else 0
 
-      # Total loss = deviance + barrier + entropy. Always.
+      # Total loss = deviance + barrier + entropy + quadratic penalty.
       loss <- data_loss
       if (barrier_mu > 0) loss <- loss + barrier
       if (entropy_mu > 0) loss <- loss + entropy_penalty
-      total_loss_val <- data_loss_val + barrier_val + entropy_val
+      if (adaptive) loss <- loss + quad_penalty
+      total_loss_val <- data_loss_val + barrier_val + entropy_val + quad_val
 
       # Early NaN check: if forward pass produced NaN, skip backward
       # entirely to avoid wasting time and propagating NaN gradients.
@@ -860,8 +904,15 @@ print.interpElections_optim <- function(x, ...) {
         barrier_history[epoch]  <- barrier_val
         entropy_history[epoch]  <- entropy_val
         grad_history[epoch]     <- NA_real_
-        scheduler$step()  # keep cosine schedule synchronized on NaN epochs
-        lr_history[epoch]       <- optimizer$param_groups[[1]]$lr
+        entropy_mu_history[epoch] <- entropy_mu
+        if (!is.null(scheduler)) scheduler$step()
+        nan_lr <- optimizer$param_groups[[1]]$lr
+        lr_history[epoch] <- nan_lr
+        # Keep dual_cycle_T and prev_lr in sync even on NaN epochs
+        if (!adaptive && nan_lr > prev_lr * 1.5) {
+          dual_cycle_T <- dual_cycle_T * lr_T_mult
+        }
+        prev_lr <- nan_lr
         next
       }
       nan_epoch_count <- 0L  # reset on finite loss
@@ -911,20 +962,21 @@ print.interpElections_optim <- function(x, ...) {
         alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
       })
 
-      # --- Dual ascent: adapt entropy_mu to reach target eff_src ---
-      # EMA smoothing on eff_src prevents wild oscillations in entropy_mu
-      # (without EMA, single-epoch spikes in eff_src cause orders-of-magnitude
-      # swings in entropy_mu, destabilizing the loss landscape).
+      # --- Dual ascent: per-epoch additive update (augmented Lagrangian) ---
+      # Standard ALM dual step: lambda += rho * g(x) per "inner solve."
+      # Dampened by T_cycle so per-cycle cumulative is dual_eta * rho * mean_error
+      # (one full ALM step per cosine cycle).
       if (adaptive && isTRUE(is.finite(mean_eff_src)) && mean_eff_src > 0) {
+        mean_H_val <- log(mean_eff_src)
         if (is.na(eff_src_ema)) {
           eff_src_ema <- mean_eff_src
         } else {
           eff_src_ema <- 0.95 * eff_src_ema + 0.05 * mean_eff_src
         }
-        ratio <- eff_src_ema / target_eff_src
-        entropy_mu <- entropy_mu * ratio ^ dual_eta
-        entropy_mu <- max(entropy_mu, 1e-8)
-        entropy_mu <- min(entropy_mu, 1e6)
+        entropy_mu <- entropy_mu +
+          (dual_eta * rho_quad / dual_cycle_T) * (mean_H_val - h_target)
+        entropy_mu <- max(entropy_mu, 0.01)
+        entropy_mu <- min(entropy_mu, 1e3)
       }
       entropy_mu_history[epoch] <- entropy_mu
 
@@ -933,9 +985,30 @@ print.interpElections_optim <- function(x, ...) {
       barrier_history[epoch]  <- barrier_val
       entropy_history[epoch]  <- entropy_val
 
-      # LR scheduler: cosine annealing is epoch-based (no metric needed).
-      # Always step to keep the schedule synchronized with the loop counter.
-      scheduler$step()
+      # --- LR schedule ---
+      if (!is.null(scheduler)) {
+        # Non-adaptive: SGDR cosine annealing (epoch-based, no metric).
+        scheduler$step()
+      } else if (adaptive && isTRUE(is.finite(last_grad_norm))) {
+        # Adaptive: gradient-based step decay.
+        # Halve LR when gradient EMA stops decreasing (oscillation signal).
+        grad_ema_lr <- if (is.na(grad_ema_lr)) last_grad_norm
+                       else 0.9 * grad_ema_lr + 0.1 * last_grad_norm
+        if (epoch >= 100L && epoch %% 100L == 0L) {
+          if (!is.na(grad_ema_checkpoint) &&
+              grad_ema_lr >= grad_ema_checkpoint * 0.9) {
+            new_lr <- max(optimizer$param_groups[[1]]$lr * 0.5, min_lr)
+            for (i in seq_along(optimizer$param_groups))
+              optimizer$param_groups[[i]]$lr <- new_lr
+            if (verbose) {
+              message(sprintf(
+                "  [LR decay] epoch %d: grad_ema=%.1f -> %.1f, lr -> %.1e",
+                epoch, grad_ema_checkpoint, grad_ema_lr, new_lr))
+            }
+          }
+          grad_ema_checkpoint <- grad_ema_lr
+        }
+      }
 
       grad_history[epoch] <- last_grad_norm
       lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
@@ -943,20 +1016,32 @@ print.interpElections_optim <- function(x, ...) {
       # --- Convergence check (two-tier) ---
       current_lr <- optimizer$param_groups[[1]]$lr
 
-      # Warm restart detection: reset gradient convergence counter
-      if (current_lr > prev_lr * 1.5) {
+      # Warm restart detection (non-adaptive only): reset gradient convergence
+      # counter and clear Adam momentum (keep curvature estimates).
+      # In adaptive mode, LR only decreases so this never triggers.
+      if (!adaptive && current_lr > prev_lr * 1.5) {
         grad_conv_counter <- 0L
+        dual_cycle_T <- dual_cycle_T * lr_T_mult
+        for (group in optimizer$param_groups) {
+          for (p in group$params) {
+            s <- optimizer$state$get(p)
+            if (!is.null(s) && !is.null(s[["exp_avg"]])) {
+              s[["exp_avg"]]$zero_()
+            }
+          }
+        }
       }
       prev_lr <- current_lr
 
       # eff_near_target: 20% tolerance (patience tier), 5% (gradient tier)
-      eff_near_target <- if (adaptive && isTRUE(is.finite(mean_eff_src))) {
-        abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2
+      # Use EMA (smoother) to avoid epoch-to-epoch noise blocking convergence.
+      eff_near_target <- if (adaptive && isTRUE(is.finite(eff_src_ema))) {
+        abs(eff_src_ema - target_eff_src) / target_eff_src < 0.2
       } else {
         TRUE
       }
-      eff_near_target_tight <- if (adaptive && isTRUE(is.finite(mean_eff_src))) {
-        abs(mean_eff_src - target_eff_src) / target_eff_src < 0.05
+      eff_near_target_tight <- if (adaptive && isTRUE(is.finite(eff_src_ema))) {
+        abs(eff_src_ema - target_eff_src) / target_eff_src < 0.05
       } else {
         TRUE
       }
@@ -985,15 +1070,19 @@ print.interpElections_optim <- function(x, ...) {
         if (grad_conv_counter >= 5L) {
           converged <- TRUE
           if (verbose) {
+            quad_conv_log <- if (adaptive && quad_val > 0) {
+              sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
+            } else ""
             message(sprintf(paste0(
               "  Converged at epoch %d (gradient criterion: ",
               "rel_grad=%.2e for 5 epochs, loss=%s",
-              " [deviance=%s, barrier=%s, entropy=%s])"),
+              " [deviance=%s, barrier=%s, entropy=%s%s])"),
               epoch, rel_grad,
               format(round(total_loss_val), big.mark = ","),
               format(round(data_loss_val), big.mark = ","),
               format(round(barrier_val), big.mark = ","),
-              format(round(entropy_val), big.mark = ",")))
+              format(round(entropy_val), big.mark = ","),
+              quad_conv_log))
           }
           break
         }
@@ -1011,7 +1100,7 @@ print.interpElections_optim <- function(x, ...) {
       # Only active in the refinement phase (LR < 10% of lr_init) to avoid
       # triggering during high-LR exploration after warm restarts.
       conv_metric <- if (adaptive) data_loss_val else total_loss_val
-      lr_in_refinement <- current_lr < lr_init * 0.1
+      lr_in_refinement <- if (adaptive) TRUE else (current_lr < lr_init * 0.1)
 
       if (epoch > patience && lr_in_refinement && epoch >= lr_T_0 &&
           isTRUE(eff_near_target) && isTRUE(is.finite(conv_metric))) {
@@ -1023,21 +1112,25 @@ print.interpElections_optim <- function(x, ...) {
             converged <- TRUE
             if (verbose) {
               eff_conv <- if ((entropy_mu > 0 || adaptive) &&
-                              !is.na(mean_eff_src)) {
-                sprintf(", eff_src=%.1f", mean_eff_src)
+                              !is.na(median_eff_src)) {
+                sprintf(", eff_src=%.1f", median_eff_src)
               } else ""
               dual_conv <- if (adaptive) {
                 sprintf(", entropy_mu=%.4f", entropy_mu)
               } else ""
+              quad_win_log <- if (adaptive && quad_val > 0) {
+                sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
+              } else ""
               message(sprintf(paste0(
                 "  Converged at epoch %d (loss=%s",
-                " [deviance=%s, barrier=%s, entropy=%s]%s%s, ",
+                " [deviance=%s, barrier=%s, entropy=%s%s]%s%s, ",
                 "lr=%.1e, %.6f%% change over last %d epochs)"),
                 epoch,
                 format(round(total_loss_val), big.mark = ","),
                 format(round(data_loss_val), big.mark = ","),
                 format(round(barrier_val), big.mark = ","),
                 format(round(entropy_val), big.mark = ","),
+                quad_win_log,
                 eff_conv,
                 dual_conv,
                 current_lr, abs(window_rel_change) * 100, patience))
@@ -1053,15 +1146,15 @@ print.interpElections_optim <- function(x, ...) {
       # Track best near-target model only as fallback for non-convergence.
       # At convergence, we override with the final epoch (see after loop).
       if (adaptive) {
-        eff_ok <- isTRUE(!is.na(mean_eff_src) &&
-          abs(mean_eff_src - target_eff_src) / target_eff_src < 0.2)
+        eff_ok <- isTRUE(!is.na(median_eff_src) &&
+          abs(median_eff_src - target_eff_src) / target_eff_src < 0.2)
         if (eff_ok && isTRUE(is.finite(data_loss_val)) &&
             isTRUE(data_loss_val < best_data_loss)) {
           best_loss       <- total_loss_val
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate
           best_W          <- W_candidate
-          best_eff_src    <- mean_eff_src
+          best_eff_src    <- median_eff_src
           best_epoch      <- epoch
         }
       } else {
@@ -1079,16 +1172,20 @@ print.interpElections_optim <- function(x, ...) {
       if (verbose &&
           (epoch == 1L || epoch %% report_every == 0L)) {
         eff_src_log <- if ((entropy_mu > 0 || adaptive) &&
-                            !is.na(mean_eff_src)) {
-          sprintf(", eff_src=%.1f", mean_eff_src)
+                            !is.na(median_eff_src)) {
+          sprintf(", eff_src=%.1f", median_eff_src)
         } else ""
         dual_log <- if (adaptive) {
           sprintf(", entropy_mu=%.4f", entropy_mu)
         } else ""
-        components <- sprintf(" [deviance=%s, barrier=%s, entropy=%s]",
+        quad_log <- if (adaptive && quad_val > 0) {
+          sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
+        } else ""
+        components <- sprintf(" [deviance=%s, barrier=%s, entropy=%s%s]",
           format(round(data_loss_val), big.mark = ","),
           format(round(barrier_val), big.mark = ","),
-          format(round(entropy_val), big.mark = ","))
+          format(round(entropy_val), big.mark = ","),
+          quad_log)
         message(sprintf(paste0(
           "  Epoch %3d/%d: loss=%s%s, grad=%.2e, lr=%.1e, ",
           "alpha=[%.2f, %.2f, %.2f]%s%s"),
@@ -1117,14 +1214,14 @@ print.interpElections_optim <- function(x, ...) {
         best_data_loss <- data_loss_val
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
-        best_eff_src   <- mean_eff_src
+        best_eff_src   <- median_eff_src
         best_epoch     <- epoch
       } else if (isTRUE(!is.finite(best_data_loss))) {
         best_loss      <- total_loss_val
         best_data_loss <- data_loss_val
         best_alpha     <- alpha_candidate
         best_W         <- W_candidate
-        best_eff_src   <- mean_eff_src
+        best_eff_src   <- median_eff_src
         best_epoch     <- epoch
       }
     }
@@ -1141,8 +1238,8 @@ print.interpElections_optim <- function(x, ...) {
     }
 
     if (adaptive && !converged && verbose) {
-      eff_str <- if (!is.na(mean_eff_src)) {
-        sprintf("%.1f", mean_eff_src)
+      eff_str <- if (!is.na(median_eff_src)) {
+        sprintf("%.1f", median_eff_src)
       } else "NA"
       message(sprintf(
         paste0("  Note: dual ascent did not converge in %d epochs. ",
@@ -1154,7 +1251,7 @@ print.interpElections_optim <- function(x, ...) {
     reported_eff_src <- if (adaptive && !is.na(best_eff_src)) {
       best_eff_src
     } else {
-      mean_eff_src
+      median_eff_src
     }
 
     list(

@@ -87,17 +87,19 @@ test_that("optim_control rejects non-numeric target_eff_src", {
   expect_error(optim_control(target_eff_src = "ten"), "target_eff_src.*> 1")
 })
 
-test_that("optim_control accepts dual_eta in (0, 1]", {
-  ctrl <- optim_control(dual_eta = 0.1)
-  expect_equal(ctrl$dual_eta, 0.1)
+test_that("optim_control accepts dual_eta in (0, 5]", {
+  ctrl <- optim_control(dual_eta = 0.5)
+  expect_equal(ctrl$dual_eta, 0.5)
   ctrl2 <- optim_control(dual_eta = 1)
   expect_equal(ctrl2$dual_eta, 1)
+  ctrl3 <- optim_control(dual_eta = 3)
+  expect_equal(ctrl3$dual_eta, 3)
 })
 
 test_that("optim_control rejects invalid dual_eta", {
-  expect_error(optim_control(dual_eta = 0), "dual_eta.*\\(0, 1\\]")
-  expect_error(optim_control(dual_eta = -0.1), "dual_eta.*\\(0, 1\\]")
-  expect_error(optim_control(dual_eta = 1.5), "dual_eta.*\\(0, 1\\]")
+  expect_error(optim_control(dual_eta = 0), "dual_eta.*\\(0, 5\\]")
+  expect_error(optim_control(dual_eta = -0.1), "dual_eta.*\\(0, 5\\]")
+  expect_error(optim_control(dual_eta = 6), "dual_eta.*\\(0, 5\\]")
 })
 
 test_that("print method shows target_eff_src when dual ascent active", {
@@ -130,6 +132,27 @@ test_that("optimize_alpha with target_eff_src runs and returns dual ascent field
   expect_equal(r$target_eff_src, 2)
   expect_true(is.numeric(r$mean_eff_sources))
   expect_true(r$mean_eff_sources > 0)
+})
+
+test_that("dual ascent updates entropy_mu when enough epochs run", {
+  skip_if_not_installed("torch")
+  set.seed(42)
+  n <- 5; m <- 4; k <- 2
+  tt <- matrix(abs(rnorm(n * m, 10, 5)), n, m)
+  pop <- matrix(rpois(n * k, 100), n, k)
+  src <- matrix(rpois(m * k, 80), m, k)
+
+  # Run enough epochs for dual ascent to accumulate additive dual updates.
+  # Adaptive mode uses gradient-based LR step decay (no cosine schedule).
+  r <- optimize_alpha(tt, pop, src,
+    optim = optim_control(max_epochs = 1600L, target_eff_src = 2, dual_eta = 1.0),
+    verbose = FALSE)
+  expect_true(is.finite(r$value))
+  # entropy_mu should have changed from the initial m/target = 4/2 = 2
+  expect_true(abs(r$entropy_mu_final - 2) > 0.001)
+  # entropy_mu_history should have entries that differ from the initial
+  mu_hist <- r$entropy_mu_history
+  expect_true(any(mu_hist != mu_hist[1]))
 })
 
 test_that("optimize_alpha with entropy_mu = 0 (no entropy) returns NULL target_eff_src", {
