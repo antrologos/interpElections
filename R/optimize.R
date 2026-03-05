@@ -650,6 +650,18 @@ print.interpElections_optim <- function(x, ...) {
     p_active_torch <- torch::torch_tensor(
       p_mat_active, device = device, dtype = torch_dtype)  # (n, ka)
 
+    # Precompute constant part of Poisson deviance:
+    # D = 2*(sum(V) - sum(P*log(V)) + sum(P*log(P)) - sum(P))
+    # The last two terms depend only on P (constant), so precompute them.
+    P_safe_pre <- torch::torch_where(
+      p_active_torch > 0, p_active_torch,
+      torch::torch_ones_like(p_active_torch))
+    P_log_P_sum <- as.numeric(
+      (p_active_torch * torch::torch_log(P_safe_pre))$sum()$item())
+    sum_P <- as.numeric(p_active_torch$sum()$item())
+    deviance_const <- 2 * (P_log_P_sum - sum_P)
+    rm(P_safe_pre)
+
     # --- Softplus reparameterization — per-tract-per-bracket ---
     # alpha[i,b] = alpha_min + softplus(theta[i,b]), theta unconstrained.
     # One alpha per census tract per active bracket.
@@ -695,17 +707,11 @@ print.interpElections_optim <- function(x, ...) {
     gpu_tensors$alpha_min_t <- alpha_min_t
     alpha_fn <- function(th) alpha_min_t + torch::nnf_softplus(th)
 
-    # Loss computation: Poisson deviance
-    compute_data_loss <- function(V_hat, P, scale_factor) {
+    # Loss computation: Poisson deviance (constant terms precomputed)
+    compute_data_loss <- function(V_hat) {
       V_clamped <- torch::torch_clamp(V_hat, min = 1e-30)
-      P_safe <- torch::torch_where(
-        P > 0, P, torch::torch_ones_like(P))
-      log_ratio <- torch::torch_where(
-        P > 0,
-        torch::torch_log(P_safe) - torch::torch_log(V_clamped),
-        torch::torch_zeros_like(P))
-      dev <- 2 * (V_clamped - P + P * log_ratio)
-      dev$sum() * scale_factor
+      2 * (V_clamped$sum() - (p_active_torch * torch::torch_log(V_clamped))$sum()) +
+        deviance_const
     }
 
     gpu_tensors$t_basis    <- t_basis
@@ -805,7 +811,36 @@ print.interpElections_optim <- function(x, ...) {
       # Column normalization in linear space
       col_sum <- K_3d$sum(dim = 2L)                         # (ka, m)
       col_sum <- torch::torch_clamp(col_sum, min = 1e-30)   # avoid /0
-      W_3d <- K_3d / col_sum$unsqueeze(2L)$contiguous()     # (ka, n, m)
+
+      # Whether we need the full (ka,n,m) W_3d tensor.
+      # Only required for entropy penalty or adaptive dual ascent.
+      # When not needed, V_hat is computed via batched matmul (bmm),
+      # halving peak memory by avoiding W_3d materialization.
+      needs_W_3d <- entropy_mu > 0 || adaptive
+
+      if (needs_W_3d) {
+        W_3d <- K_3d / col_sum$unsqueeze(2L)$contiguous()     # (ka, n, m)
+
+        # --- Cached voter-weighted product (computed ONCE per epoch) ---
+        # Wc_3d = W_3d * c_3d is used for W_agg, V_hat, and W extraction.
+        # Caching avoids 2 redundant (ka,n,m) multiplications per epoch.
+        Wc_3d <- W_3d * c_3d                                  # (ka, n, m)
+        # Aggregated weight matrix — needed for entropy and W extraction.
+        W_agg <- Wc_3d$sum(dim = 1L) / c_total_2d             # (n, m)
+        # Predicted voters per tract per bracket.
+        # $contiguous() after $t() — MPS NaN on non-contiguous views.
+        V_hat_all <- Wc_3d$sum(dim = 3L)$t()$contiguous()     # (n, ka)
+      } else {
+        # V_hat via batched matmul — avoids materializing W_3d.
+        # V_hat[i,b] = sum_j(K[b,i,j] * c[b,j] / col_sum[b,j])
+        #            = K_b @ (c_b / col_sum_b)
+        r_scaled <- c_mat_torch / col_sum                      # (ka, m)
+        V_hat_all <- torch::torch_bmm(
+          K_3d,
+          r_scaled$unsqueeze(3L)$contiguous()                  # (ka, m, 1)
+        )$squeeze(3L)$t()$contiguous()                         # (n, ka)
+        # W_agg deferred to best-model/post-loop extraction (with_no_grad).
+      }
 
       # --- Entropy penalty on AGGREGATED weights ---
       # Penalize the entropy of the aggregated weight matrix (voter-weighted
@@ -815,10 +850,7 @@ print.interpElections_optim <- function(x, ...) {
       # ascent steers, eliminating the Jensen's-inequality gap that caused
       # entropy_mu instability with per-bracket entropy.
       if (entropy_mu > 0 || adaptive) {
-        # W_agg[i,j] = sum_b(W[b,i,j] * c[b,j]) / sum_b(c[b,j])
-        # Aggregated weights in linear space — unreachable pairs are
-        # already exactly zero from the binary mask above.
-        W_agg <- (W_3d * c_3d)$sum(dim = 1L) / c_total_2d                 # (n, m)
+        # W_agg already computed above from cached Wc_3d.
 
         # Row-normalize for entropy.  Clamp to avoid log(0).
         row_sum <- torch::torch_clamp(
@@ -859,12 +891,8 @@ print.interpElections_optim <- function(x, ...) {
         quad_val <- 0
       }
 
-      # V_hat[i,b] = sum_j W[b,i,j] * c[b,j]
-      # $contiguous() after $t() — MPS NaN on non-contiguous views.
-      V_hat_all <- (W_3d * c_3d)$sum(dim = 3L)$t()$contiguous()  # (n, ka)
-
       # Full-data loss (exact, no scaling needed)
-      data_loss <- compute_data_loss(V_hat_all, p_active_torch, 1.0)
+      data_loss <- compute_data_loss(V_hat_all)
       data_loss_val <- as.numeric(data_loss$item())
 
 
@@ -958,17 +986,11 @@ print.interpElections_optim <- function(x, ...) {
         }
       }
 
-      # Extract W, alpha candidates (no extra forward pass needed).
-      # All come from pre-step tensors (alpha_all, W_3d were computed
-      # before optimizer$step()).
-      # W_candidate: aggregated weight matrix (voter-weighted mixture)
-      # W[i,j] = sum_b(W^b[i,j] * c[b,j]) / sum_b(c[b,j])
-      torch::with_no_grad({
-        W_candidate <- as.matrix(
-          ((W_3d$detach() * c_3d)$sum(dim = 1L) /
-             c_total_2d)$cpu())                         # (n, m)
-        alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
-      })
+      # Extract alpha candidate (cheap: n*ka, ~1 MB).
+      # W_agg is already computed from cached Wc_3d above.
+      # W extraction deferred to best-model tracking to avoid
+      # per-epoch GPU->CPU transfer of the large (n,m) matrix.
+      alpha_candidate <- as.matrix(alpha_all$detach()$cpu())
 
       # --- Dual ascent: per-epoch additive update (augmented Lagrangian) ---
       # Standard ALM dual step: lambda += rho * g(x) per "inner solve."
@@ -1094,7 +1116,7 @@ print.interpElections_optim <- function(x, ...) {
       conv_metric <- if (adaptive) data_loss_val else total_loss_val
       lr_in_refinement <- if (adaptive) TRUE else (current_lr < lr_init * 0.1)
 
-      if (epoch > patience && lr_in_refinement && epoch >= lr_T_0 &&
+      if (epoch > patience && lr_in_refinement &&
           isTRUE(eff_near_target) && isTRUE(is.finite(conv_metric))) {
         lookback <- if (adaptive) deviance_history[epoch - patience]
                     else epoch_losses[epoch - patience]
@@ -1137,6 +1159,9 @@ print.interpElections_optim <- function(x, ...) {
       # Models from earlier epochs were optimized for wrong entropy_mu values.
       # Track best near-target model only as fallback for non-convergence.
       # At convergence, we override with the final epoch (see after loop).
+      # W extraction is deferred to here (only when a new best is found)
+      # to avoid the expensive GPU->CPU transfer of the (n,m) matrix
+      # on every epoch.
       if (adaptive) {
         eff_ok <- isTRUE(!is.na(median_eff_src) &&
           abs(median_eff_src - target_eff_src) / target_eff_src < 0.2)
@@ -1145,7 +1170,9 @@ print.interpElections_optim <- function(x, ...) {
           best_loss       <- total_loss_val
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate
-          best_W          <- W_candidate
+          torch::with_no_grad({
+            best_W <- as.matrix(W_agg$detach()$cpu())
+          })
           best_eff_src    <- median_eff_src
           best_epoch      <- epoch
         }
@@ -1156,7 +1183,17 @@ print.interpElections_optim <- function(x, ...) {
           best_loss       <- total_loss_val
           best_data_loss  <- data_loss_val
           best_alpha      <- alpha_candidate
-          best_W          <- W_candidate
+          torch::with_no_grad({
+            if (needs_W_3d) {
+              best_W <- as.matrix(W_agg$detach()$cpu())
+            } else {
+              # Compute W_agg on the fly from K_3d (avoids keeping W_3d in memory)
+              W_3d_det <- K_3d$detach() / col_sum$detach()$unsqueeze(2L)$contiguous()
+              Wc_det <- W_3d_det * c_3d
+              best_W <- as.matrix(
+                (Wc_det$sum(dim = 1L) / c_total_2d)$cpu())
+            }
+          })
           best_epoch      <- epoch
         }
       }
@@ -1178,6 +1215,11 @@ print.interpElections_optim <- function(x, ...) {
           format(round(barrier_val), big.mark = ","),
           format(round(entropy_val), big.mark = ","),
           quad_log)
+        # Compute alpha stats on GPU (3 scalars) instead of transferring
+        # the full alpha matrix to CPU for min/median/max.
+        alpha_min_val <- as.numeric(alpha_all$min()$item())
+        alpha_med_val <- as.numeric(alpha_all$median()$item())
+        alpha_max_val <- as.numeric(alpha_all$max()$item())
         message(sprintf(paste0(
           "  Epoch %3d/%d: loss=%s%s, grad=%.2e, lr=%.1e, ",
           "alpha=[%.2f, %.2f, %.2f]%s%s"),
@@ -1186,13 +1228,33 @@ print.interpElections_optim <- function(x, ...) {
           components,
           last_grad_norm,
           optimizer$param_groups[[1]]$lr,
-          min(alpha_candidate), stats::median(alpha_candidate),
-          max(alpha_candidate),
+          alpha_min_val, alpha_med_val, alpha_max_val,
           eff_src_log,
           dual_log
         ))
       }
     }  # end epoch loop
+
+    # Extract final-epoch W for post-loop model selection (convergence
+    # override, fallback paths).  Single transfer, amortized over all epochs.
+    # Guard: if the last epoch was NaN (via `next`), W_agg may hold NaN
+    # data — fall back to the best model's W (which may be NULL if no
+    # good epoch).
+    if (isTRUE(is.finite(total_loss_val))) {
+      torch::with_no_grad({
+        if (needs_W_3d) {
+          final_W <- as.matrix(W_agg$detach()$cpu())
+        } else {
+          W_3d_det <- K_3d$detach() / col_sum$detach()$unsqueeze(2L)$contiguous()
+          Wc_det <- W_3d_det * c_3d
+          final_W <- as.matrix(
+            (Wc_det$sum(dim = 1L) / c_total_2d)$cpu())
+        }
+      })
+    } else {
+      final_W <- best_W
+    }
+    final_alpha <- alpha_candidate
 
     # Dual ascent model selection:
     # - Converged: the final epoch IS the saddle-point solution (theta and
@@ -1204,28 +1266,28 @@ print.interpElections_optim <- function(x, ...) {
       if (converged) {
         best_loss      <- total_loss_val
         best_data_loss <- data_loss_val
-        best_alpha     <- alpha_candidate
-        best_W         <- W_candidate
+        best_alpha     <- final_alpha
+        best_W         <- final_W
         best_eff_src   <- median_eff_src
         best_epoch     <- epoch
       } else if (isTRUE(!is.finite(best_data_loss))) {
         best_loss      <- total_loss_val
         best_data_loss <- data_loss_val
-        best_alpha     <- alpha_candidate
-        best_W         <- W_candidate
+        best_alpha     <- final_alpha
+        best_W         <- final_W
         best_eff_src   <- median_eff_src
         best_epoch     <- epoch
       }
     }
 
     # Non-adaptive fallback: if no epoch produced a finite loss (e.g.,
-    # all NaN on MPS), use the last epoch's W_candidate to avoid
-    # returning NULL and crashing downstream.
+    # all NaN on MPS), use the last epoch's W to avoid returning NULL
+    # and crashing downstream.
     if (!adaptive && !isTRUE(is.finite(best_loss))) {
       best_loss      <- total_loss_val
       best_data_loss <- data_loss_val
-      best_alpha     <- alpha_candidate
-      best_W         <- W_candidate
+      best_alpha     <- final_alpha
+      best_W         <- final_W
       best_epoch     <- epoch
     }
 
