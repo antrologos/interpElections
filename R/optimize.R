@@ -520,14 +520,14 @@ print.interpElections_optim <- function(x, ...) {
 
   c_mat <- c_mat[active, , drop = FALSE]
 
-  # LR schedule: Cosine annealing with warm restarts (SGDR).
-  # Deterministic schedule decoupled from loss values — critical for dual
-
-  # ascent where entropy_mu changes make the loss non-stationary.
+  # LR schedule parameters.
+  # Non-adaptive: SGDR cosine annealing with warm restarts (deterministic).
+  # Adaptive (dual ascent): constant LR. The dual update changes the loss
+  # surface every epoch; monotone LR decay starves the primal optimizer.
   lr_T_0         <- 500L           # first cycle length
   lr_T_mult      <- 2L             # cycle length multiplier
   lr_eta_min_rat <- 0.01           # floor at 1% of lr_init
-  min_lr         <- if (!is.null(target_eff_src)) 1e-6 else lr_init * lr_eta_min_rat
+  min_lr         <- lr_init * lr_eta_min_rat
 
   # Verbose: print ~20 lines regardless of epoch count
   report_every <- max(1L, max_epochs %/% 20L)
@@ -742,11 +742,10 @@ print.interpElections_optim <- function(x, ...) {
       eta_floor + (max_mult - eta_floor) * 0.5 * (1 + cos(pi * T_cur / T_i))
     }
     if (adaptive) {
-      # Gradient-based step decay: halve LR when gradient EMA stops decreasing.
-      # No fixed schedule — the optimizer finds its own pace.
+      # Constant LR in adaptive mode. The dual update changes the loss
+      # surface every epoch, so any monotone LR decay starves the primal
+      # optimizer. Adam's per-parameter v_hat already handles oscillation.
       scheduler <- NULL
-      grad_ema_lr <- NA_real_
-      grad_ema_checkpoint <- NA_real_
     } else {
       scheduler <- torch::lr_lambda(optimizer, lr_lambda = sgdr_lambda)
     }
@@ -908,14 +907,23 @@ print.interpElections_optim <- function(x, ...) {
         if (!is.null(scheduler)) scheduler$step()
         nan_lr <- optimizer$param_groups[[1]]$lr
         lr_history[epoch] <- nan_lr
-        # Keep dual_cycle_T and prev_lr in sync even on NaN epochs
+        # Keep dual_cycle_T, prev_lr, and Adam state in sync on NaN epochs.
+        # Must mirror the normal-path warm restart handler (lines below).
         if (!adaptive && nan_lr > prev_lr * 1.5) {
+          grad_conv_counter <- 0L
           dual_cycle_T <- dual_cycle_T * lr_T_mult
+          for (group in optimizer$param_groups) {
+            for (p in group$params) {
+              s <- optimizer$state$get(p)
+              if (!is.null(s) && !is.null(s[["exp_avg"]])) {
+                s[["exp_avg"]]$zero_()
+              }
+            }
+          }
         }
         prev_lr <- nan_lr
         next
       }
-      nan_epoch_count <- 0L  # reset on finite loss
 
       loss$backward()
 
@@ -985,33 +993,17 @@ print.interpElections_optim <- function(x, ...) {
       barrier_history[epoch]  <- barrier_val
       entropy_history[epoch]  <- entropy_val
 
+      # Record LR BEFORE the scheduler step (captures the LR actually used
+      # for this epoch's gradient step, not the next epoch's LR).
+      lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+      grad_history[epoch] <- last_grad_norm
+
       # --- LR schedule ---
       if (!is.null(scheduler)) {
         # Non-adaptive: SGDR cosine annealing (epoch-based, no metric).
         scheduler$step()
-      } else if (adaptive && isTRUE(is.finite(last_grad_norm))) {
-        # Adaptive: gradient-based step decay.
-        # Halve LR when gradient EMA stops decreasing (oscillation signal).
-        grad_ema_lr <- if (is.na(grad_ema_lr)) last_grad_norm
-                       else 0.9 * grad_ema_lr + 0.1 * last_grad_norm
-        if (epoch >= 100L && epoch %% 100L == 0L) {
-          if (!is.na(grad_ema_checkpoint) &&
-              grad_ema_lr >= grad_ema_checkpoint * 0.9) {
-            new_lr <- max(optimizer$param_groups[[1]]$lr * 0.5, min_lr)
-            for (i in seq_along(optimizer$param_groups))
-              optimizer$param_groups[[i]]$lr <- new_lr
-            if (verbose) {
-              message(sprintf(
-                "  [LR decay] epoch %d: grad_ema=%.1f -> %.1f, lr -> %.1e",
-                epoch, grad_ema_checkpoint, grad_ema_lr, new_lr))
-            }
-          }
-          grad_ema_checkpoint <- grad_ema_lr
-        }
       }
-
-      grad_history[epoch] <- last_grad_norm
-      lr_history[epoch]   <- optimizer$param_groups[[1]]$lr
+      # Adaptive mode: constant LR (no schedule). Adam handles oscillation.
 
       # --- Convergence check (two-tier) ---
       current_lr <- optimizer$param_groups[[1]]$lr

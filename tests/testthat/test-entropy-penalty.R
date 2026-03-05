@@ -143,7 +143,7 @@ test_that("dual ascent updates entropy_mu when enough epochs run", {
   src <- matrix(rpois(m * k, 80), m, k)
 
   # Run enough epochs for dual ascent to accumulate additive dual updates.
-  # Adaptive mode uses gradient-based LR step decay (no cosine schedule).
+  # Adaptive mode uses constant LR (no cosine or step decay schedule).
   r <- optimize_alpha(tt, pop, src,
     optim = optim_control(max_epochs = 1600L, target_eff_src = 2, dual_eta = 1.0),
     verbose = FALSE)

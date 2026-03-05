@@ -27,10 +27,10 @@ all tracts). The optimizer may stop earlier if convergence is detected.
 Default: 10000.}
 
 \item{lr_init}{Numeric. Initial ADAM learning rate. In adaptive mode
-(\code{target_eff_src} set), uses gradient-based step decay: LR is halved
-when the gradient EMA stops decreasing (oscillation detection).
-In non-adaptive mode, follows SGDR cosine annealing with warm restarts.
-Default: 0.05.}
+(\code{target_eff_src} set), uses constant LR throughout (the dual update
+changes the loss landscape every epoch, making monotone LR decay
+counterproductive). In non-adaptive mode, follows SGDR cosine annealing
+with warm restarts. Default: 0.05.}
 
 \item{convergence_tol}{Numeric. Minimum relative improvement over the
 patience window for the optimizer to keep running. If the deviance
@@ -66,12 +66,11 @@ Default: NULL (disabled).}
 
 \item{dual_eta}{Numeric. Scaling factor for the per-epoch additive dual
 update of \code{entropy_mu} (augmented Lagrangian). Each epoch:
-\verb{entropy_mu += dual_eta * rho / T_cycle * (mean_H - log(target))},
-where \code{rho = entropy_mu_init = m / target_eff_src}. Dampened by the
-current cosine cycle length \code{T_cycle} so one full ALM dual step
-(\code{rho * mean_error}) accumulates per cosine cycle. The quadratic
-penalty \code{(rho/2) * n * (mean_H - log(target))^2} in the loss does
-the heavy lifting; this dual update ensures exactness. Default: 1.0.}
+\verb{entropy_mu += dual_eta * rho / T_damp * (mean_H - log(target))},
+where \code{rho = m} (number of source stations) and \code{T_damp = 500} is a
+fixed dampening constant. The quadratic penalty
+\code{(m/2) * n * (mean_H - log(target))^2} in the loss does the heavy
+lifting; this dual update ensures exactness. Default: 1.0.}
 
 \item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
 Initial guess for alpha. A scalar is recycled to all tracts and
