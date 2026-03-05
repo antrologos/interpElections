@@ -90,9 +90,10 @@ plot_convergence <- function(result, which = c("loss", "gradient", "lr"),
   if (has_decomposition &&
       requireNamespace("patchwork", quietly = TRUE)) {
     component_spec <- list(
-      deviance = list(title = "Deviance",        color = "#31a354"),
-      barrier  = list(title = "Barrier penalty",  color = "#d95f0e"),
-      entropy  = list(title = "Entropy penalty",  color = "#756bb1")
+      deviance   = list(title = "Deviance",         color = "#31a354"),
+      barrier    = list(title = "Barrier penalty",   color = "#d95f0e"),
+      entropy    = list(title = "Entropy penalty",   color = "#756bb1"),
+      entropy_mu = list(title = "Entropy mu (dual)", color = "#e7298a")
     )
     for (comp in names(component_spec)) {
       if (!is.null(loss_panels[[comp]])) {
@@ -192,6 +193,11 @@ plot_convergence <- function(result, which = c("loss", "gradient", "lr"),
   if (!is.null(opt$entropy_history) && any(opt$entropy_history != 0)) {
     panels$entropy <- data.frame(
       epoch = epochs, value = opt$entropy_history, stringsAsFactors = FALSE
+    )
+  }
+  if (!is.null(opt$entropy_mu_history) && any(opt$entropy_mu_history != 0)) {
+    panels$entropy_mu <- data.frame(
+      epoch = epochs, value = opt$entropy_mu_history, stringsAsFactors = FALSE
     )
   }
 
