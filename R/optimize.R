@@ -553,7 +553,7 @@ print.interpElections_optim <- function(x, ...) {
     }, error = function(e) NA_real_)
 
     if (!is.na(vram_mb_for_chunk)) {
-      # 4 dominant tensors per chunk: log_K, W, V_hat accumulator, grad buffer
+      # 4 dominant tensors per chunk: log_K, W, grad_W, grad_log_K during backward.
       m_chunk <- max(1L, min(m, as.integer(floor(
         0.60 * vram_mb_for_chunk * 1e6 / (4.0 * ka * n * bytes_per_elem)))))
     } else {
@@ -765,6 +765,15 @@ print.interpElections_optim <- function(x, ...) {
     gpu_tensors$c_total_2d <- c_total_2d
     gpu_tensors$W_ones_nm  <- W_ones_nm
 
+    if (use_chunked) {
+      # Transpose t_basis to (m, n) so narrow along dim=1 gives contiguous (m_s, n) slices.
+      # Softmax over n (last dim) is then fully coalesced on GPU.
+      t_basis_mn  <- t_basis_3d$squeeze(1L)$t()$contiguous()              # (m, n)
+      log_mask_mn <- if (has_na) log_mask_3d$squeeze(1L)$t()$contiguous() else NULL
+      gpu_tensors$t_basis_mn  <- t_basis_mn
+      gpu_tensors$log_mask_mn <- log_mask_mn
+    }
+
     optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
       optim_params, lr = lr_init, betas = c(0.9, 0.99))
@@ -862,26 +871,27 @@ print.interpElections_optim <- function(x, ...) {
         W_agg_parts <- vector("list", n_chunks)
 
         torch::with_no_grad({
+          alpha_kn <- alpha_all$t()$contiguous()    # (ka, n), contiguous — computed once
           for (s in seq_along(chunk_starts)) {
             j1  <- chunk_starts[s]
             m_s <- min(m_chunk, m - j1 + 1L)
 
-            t_s  <- torch::torch_narrow(t_basis_3d, 3L, j1, m_s)  # (1, n, m_s)
-            c_s  <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s) # (ka, m_s)
-            # alpha_all is (n,ka) detached; broadcast (ka,n,1) × (1,n,m_s) → (ka,n,m_s)
-            alpha_3d_s <- alpha_all$t()$unsqueeze(3L)
-            log_K_s    <- -alpha_3d_s * t_s                        # (ka, n, m_s)
+            t_s  <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)   # (m_s, n), contiguous
+            c_s  <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)  # (ka, m_s)
+            # (ka,1,n) × (1,m_s,n) → (ka,m_s,n); n is last dim → coalesced softmax
+            log_K_s <- -alpha_kn$unsqueeze(2L) * t_s$unsqueeze(1L) # (ka, m_s, n)
 
             if (has_na) {
-              log_K_s <- log_K_s + torch::torch_narrow(log_mask_3d, 3L, j1, m_s)
+              log_K_s <- log_K_s +
+                torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L) # (1, m_s, n)
             }
 
-            W_s     <- torch::nnf_softmax(log_K_s, dim = 2L)       # (ka, n, m_s)
-            V_hat_s <- torch::torch_bmm(
-              W_s, c_s$unsqueeze(3L))$squeeze(3L)$t()              # (n, ka)
+            W_s     <- torch::nnf_softmax(log_K_s, dim = 3L)        # (ka, m_s, n), coalesced!
+            V_hat_s <- torch::torch_einsum(
+              "bjn,bj->nb", list(W_s, c_s))                         # (n, ka)
             V_hat_all   <- V_hat_all + V_hat_s
             W_agg_parts[[s]] <- torch::torch_einsum(
-              "bij,bj->ij", list(W_s, c_s))                        # (n, m_s)
+              "bjn,bj->nj", list(W_s, c_s))                         # (n, m_s)
           }
         })
 
@@ -981,19 +991,19 @@ print.interpElections_optim <- function(x, ...) {
           j1  <- chunk_starts[s]
           m_s <- min(m_chunk, m - j1 + 1L)
 
-          alpha_all_s <- alpha_fn(theta_torch)                      # (n, ka), fresh graph
-          alpha_3d_s  <- alpha_all_s$t()$unsqueeze(3L)             # (ka, n, 1)
-          t_s         <- torch::torch_narrow(t_basis_3d, 3L, j1, m_s)   # (1, n, m_s)
-          c_s         <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)  # (ka, m_s)
-          log_K_s     <- -alpha_3d_s * t_s                          # (ka, n, m_s)
+          alpha_kn_s <- alpha_fn(theta_torch)$t()$contiguous()      # (ka, n), fresh graph
+          t_s        <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)    # (m_s, n), contiguous
+          c_s        <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)   # (ka, m_s)
+          log_K_s    <- -alpha_kn_s$unsqueeze(2L) * t_s$unsqueeze(1L)   # (ka, m_s, n)
 
           if (has_na) {
-            log_K_s <- log_K_s + torch::torch_narrow(log_mask_3d, 3L, j1, m_s)
+            log_K_s <- log_K_s +
+              torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L)
           }
 
-          W_s     <- torch::nnf_softmax(log_K_s, dim = 2L)
-          V_hat_s <- torch::torch_bmm(
-            W_s, c_s$unsqueeze(3L))$squeeze(3L)$t()                # (n, ka), live graph
+          W_s     <- torch::nnf_softmax(log_K_s, dim = 3L)              # (ka, m_s, n)
+          V_hat_s <- torch::torch_einsum(
+            "bjn,bj->nb", list(W_s, c_s))                               # (n, ka), live graph
 
           # Surrogate: (detached dL/dV_hat) * (live V_hat from this chunk)
           # Backprop gives correct d(data+barrier)/d_theta for this chunk.
@@ -1001,10 +1011,10 @@ print.interpElections_optim <- function(x, ...) {
 
           if (!is.null(dH_dW_agg)) {
             # Entropy chain rule for this station chunk:
-            # d(E+Q)/dW_agg[i,j] * dW_agg[i,j]/d_theta = dH_dW_agg[i,j] * W_s[b,i,j]*c_s[b,j]/c_tot[j]
+            # d(E+Q)/dW_agg[i,j] * dW_agg[i,j]/d_theta = dH_dW_agg[i,j] * W_s[b,j,n]*c_s[b,j]/c_tot[j]
             c_tot_s <- torch::torch_narrow(c_total_2d, 2L, j1, m_s)     # (1, m_s)
-            dH_s    <- torch::torch_narrow(dH_dW_agg, 2L, j1, m_s)     # (n, m_s)
-            W_agg_s <- torch::torch_einsum("bij,bj->ij", list(W_s, c_s)) # (n, m_s)
+            dH_s    <- torch::torch_narrow(dH_dW_agg, 2L, j1, m_s)      # (n, m_s)
+            W_agg_s <- torch::torch_einsum("bjn,bj->nj", list(W_s, c_s)) # (n, m_s)
             loss_s  <- loss_s + (dH_s * W_agg_s / c_tot_s)$sum()
           }
 
