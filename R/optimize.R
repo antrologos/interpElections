@@ -532,9 +532,10 @@ print.interpElections_optim <- function(x, ...) {
   # Verbose: print ~20 lines regardless of epoch count
   report_every <- max(1L, max_epochs %/% 20L)
 
-  # --- Chunked forward pass gate ---
+  # --- Station-chunked forward pass gate ---
   # When ka*n*m > 50M, batched (ka,n,m) tensors exceed VRAM.
-  # Bracket-chunked path uses one (n,m) slab at a time.
+  # Station-chunked path loops over station slices of size m_chunk,
+  # keeping (ka,n,m_chunk) tensors — full CUDA parallelism across all brackets.
   use_chunked <- as.double(ka) * n * m > 50e6
 
   # --- Memory safety check (GPU only) ---
@@ -543,11 +544,28 @@ print.interpElections_optim <- function(x, ...) {
   estimated_mb   <- (6.0 * as.double(ka) * n * m) * bytes_per_elem / 1e6
 
   if (use_chunked) {
-    # Chunked path peak: ~8 × (n,m) (t_basis, log_mask, W_b, W_agg, dH, log_K_b, V_hat, inv_V)
-    estimated_mb_chunked <- (8.0 * as.double(n) * m) * bytes_per_elem / 1e6
+    # Auto-size station chunk from available VRAM (or fallback for CPU/unknown)
+    vram_mb_for_chunk <- tryCatch({
+      if (grepl("cuda", device, fixed = TRUE)) {
+        hw <- .detect_gpu_nvidia()
+        if (hw$found && !is.na(hw$vram_mb)) hw$vram_mb else NA_real_
+      } else NA_real_
+    }, error = function(e) NA_real_)
+
+    if (!is.na(vram_mb_for_chunk)) {
+      # 4 dominant tensors per chunk: log_K, W, V_hat accumulator, grad buffer
+      m_chunk <- max(1L, min(m, as.integer(floor(
+        0.60 * vram_mb_for_chunk * 1e6 / (4.0 * ka * n * bytes_per_elem)))))
+    } else {
+      m_chunk <- min(m, 300L)  # CPU fallback
+    }
+    chunk_starts <- seq(1L, m, by = m_chunk)
+    n_chunks     <- length(chunk_starts)
+
     if (verbose) message(sprintf(
-      "  Problem too large for batched path (%.0f MB); using bracket-chunked path (~%.0f MB peak)",
-      estimated_mb, estimated_mb_chunked))
+      "  Problem too large for batched path (%.0f MB); using station-chunked path (%d chunks, m_chunk=%d)",
+      estimated_mb, n_chunks, m_chunk))
+
   } else if (grepl("cuda", device, fixed = TRUE)) {
     vram_mb <- tryCatch({
       hw <- .detect_gpu_nvidia()
@@ -747,23 +765,6 @@ print.interpElections_optim <- function(x, ...) {
     gpu_tensors$c_total_2d <- c_total_2d
     gpu_tensors$W_ones_nm  <- W_ones_nm
 
-    if (use_chunked) {
-      # 2D views for per-bracket computation (squeeze = view, zero memory cost)
-      t_basis_2d  <- t_basis_3d$squeeze(1L)              # (n, m)
-      log_mask_2d <- if (has_na) log_mask_3d$squeeze(1L) else NULL
-
-      # Per-bracket deviance constants: deviance_const_vec[b] = 2*(sum_i P[i,b]*log P[i,b] - P[i,b])
-      # sum(deviance_const_vec) == deviance_const exactly (gradient-free scalar)
-      P_safe_b <- torch::torch_where(
-        p_active_torch > 0,
-        p_active_torch,
-        torch::torch_ones_like(p_active_torch))
-      deviance_const_vec <- as.numeric(
-        (2 * (p_active_torch * torch::torch_log(P_safe_b) -
-                p_active_torch))$sum(dim = 1L)$cpu())    # length ka, R vector
-      rm(P_safe_b)
-    }
-
     optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
       optim_params, lr = lr_init, betas = c(0.9, 0.99))
@@ -840,36 +841,55 @@ print.interpElections_optim <- function(x, ...) {
       # Using full-data loss gives exact gradients at the same cost.
       optimizer$zero_grad()
 
-      alpha_all <- alpha_fn(theta_torch)              # (n, ka)
+      # For chunked path, Pass 2 builds fresh alpha graphs per chunk; detach here.
+      # For monolithic path, keep graph for backward().
+      alpha_all <- if (use_chunked) {
+        torch::with_no_grad(alpha_fn(theta_torch))
+      } else {
+        alpha_fn(theta_torch)
+      }                                               # (n, ka)
 
       if (use_chunked) {
         # ================================================================
-        # BRACKET-CHUNKED FORWARD PASS
-        # Each bracket processed as a separate (n,m) slab.
-        # Peak VRAM: O(n*m) instead of O(ka*n*m).
-        # Gradients accumulate via sequential per-bracket backward().
+        # STATION-CHUNKED FORWARD PASS
+        # Loop over station slices of size m_chunk, (ka,n,m') tensors.
+        # Full CUDA parallelism across all ka brackets per slice.
+        # Peak VRAM: O(ka*n*m_chunk) instead of O(ka*n*m).
         # ================================================================
 
-        # Pass 1 (no_grad): accumulate V_hat_tot and, if needed, W_agg.
-        V_hat_tot <- torch::torch_zeros(n, device = device, dtype = torch_dtype)
-        if (needs_W_3d) {
-          W_agg <- torch::torch_zeros(n, m, device = device, dtype = torch_dtype)
-        }
+        # Pass 1 (no_grad): accumulate V_hat_all (n,ka) and W_agg (n,m).
+        V_hat_all   <- torch::torch_zeros(n, ka, device = device, dtype = torch_dtype)
+        W_agg_parts <- vector("list", n_chunks)
+
         torch::with_no_grad({
-          for (b in seq_len(ka)) {
-            alpha_b   <- alpha_fn(theta_torch[, b])          # (n,), no graph
-            log_K_b   <- -alpha_b$unsqueeze(2L) * t_basis_2d # (n, m)
-            if (has_na) log_K_b <- log_K_b + log_mask_2d
-            W_b       <- torch::nnf_softmax(log_K_b, dim = 1L) # softmax over tracts
-            c_b       <- c_mat_torch[b, ]                    # (m,)
-            V_hat_tot <- V_hat_tot + W_b$mv(c_b)             # (n,)
-            if (needs_W_3d) W_agg <- W_agg + W_b * c_b      # (n,m), broadcast
+          for (s in seq_along(chunk_starts)) {
+            j1  <- chunk_starts[s]
+            m_s <- min(m_chunk, m - j1 + 1L)
+
+            t_s  <- torch::torch_narrow(t_basis_3d, 3L, j1, m_s)  # (1, n, m_s)
+            c_s  <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s) # (ka, m_s)
+            # alpha_all is (n,ka) detached; broadcast (ka,n,1) × (1,n,m_s) → (ka,n,m_s)
+            alpha_3d_s <- alpha_all$t()$unsqueeze(3L)
+            log_K_s    <- -alpha_3d_s * t_s                        # (ka, n, m_s)
+
+            if (has_na) {
+              log_K_s <- log_K_s + torch::torch_narrow(log_mask_3d, 3L, j1, m_s)
+            }
+
+            W_s     <- torch::nnf_softmax(log_K_s, dim = 2L)       # (ka, n, m_s)
+            V_hat_s <- torch::torch_bmm(
+              W_s, c_s$unsqueeze(3L))$squeeze(3L)$t()              # (n, ka)
+            V_hat_all   <- V_hat_all + V_hat_s
+            W_agg_parts[[s]] <- torch::torch_einsum(
+              "bij,bj->ij", list(W_s, c_s))                        # (n, m_s)
           }
-          if (needs_W_3d) W_agg <- W_agg / c_total_2d        # (n, m)
         })
 
-        # NaN check on aggregated predictions (one sync; avoids polluting grad)
-        if (!isTRUE(torch::torch_isfinite(V_hat_tot$sum())$item())) {
+        W_agg <- torch::torch_cat(W_agg_parts, dim = 2L) / c_total_2d  # (n, m)
+        rm(W_agg_parts)
+
+        # NaN check (one GPU sync)
+        if (!isTRUE(torch::torch_isfinite(V_hat_all$sum())$item())) {
           nan_epoch_count <- nan_epoch_count + 1L
           if (nan_epoch_count >= 5L) {
             stop("Forward pass produced NaN for 5 consecutive epochs",
@@ -889,9 +909,9 @@ print.interpElections_optim <- function(x, ...) {
             dual_cycle_T <- dual_cycle_T * lr_T_mult
             for (group in optimizer$param_groups) {
               for (p in group$params) {
-                s <- optimizer$state$get(p)
-                if (!is.null(s) && !is.null(s[["exp_avg"]])) {
-                  s[["exp_avg"]]$zero_()
+                s_st <- optimizer$state$get(p)
+                if (!is.null(s_st) && !is.null(s_st[["exp_avg"]])) {
+                  s_st[["exp_avg"]]$zero_()
                 }
               }
             }
@@ -900,40 +920,49 @@ print.interpElections_optim <- function(x, ...) {
           next
         }
 
-        # Barrier gradient signal (detached constant; used in Pass 2)
-        inv_V_tot   <- NULL
-        barrier_val <- 0
+        # --- Scalar values (ONE GPU sync for data_loss; no syncs in grad loop) ---
+        data_loss_val <- as.numeric(compute_data_loss(V_hat_all)$item())
+
+        # Barrier signal: dBarrier/dV_hat[i,b] = -barrier_mu / V_total[i]  (same for all b)
+        dBarrier_dVhat <- NULL
+        barrier_val    <- 0
         if (barrier_mu > 0) {
-          inv_V_tot <- -barrier_mu /
-            torch::torch_clamp(V_hat_tot, min = 1e-30)       # (n,), detached
-          barrier_val <- as.numeric(
-            (-barrier_mu * torch::torch_log(
-              torch::torch_clamp(V_hat_tot, min = 1e-30))$sum())$item())
+          V_hat_total    <- V_hat_all$sum(dim = 2L)                # (n,)
+          V_total_cl     <- torch::torch_clamp(V_hat_total, min = 1e-30)
+          barrier_val    <- as.numeric(
+            (-barrier_mu * V_total_cl$log()$sum())$item())
+          dBarrier_dVhat <- (-barrier_mu / V_total_cl)$unsqueeze(2L)$expand(c(-1L, ka))
         }
 
-        # Entropy + quadratic gradient signal from W_agg (detached mini-autograd)
-        # dH_dW_agg = d(entropy_mu*H + quad_penalty)/dW_agg
-        # Includes both entropy_mu and rho_quad scaling; Pass 2 uses as-is.
-        dH_dW_agg   <- NULL
-        H_agg_torch <- NULL
+        # Analytical surrogate: dL/dV_hat + dBarrier/dV_hat  (detached constants)
+        # dL/dV_hat[i,b] = 2*(1 - P[i,b]/V_hat[i,b])
+        V_hat_cl  <- torch::torch_clamp(V_hat_all, min = 1e-30)
+        V_for_log <- torch::torch_where(
+          p_active_torch > 0, V_hat_cl, torch::torch_ones_like(V_hat_cl))
+        dL_dVhat <- (2 * (1 - p_active_torch / V_for_log))$detach()  # (n, ka)
+        if (!is.null(dBarrier_dVhat)) dL_dVhat <- dL_dVhat + dBarrier_dVhat
+
+        # Entropy + quadratic penalty signal from W_agg (same mini-autograd as monolithic path)
+        dH_dW_agg    <- NULL
+        H_agg_torch  <- NULL
         mean_H_torch <- NULL
-        entropy_val <- 0
-        quad_val    <- 0
+        entropy_val  <- 0
+        quad_val     <- 0
         if (needs_W_3d) {
           W_agg_g  <- W_agg$detach()$requires_grad_(TRUE)    # (n, m), mini-autograd leaf
           row_sum  <- torch::torch_clamp(
             W_agg_g$sum(dim = 2L, keepdim = TRUE), min = 1e-30)
           p_safe_g <- W_agg_g / row_sum
           p_log_g  <- torch::torch_where(p_safe_g > 0, p_safe_g, W_ones_nm)
-          H_g      <- -(p_safe_g * torch::torch_log(p_log_g))$sum(dim = 2L) # (n,)
-          mean_H_torch <- H_g$mean()
+          H_g      <- -(p_safe_g * torch::torch_log(p_log_g))$sum(dim = 2L)  # (n,)
+          mean_H_torch      <- H_g$mean()
           entropy_penalty_g <- entropy_mu * H_g$sum()
           quad_penalty_g    <- if (adaptive) {
             (rho_quad / 2) * n * (mean_H_torch - h_target)^2
           } else {
             0
           }
-          # Single backward on combined penalty → W_agg_g$grad = dE+Q/dW_agg
+          # Single backward on combined penalty → W_agg_g$grad = d(E+Q)/dW_agg
           (entropy_penalty_g + quad_penalty_g)$backward()
           dH_dW_agg    <- W_agg_g$grad                       # (n, m), detached
           H_agg_torch  <- H_g$detach()
@@ -943,45 +972,46 @@ print.interpElections_optim <- function(x, ...) {
           mean_eff_src   <- exp(as.numeric(mean_H_torch$item()))
         }
 
-        # Pass 2 (with_grad): per-bracket gradient accumulation.
-        # Each bracket uses an independent graph via theta_torch[, b] view.
-        # backward() deposits gradient into theta_torch$grad[:, b].
-        deviance_sum <- 0
-        for (b in seq_len(ka)) {
-          alpha_b <- alpha_fn(theta_torch[, b])               # (n,), fresh graph
-          log_K_b <- -alpha_b$unsqueeze(2L) * t_basis_2d     # (n, m)
-          if (has_na) log_K_b <- log_K_b + log_mask_2d
-          W_b     <- torch::nnf_softmax(log_K_b, dim = 1L)   # (n, m)
-          c_b     <- c_mat_torch[b, ]                         # (m,)
-          V_hat_b <- W_b$mv(c_b)                             # (n,)
-          p_b     <- p_active_torch[, b]                      # (n,)
+        total_loss_val <- data_loss_val + barrier_val + entropy_val + quad_val
 
-          # Per-bracket Poisson deviance (torch_where safe-log, NaN-free)
-          V_cl_b  <- torch::torch_clamp(V_hat_b, min = 1e-30)
-          V_log_b <- torch::torch_where(
-            p_b > 0, V_cl_b, torch::torch_ones_like(V_cl_b))
-          dev_b   <- 2 * (V_cl_b - p_b * torch::torch_log(V_log_b))$sum() +
-                       deviance_const_vec[b]
-          deviance_sum <- deviance_sum + as.numeric(dev_b$detach()$item())
+        # Pass 2 (with_grad): per-chunk gradient accumulation.
+        # Recompute alpha_fn(theta_torch) independently per chunk → fresh graph.
+        # backward() accumulates into theta_torch$grad; graph freed per chunk.
+        for (s in seq_along(chunk_starts)) {
+          j1  <- chunk_starts[s]
+          m_s <- min(m_chunk, m - j1 + 1L)
 
-          # Composite bracket loss: data + barrier chain rule + entropy chain rule
-          loss_b <- dev_b
-          if (!is.null(inv_V_tot)) {
-            # Barrier: d(-barrier_mu*log(V_tot))/d(theta[:,b])
-            # = inv_V_tot[i] * dV_hat_b[i]/d(theta[:,b])  (inv_V_tot detached)
-            loss_b <- loss_b + (inv_V_tot * V_hat_b)$sum()
+          alpha_all_s <- alpha_fn(theta_torch)                      # (n, ka), fresh graph
+          alpha_3d_s  <- alpha_all_s$t()$unsqueeze(3L)             # (ka, n, 1)
+          t_s         <- torch::torch_narrow(t_basis_3d, 3L, j1, m_s)   # (1, n, m_s)
+          c_s         <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)  # (ka, m_s)
+          log_K_s     <- -alpha_3d_s * t_s                          # (ka, n, m_s)
+
+          if (has_na) {
+            log_K_s <- log_K_s + torch::torch_narrow(log_mask_3d, 3L, j1, m_s)
           }
+
+          W_s     <- torch::nnf_softmax(log_K_s, dim = 2L)
+          V_hat_s <- torch::torch_bmm(
+            W_s, c_s$unsqueeze(3L))$squeeze(3L)$t()                # (n, ka), live graph
+
+          # Surrogate: (detached dL/dV_hat) * (live V_hat from this chunk)
+          # Backprop gives correct d(data+barrier)/d_theta for this chunk.
+          loss_s <- (dL_dVhat * V_hat_s)$sum()
+
           if (!is.null(dH_dW_agg)) {
-            # Entropy+quad chain rule: dE+Q/dW_b[i,j] = dH_dW_agg[i,j]*c_b[j]/c_total[j]
-            # (dH_dW_agg already includes entropy_mu and rho_quad)
-            ent_b  <- (dH_dW_agg * W_b * (c_b / c_total))$sum()
-            loss_b <- loss_b + ent_b
+            # Entropy chain rule for this station chunk:
+            # d(E+Q)/dW_agg[i,j] * dW_agg[i,j]/d_theta = dH_dW_agg[i,j] * W_s[b,i,j]*c_s[b,j]/c_tot[j]
+            c_tot_s <- torch::torch_narrow(c_total_2d, 2L, j1, m_s)     # (1, m_s)
+            dH_s    <- torch::torch_narrow(dH_dW_agg, 2L, j1, m_s)     # (n, m_s)
+            W_agg_s <- torch::torch_einsum("bij,bj->ij", list(W_s, c_s)) # (n, m_s)
+            loss_s  <- loss_s + (dH_s * W_agg_s / c_tot_s)$sum()
           }
-          loss_b$backward()   # accumulates into theta_torch$grad[:, b]; graph freed
+
+          loss_s$backward()  # accumulates into theta_torch$grad; graph freed
         }
 
-        data_loss_val  <- deviance_sum
-        total_loss_val <- data_loss_val + barrier_val + entropy_val + quad_val
+        # ================================================================
 
       } else {
         # ================================================================
@@ -1397,19 +1427,9 @@ print.interpElections_optim <- function(x, ...) {
           best_data_loss  <- data_loss_val
           torch::with_no_grad({
             best_alpha <- as.matrix(alpha_all$detach()$cpu())
-            if (needs_W_3d) {
+            if (needs_W_3d || use_chunked) {
+              # W_agg always computed in Pass 1 for chunked path; use directly.
               best_W <- as.matrix(W_agg$detach()$cpu())
-            } else if (use_chunked) {
-              # Recompute W_agg via no-grad bracket loop (W_3d doesn't exist)
-              W_accum <- torch::torch_zeros(n, m, device = device, dtype = torch_dtype)
-              for (bw in seq_len(ka)) {
-                alpha_bw <- alpha_fn(theta_torch[, bw])
-                log_K_bw <- -alpha_bw$unsqueeze(2L) * t_basis_2d
-                if (has_na) log_K_bw <- log_K_bw + log_mask_2d
-                W_bw     <- torch::nnf_softmax(log_K_bw, dim = 1L)
-                W_accum  <- W_accum + W_bw * c_mat_torch[bw, ]
-              }
-              best_W <- as.matrix((W_accum / c_total_2d)$cpu())
             } else {
               best_W <- as.matrix(
                 (torch::torch_einsum("bij,bj->ij",
@@ -1464,19 +1484,9 @@ print.interpElections_optim <- function(x, ...) {
     # good epoch).
     if (isTRUE(is.finite(total_loss_val))) {
       torch::with_no_grad({
-        if (needs_W_3d) {
+        if (needs_W_3d || use_chunked) {
+          # W_agg always computed in Pass 1 for chunked path; use directly.
           final_W <- as.matrix(W_agg$detach()$cpu())
-        } else if (use_chunked) {
-          # Recompute W_agg via no-grad bracket loop (W_3d doesn't exist)
-          W_accum <- torch::torch_zeros(n, m, device = device, dtype = torch_dtype)
-          for (bw in seq_len(ka)) {
-            alpha_bw <- alpha_fn(theta_torch[, bw])
-            log_K_bw <- -alpha_bw$unsqueeze(2L) * t_basis_2d
-            if (has_na) log_K_bw <- log_K_bw + log_mask_2d
-            W_bw     <- torch::nnf_softmax(log_K_bw, dim = 1L)
-            W_accum  <- W_accum + W_bw * c_mat_torch[bw, ]
-          }
-          final_W <- as.matrix((W_accum / c_total_2d)$cpu())
         } else {
           final_W <- as.matrix(
             (torch::torch_einsum("bij,bj->ij",
