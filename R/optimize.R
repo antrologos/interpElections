@@ -842,6 +842,8 @@ print.interpElections_optim <- function(x, ...) {
     # W_3d is always computed via softmax; this flag only gates W_agg.
     needs_W_3d <- entropy_mu > 0 || adaptive
 
+    prev_dH_dW_agg <- NULL  # delayed entropy gradient: updated at end of each epoch
+
     for (epoch in seq_len(max_epochs)) {
 
       # --- Full-data gradient step ---
@@ -871,27 +873,32 @@ print.interpElections_optim <- function(x, ...) {
         W_agg_parts <- vector("list", n_chunks)
 
         torch::with_no_grad({
-          alpha_kn <- alpha_all$t()$contiguous()    # (ka, n), contiguous — computed once
+          alpha_kn   <- alpha_all$t()$contiguous()  # (ka, n), contiguous — computed once
+          W_tc_total <- torch::torch_zeros(n, ka, device = device, dtype = torch_dtype)
+
           for (s in seq_along(chunk_starts)) {
             j1  <- chunk_starts[s]
             m_s <- min(m_chunk, m - j1 + 1L)
 
-            t_s  <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)   # (m_s, n), contiguous
-            c_s  <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)  # (ka, m_s)
+            t_s     <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)   # (m_s, n), contiguous
+            c_s     <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)  # (ka, m_s)
             # (ka,1,n) × (1,m_s,n) → (ka,m_s,n); n is last dim → coalesced softmax
-            log_K_s <- -alpha_kn$unsqueeze(2L) * t_s$unsqueeze(1L) # (ka, m_s, n)
-
+            log_K_s <- -alpha_kn$unsqueeze(2L) * t_s$unsqueeze(1L)    # (ka, m_s, n)
             if (has_na) {
               log_K_s <- log_K_s +
-                torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L) # (1, m_s, n)
+                torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L)
             }
+            W_s  <- torch::nnf_softmax(log_K_s, dim = 3L)             # (ka, m_s, n)
+            Wt_s <- W_s * t_s$unsqueeze(1L)                            # (ka, m_s, n): W*t
 
-            W_s     <- torch::nnf_softmax(log_K_s, dim = 3L)        # (ka, m_s, n), coalesced!
-            V_hat_s <- torch::torch_einsum(
-              "bjn,bj->nb", list(W_s, c_s))                         # (n, ka)
-            V_hat_all   <- V_hat_all + V_hat_s
+            V_hat_all   <- V_hat_all + torch::torch_einsum(
+              "bjn,bj->nb", list(W_s, c_s))                            # (n, ka)
             W_agg_parts[[s]] <- torch::torch_einsum(
-              "bjn,bj->nj", list(W_s, c_s))                         # (n, m_s)
+              "bjn,bj->nj", list(W_s, c_s))                            # (n, m_s)
+
+            # W_tc[i,b] = Σ_j W[b,j,i]*t[j,i]*c[b,j] (needed for analytical gradient)
+            W_tc_total <- W_tc_total + torch::torch_einsum(
+              "bjn,bj->nb", list(Wt_s, c_s))                           # (n, ka)
           }
         })
 
@@ -984,42 +991,53 @@ print.interpElections_optim <- function(x, ...) {
 
         total_loss_val <- data_loss_val + barrier_val + entropy_val + quad_val
 
-        # Pass 2 (with_grad): per-chunk gradient accumulation.
-        # Recompute alpha_fn(theta_torch) independently per chunk → fresh graph.
-        # backward() accumulates into theta_torch$grad; graph freed per chunk.
-        for (s in seq_along(chunk_starts)) {
-          j1  <- chunk_starts[s]
-          m_s <- min(m_chunk, m - j1 + 1L)
-
-          alpha_kn_s <- alpha_fn(theta_torch)$t()$contiguous()      # (ka, n), fresh graph
-          t_s        <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)    # (m_s, n), contiguous
-          c_s        <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)   # (ka, m_s)
-          log_K_s    <- -alpha_kn_s$unsqueeze(2L) * t_s$unsqueeze(1L)   # (ka, m_s, n)
-
-          if (has_na) {
-            log_K_s <- log_K_s +
-              torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L)
+        # Analytical Pass 2 (no backward): correct softmax Jacobian gradient.
+        # dL/d_alpha[i,b] = Σ_j c[b,j]*W[b,j,i]*t[j,i]*(dL_bar[b,j] - dL[i,b])
+        # where dL_bar[b,j] = Σ_i W[b,j,i]*dL[i,b]  (W-weighted mean of dL over tracts)
+        grad_analytic <- torch::torch_zeros(n, ka, device = device, dtype = torch_dtype)
+        torch::with_no_grad({
+          for (s in seq_along(chunk_starts)) {
+            j1  <- chunk_starts[s]
+            m_s <- min(m_chunk, m - j1 + 1L)
+            t_s     <- torch::torch_narrow(t_basis_mn, 1L, j1, m_s)
+            c_s     <- torch::torch_narrow(c_mat_torch, 2L, j1, m_s)
+            log_K_s <- -alpha_kn$unsqueeze(2L) * t_s$unsqueeze(1L)
+            if (has_na) {
+              log_K_s <- log_K_s +
+                torch::torch_narrow(log_mask_mn, 1L, j1, m_s)$unsqueeze(1L)
+            }
+            W_s      <- torch::nnf_softmax(log_K_s, dim = 3L)          # (ka, m_s, n)
+            Wt_s     <- W_s * t_s$unsqueeze(1L)                         # (ka, m_s, n)
+            # dL_bar[b,j] = W-weighted mean of dL[·,b] over tracts
+            dL_bar_s <- torch::torch_einsum(
+              "bjn,nb->bj", list(W_s, dL_dVhat))                        # (ka, m_s)
+            grad_analytic <- grad_analytic + torch::torch_einsum(
+              "bjn,bj->nb", list(Wt_s, c_s * dL_bar_s))                 # (n, ka)
+            if (needs_W_3d && !is.null(prev_dH_dW_agg)) {
+              dH_s         <- torch::torch_narrow(prev_dH_dW_agg, 2L, j1, m_s)  # (n, m_s)
+              c_tot_s      <- torch::torch_narrow(c_total_2d, 2L, j1, m_s)      # (1, m_s)
+              eff_dH_s     <- dH_s / c_tot_s                                      # (n, m_s)
+              # eff_dH_bar[b,j] = W-weighted mean of eff_dH[·,j] over tracts
+              eff_dH_bar_s <- torch::torch_einsum(
+                "bjn,nj->bj", list(W_s, eff_dH_s))                      # (ka, m_s)
+              grad_analytic <- grad_analytic +
+                torch::torch_einsum("bjn,bj->nb",
+                                    list(Wt_s, c_s * eff_dH_bar_s)) -
+                torch::torch_einsum("bjn,bj,nj->nb",
+                                    list(Wt_s, c_s, eff_dH_s))
+            }
           }
+        })
+        # d_alpha = Σ_j c*W*t*(dL_bar - dL) = grad_analytic - dL * W_tc_total
+        d_alpha <- grad_analytic - dL_dVhat * W_tc_total                # (n, ka)
 
-          W_s     <- torch::nnf_softmax(log_K_s, dim = 3L)              # (ka, m_s, n)
-          V_hat_s <- torch::torch_einsum(
-            "bjn,bj->nb", list(W_s, c_s))                               # (n, ka), live graph
+        # Chain rule through alpha = alpha_min + softplus(theta):
+        # d_theta = d_alpha * sigmoid(theta)   [softplus'(theta) = sigmoid(theta)]
+        sigmoid_theta <- torch::with_no_grad(torch::torch_sigmoid(theta_torch))
+        theta_torch$grad <- (d_alpha * sigmoid_theta)$detach()
 
-          # Surrogate: (detached dL/dV_hat) * (live V_hat from this chunk)
-          # Backprop gives correct d(data+barrier)/d_theta for this chunk.
-          loss_s <- (dL_dVhat * V_hat_s)$sum()
-
-          if (!is.null(dH_dW_agg)) {
-            # Entropy chain rule for this station chunk:
-            # d(E+Q)/dW_agg[i,j] * dW_agg[i,j]/d_theta = dH_dW_agg[i,j] * W_s[b,j,n]*c_s[b,j]/c_tot[j]
-            c_tot_s <- torch::torch_narrow(c_total_2d, 2L, j1, m_s)     # (1, m_s)
-            dH_s    <- torch::torch_narrow(dH_dW_agg, 2L, j1, m_s)      # (n, m_s)
-            W_agg_s <- torch::torch_einsum("bjn,bj->nj", list(W_s, c_s)) # (n, m_s)
-            loss_s  <- loss_s + (dH_s * W_agg_s / c_tot_s)$sum()
-          }
-
-          loss_s$backward()  # accumulates into theta_torch$grad; graph freed
-        }
+        # Store dH_dW_agg for next epoch's delayed entropy gradient.
+        prev_dH_dW_agg <- dH_dW_agg
 
         # ================================================================
 
