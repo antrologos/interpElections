@@ -667,6 +667,10 @@ print.interpElections_optim <- function(x, ...) {
     deviance_const <- 2 * (P_log_P_sum - sum_P)
     rm(P_safe_pre)
 
+    # Pre-allocate ones tensor for torch_where safe-log (entropy path).
+    # Shape (n, m) matches W_agg; avoids allocation inside the epoch loop.
+    W_ones_nm <- torch::torch_ones(n, m, device = device, dtype = torch_dtype)
+
     # --- Softplus reparameterization — per-tract-per-bracket ---
     # alpha[i,b] = alpha_min + softplus(theta[i,b]), theta unconstrained.
     # One alpha per census tract per active bracket.
@@ -715,7 +719,11 @@ print.interpElections_optim <- function(x, ...) {
     # Loss computation: Poisson deviance (constant terms precomputed)
     compute_data_loss <- function(V_hat) {
       V_clamped <- torch::torch_clamp(V_hat, min = 1e-30)
-      2 * (V_clamped - torch:::torch_xlogy(p_active_torch, V_clamped))$sum() +
+      # torch_where safe-log: avoid ::: and guard log(0) for zero-population brackets.
+      V_for_log <- torch::torch_where(
+        p_active_torch > 0, V_clamped,
+        torch::torch_ones_like(V_clamped))
+      2 * (V_clamped - p_active_torch * torch::torch_log(V_for_log))$sum() +
         deviance_const
     }
 
@@ -726,6 +734,7 @@ print.interpElections_optim <- function(x, ...) {
     gpu_tensors$c_mat      <- c_mat_torch
     gpu_tensors$c_total    <- c_total
     gpu_tensors$c_total_2d <- c_total_2d
+    gpu_tensors$W_ones_nm  <- W_ones_nm
 
     optim_params <- list(theta_torch)
     optimizer <- torch::optim_adam(
@@ -847,9 +856,10 @@ print.interpElections_optim <- function(x, ...) {
         p_safe <- W_agg / row_sum                                   # (n, m)
 
         # H[i] = -sum_j p[i,j] * log(p[i,j])
-        # xlogy(0, 0) = 0 by convention — no clamp needed on p_safe.
-        H_agg_torch <- -torch:::torch_xlogy(
-          p_safe, p_safe)$sum(dim = 2L)                                   # (n,)
+        # torch_where safe-log: redirect log(0) → log(1)=0 for zero entries.
+        # Gradient at p_safe=0: p_safe * (1/p_for_log) = 0*1 = 0. NaN-free.
+        p_for_log   <- torch::torch_where(p_safe > 0, p_safe, W_ones_nm)
+        H_agg_torch <- -(p_safe * torch::torch_log(p_for_log))$sum(dim = 2L)  # (n,)
 
         if (entropy_mu > 0) {
           entropy_penalty <- entropy_mu * H_agg_torch$sum()
