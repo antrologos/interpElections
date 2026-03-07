@@ -96,7 +96,8 @@ optim_control <- function(
     kernel          = "power",
     use_gpu         = NULL,
     device          = NULL,
-    dtype           = "float32"
+    dtype           = "float32",
+    force_chunked   = NULL   # internal: override automatic gate (TRUE/FALSE/NULL)
 ) {
   # --- Validation ---
   if (!is.numeric(max_epochs) || length(max_epochs) != 1 || max_epochs < 1) {
@@ -165,7 +166,8 @@ optim_control <- function(
       kernel          = kernel,
       use_gpu         = use_gpu,
       device          = device,
-      dtype           = dtype
+      dtype           = dtype,
+      force_chunked   = force_chunked
     ),
     class = "interpElections_optim_control"
   )

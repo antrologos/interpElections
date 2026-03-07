@@ -134,6 +134,7 @@ optimize_alpha <- function(
   entropy_mu      <- optim$entropy_mu %||% 0
   target_eff_src  <- optim$target_eff_src
   dual_eta        <- optim$dual_eta %||% 1.0
+  force_chunked   <- optim$force_chunked
   # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
   # at libtorch initialization; setting it after requireNamespace() is too late.
   # Harmless on non-MPS platforms (only activated when an MPS op is missing).
@@ -269,6 +270,7 @@ optimize_alpha <- function(
       entropy_mu     = entropy_mu,
       target_eff_src = target_eff_src,
       dual_eta       = dual_eta,
+      force_chunked  = force_chunked,
       verbose        = verbose
     )
   }
@@ -415,6 +417,7 @@ print.interpElections_optim <- function(x, ...) {
                              entropy_mu = 0,
                              target_eff_src = NULL,
                              dual_eta = 1.0,
+                             force_chunked = NULL,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -437,6 +440,7 @@ print.interpElections_optim <- function(x, ...) {
                barrier_mu, alpha_min,
                kernel, entropy_mu,
                target_eff_src, dual_eta,
+               force_chunked,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         # Enable per-op MPS fallback BEFORE torch loads (env var is read
@@ -464,6 +468,7 @@ print.interpElections_optim <- function(x, ...) {
           entropy_mu = entropy_mu,
           target_eff_src = target_eff_src,
           dual_eta = dual_eta,
+          force_chunked = force_chunked,
           verbose = verbose
         )
       },
@@ -481,6 +486,7 @@ print.interpElections_optim <- function(x, ...) {
         entropy_mu = entropy_mu,
         target_eff_src = target_eff_src,
         dual_eta = dual_eta,
+        force_chunked = force_chunked,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -536,7 +542,8 @@ print.interpElections_optim <- function(x, ...) {
   # When ka*n*m > 50M, batched (ka,n,m) tensors exceed VRAM.
   # Station-chunked path loops over station slices of size m_chunk,
   # keeping (ka,n,m_chunk) tensors — full CUDA parallelism across all brackets.
-  use_chunked <- as.double(ka) * n * m > 50e6
+  use_chunked <- if (!is.null(force_chunked)) isTRUE(force_chunked) else
+    as.double(ka) * n * m > 50e6
 
   # --- Memory safety check (GPU only) ---
   bytes_per_elem <- if (dtype == "float32") 4 else 8
