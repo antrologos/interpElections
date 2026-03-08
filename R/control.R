@@ -97,7 +97,8 @@ optim_control <- function(
     use_gpu         = NULL,
     device          = NULL,
     dtype           = "float32",
-    force_chunked   = NULL   # internal: override automatic gate (TRUE/FALSE/NULL)
+    force_chunked   = NULL,  # internal: override automatic gate (TRUE/FALSE/NULL)
+    chunk_size      = NULL   # internal: override VRAM-based m_chunk (positive integer)
 ) {
   # --- Validation ---
   if (!is.numeric(max_epochs) || length(max_epochs) != 1 || max_epochs < 1) {
@@ -167,7 +168,8 @@ optim_control <- function(
       use_gpu         = use_gpu,
       device          = device,
       dtype           = dtype,
-      force_chunked   = force_chunked
+      force_chunked   = force_chunked,
+      chunk_size      = chunk_size
     ),
     class = "interpElections_optim_control"
   )

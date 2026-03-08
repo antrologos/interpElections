@@ -135,6 +135,7 @@ optimize_alpha <- function(
   target_eff_src  <- optim$target_eff_src
   dual_eta        <- optim$dual_eta %||% 1.0
   force_chunked   <- optim$force_chunked
+  chunk_size      <- optim$chunk_size
   # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
   # at libtorch initialization; setting it after requireNamespace() is too late.
   # Harmless on non-MPS platforms (only activated when an MPS op is missing).
@@ -271,6 +272,7 @@ optimize_alpha <- function(
       target_eff_src = target_eff_src,
       dual_eta       = dual_eta,
       force_chunked  = force_chunked,
+      chunk_size     = chunk_size,
       verbose        = verbose
     )
   }
@@ -418,6 +420,7 @@ print.interpElections_optim <- function(x, ...) {
                              target_eff_src = NULL,
                              dual_eta = 1.0,
                              force_chunked = NULL,
+                             chunk_size = NULL,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -440,7 +443,7 @@ print.interpElections_optim <- function(x, ...) {
                barrier_mu, alpha_min,
                kernel, entropy_mu,
                target_eff_src, dual_eta,
-               force_chunked,
+               force_chunked, chunk_size,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         # Enable per-op MPS fallback BEFORE torch loads (env var is read
@@ -469,6 +472,7 @@ print.interpElections_optim <- function(x, ...) {
           target_eff_src = target_eff_src,
           dual_eta = dual_eta,
           force_chunked = force_chunked,
+          chunk_size = chunk_size,
           verbose = verbose
         )
       },
@@ -487,6 +491,7 @@ print.interpElections_optim <- function(x, ...) {
         target_eff_src = target_eff_src,
         dual_eta = dual_eta,
         force_chunked = force_chunked,
+        chunk_size = chunk_size,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -538,12 +543,13 @@ print.interpElections_optim <- function(x, ...) {
   # Verbose: print ~20 lines regardless of epoch count
   report_every <- max(1L, max_epochs %/% 20L)
 
-  # --- Station-chunked forward pass gate ---
-  # When ka*n*m > 50M, batched (ka,n,m) tensors exceed VRAM.
-  # Station-chunked path loops over station slices of size m_chunk,
-  # keeping (ka,n,m_chunk) tensors — full CUDA parallelism across all brackets.
+  # --- Station-chunked path gate ---
+  # When ka*n*m > 25M, use the analytical (station-chunked) gradient path.
+  # Threshold equals target_elements so the formula always yields >= 2 chunks.
+  # Faster than autograd backward() for all tested cities above this threshold,
+  # due to better GPU cache utilization at smaller m_chunk (≈ 25M / (ka*n)).
   use_chunked <- if (!is.null(force_chunked)) isTRUE(force_chunked) else
-    as.double(ka) * n * m > 50e6
+    as.double(ka) * n * m > 25e6
 
   # --- Memory safety check (GPU only) ---
   bytes_per_elem <- if (dtype == "float32") 4 else 8
@@ -559,18 +565,31 @@ print.interpElections_optim <- function(x, ...) {
       } else NA_real_
     }, error = function(e) NA_real_)
 
-    if (!is.na(vram_mb_for_chunk)) {
-      # 4 dominant tensors per chunk: log_K, W, grad_W, grad_log_K during backward.
-      m_chunk <- max(1L, min(m, as.integer(floor(
-        0.60 * vram_mb_for_chunk * 1e6 / (4.0 * ka * n * bytes_per_elem)))))
+    if (!is.null(chunk_size)) {
+      m_chunk <- max(1L, min(m, as.integer(chunk_size)))
     } else {
-      m_chunk <- min(m, 300L)  # CPU fallback
+      # Performance target: ~25M elements per chunk (ka × n × m_chunk ≈ 25M)
+      # balances GPU cache efficiency vs. kernel-launch overhead.
+      # Empirically calibrated on BH (n=5109,m=407), SP (n=26611,m=2028),
+      # RJ (n=13354,m=1392); validated on RTX 3060 8GB.
+      target_elements <- 25e6
+      m_chunk_perf    <- max(1L, min(m, as.integer(ceiling(
+        target_elements / (as.double(ka) * n)))))
+      if (!is.na(vram_mb_for_chunk)) {
+        # VRAM upper bound: prevent OOM on constrained hardware.
+        m_chunk_vram <- max(1L, as.integer(floor(
+          0.60 * vram_mb_for_chunk * 1e6 / (4.0 * ka * n * bytes_per_elem))))
+        m_chunk <- min(m_chunk_perf, m_chunk_vram)
+      } else {
+        m_chunk <- m_chunk_perf  # CPU: no VRAM query, performance target applies directly
+      }
+      m_chunk <- max(1L, m_chunk)
     }
     chunk_starts <- seq(1L, m, by = m_chunk)
     n_chunks     <- length(chunk_starts)
 
     if (verbose) message(sprintf(
-      "  Problem too large for batched path (%.0f MB); using station-chunked path (%d chunks, m_chunk=%d)",
+      "  Using station-chunked path (%.0f MB problem, %d chunks, m_chunk=%d)",
       estimated_mb, n_chunks, m_chunk))
 
   } else if (grepl("cuda", device, fixed = TRUE)) {
