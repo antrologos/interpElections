@@ -5,10 +5,12 @@
 \title{Routing control parameters}
 \usage{
 routing_control(
-  mode = "WALK",
+  mode = "AUTO",
   point_method = "pop_weighted",
   min_area_for_pop_weight = 1,
   max_trip_duration = 120L,
+  fallback_max_trip_duration = 90L,
+  unreachable_threshold = 0.01,
   n_threads = 4L,
   gtfs_zip_path = NULL,
   departure_datetime = NULL,
@@ -19,9 +21,18 @@ routing_control(
 }
 \arguments{
 \item{mode}{Character. Routing mode, using r5r convention:
-\code{"WALK"} (default), \code{"BICYCLE"}, \code{"CAR"}, \code{"TRANSIT"}, or
+\code{"AUTO"} (default), \code{"WALK"}, \code{"BICYCLE"}, \code{"CAR"}, \code{"TRANSIT"}, or
 combinations like \code{c("WALK", "TRANSIT")}. Passed directly to
-\code{\link[r5r:travel_time_matrix]{r5r::travel_time_matrix()}}.}
+\code{\link[r5r:travel_time_matrix]{r5r::travel_time_matrix()}}.
+
+When \code{mode = "AUTO"}, routing first tries \code{"WALK"} with
+\code{max_trip_duration}. If the fraction of tracts with no reachable
+station exceeds \code{unreachable_threshold}, the \strong{entire} matrix is
+re-computed with \code{"CAR"} and \code{fallback_max_trip_duration}. Travel
+times in the returned matrix are always from a single mode — never
+mixed. For municipalities with large rural areas or complex geography
+(rivers, forests), CAR mode may provide better coverage; AUTO handles
+this automatically.}
 
 \item{point_method}{Character. Method for computing representative points
 of census tracts. One of \code{"pop_weighted"} (default, uses WorldPop
@@ -34,7 +45,17 @@ point_on_surface. Default: 1.}
 
 \item{max_trip_duration}{Integer. Maximum trip duration in minutes.
 Pairs beyond this threshold are not routed and receive zero weight.
-Default: 120 (2 hours walking).}
+Default: 120 (2 hours walking). In AUTO mode, this is used for the
+initial WALK attempt.}
+
+\item{fallback_max_trip_duration}{Integer. Maximum trip duration in minutes
+for the CAR fallback when \code{mode = "AUTO"}. Ignored for other modes.
+Default: 90 (1.5 hours driving).}
+
+\item{unreachable_threshold}{Numeric between 0 and 1. Fraction of tracts
+that must be unreachable (zero reachable stations) to trigger the
+WALK-to-CAR switch in AUTO mode. Ignored for other modes.
+Default: 0.01 (1\%).}
 
 \item{n_threads}{Integer. Number of parallel threads for the r5r routing
 engine. Default: 4.}
@@ -70,8 +91,11 @@ Creates a control object for travel-time computation in
 override only what you need.
 }
 \examples{
-# Default settings (walking, 2h max)
+# Default settings (AUTO mode: walk first, car fallback if needed)
 routing_control()
+
+# Explicit walking mode (no fallback)
+routing_control(mode = "WALK")
 
 # Transit mode with GTFS
 routing_control(
@@ -79,6 +103,9 @@ routing_control(
   gtfs_zip_path = "sptrans.zip",
   departure_datetime = as.POSIXct("2022-10-02 10:00:00")
 )
+
+# AUTO mode with more lenient threshold (10\% unreachable to trigger CAR)
+routing_control(unreachable_threshold = 0.10)
 
 # Bicycle with centroid-based points
 routing_control(mode = "BICYCLE", point_method = "centroid")

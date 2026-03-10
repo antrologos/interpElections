@@ -5,7 +5,7 @@
 #'
 #' @param max_epochs Integer. Maximum number of epochs (full passes through
 #'   all tracts). The optimizer may stop earlier if convergence is detected.
-#'   Default: 10000.
+#'   Default: 50000.
 #' @param lr_init Numeric. Initial ADAM learning rate. In adaptive mode
 #'   (`target_eff_src` set), uses constant LR throughout (the dual update
 #'   changes the loss landscape every epoch, making monotone LR decay
@@ -21,7 +21,9 @@
 #'   against the deviance `patience` epochs ago and converges when the
 #'   relative improvement is less than `convergence_tol`. Works alongside a
 #'   gradient-based criterion that triggers when the relative gradient norm
-#'   is small for several consecutive epochs. Default: 100.
+#'   is small for several consecutive epochs. Convergence is never declared
+#'   before `max(3 * patience, 500)` epochs to allow sufficient exploration.
+#'   Default: 100.
 #' @param barrier_mu Numeric. Strength of the log-barrier penalty that
 #'   prevents any census tract from receiving zero predicted voters.
 #'   Set to 0 to disable. Default: 1.
@@ -65,6 +67,15 @@
 #'   `"cpu"`. Only used when GPU is enabled. Default: NULL (auto-detect).
 #' @param dtype Character. Torch dtype: `"float32"` or `"float64"`. Default:
 #'   `"float32"`. Float32 halves memory usage with negligible precision loss.
+#' @param report_every Integer or NULL. How often to print epoch progress.
+#'   `NULL` (default) prints ~20 lines automatically (`max_epochs %/% 20`).
+#'   Set to a smaller value (e.g., `10`) for detailed per-batch reporting with
+#'   timing. With `report_every = 1` every epoch is printed.
+#' @param perf_log Character or NULL. Path to a CSV file for saving per-epoch
+#'   performance metrics (loss components, gradient norm, lr, alpha stats,
+#'   effective sources, wall-clock time per epoch). Useful for benchmarking
+#'   and studying convergence. `NULL` (default) disables the log. The file is
+#'   written once after the epoch loop completes (or at convergence).
 #'
 #' @return A list of class `"interpElections_optim_control"` with one element
 #'   per parameter.
@@ -83,7 +94,7 @@
 #'
 #' @export
 optim_control <- function(
-    max_epochs      = 10000L,
+    max_epochs      = 50000L,
     lr_init         = 0.05,
     convergence_tol = 1e-5,
     patience        = 100L,
@@ -98,7 +109,9 @@ optim_control <- function(
     device          = NULL,
     dtype           = "float32",
     force_chunked   = NULL,  # internal: override automatic gate (TRUE/FALSE/NULL)
-    chunk_size      = NULL   # internal: override VRAM-based m_chunk (positive integer)
+    chunk_size      = NULL,  # internal: override VRAM-based m_chunk (positive integer)
+    report_every    = NULL,
+    perf_log        = NULL
 ) {
   # --- Validation ---
   if (!is.numeric(max_epochs) || length(max_epochs) != 1 || max_epochs < 1) {
@@ -151,6 +164,17 @@ optim_control <- function(
       !dtype %in% c("float32", "float64")) {
     stop('`dtype` must be "float32" or "float64"', call. = FALSE)
   }
+  if (!is.null(report_every)) {
+    if (!is.numeric(report_every) || length(report_every) != 1 ||
+        report_every < 1 || !is.finite(report_every)) {
+      stop("`report_every` must be a positive integer or NULL", call. = FALSE)
+    }
+  }
+  if (!is.null(perf_log)) {
+    if (!is.character(perf_log) || length(perf_log) != 1) {
+      stop("`perf_log` must be a file path string or NULL", call. = FALSE)
+    }
+  }
 
   structure(
     list(
@@ -169,7 +193,9 @@ optim_control <- function(
       device          = device,
       dtype           = dtype,
       force_chunked   = force_chunked,
-      chunk_size      = chunk_size
+      chunk_size      = chunk_size,
+      report_every    = if (!is.null(report_every)) as.integer(report_every) else NULL,
+      perf_log        = perf_log
     ),
     class = "interpElections_optim_control"
   )
@@ -183,9 +209,18 @@ optim_control <- function(
 #' override only what you need.
 #'
 #' @param mode Character. Routing mode, using r5r convention:
-#'   `"WALK"` (default), `"BICYCLE"`, `"CAR"`, `"TRANSIT"`, or
+#'   `"AUTO"` (default), `"WALK"`, `"BICYCLE"`, `"CAR"`, `"TRANSIT"`, or
 #'   combinations like `c("WALK", "TRANSIT")`. Passed directly to
 #'   [r5r::travel_time_matrix()].
+#'
+#'   When `mode = "AUTO"`, routing first tries `"WALK"` with
+#'   `max_trip_duration`. If the fraction of tracts with no reachable
+#'   station exceeds `unreachable_threshold`, the **entire** matrix is
+#'   re-computed with `"CAR"` and `fallback_max_trip_duration`. Travel
+#'   times in the returned matrix are always from a single mode — never
+#'   mixed. For municipalities with large rural areas or complex geography
+#'   (rivers, forests), CAR mode may provide better coverage; AUTO handles
+#'   this automatically.
 #' @param point_method Character. Method for computing representative points
 #'   of census tracts. One of `"pop_weighted"` (default, uses WorldPop
 #'   raster), `"point_on_surface"`, or `"centroid"`.
@@ -195,7 +230,15 @@ optim_control <- function(
 #'   point_on_surface. Default: 1.
 #' @param max_trip_duration Integer. Maximum trip duration in minutes.
 #'   Pairs beyond this threshold are not routed and receive zero weight.
-#'   Default: 120 (2 hours walking).
+#'   Default: 120 (2 hours walking). In AUTO mode, this is used for the
+#'   initial WALK attempt.
+#' @param fallback_max_trip_duration Integer. Maximum trip duration in minutes
+#'   for the CAR fallback when `mode = "AUTO"`. Ignored for other modes.
+#'   Default: 90 (1.5 hours driving).
+#' @param unreachable_threshold Numeric between 0 and 1. Fraction of tracts
+#'   that must be unreachable (zero reachable stations) to trigger the
+#'   WALK-to-CAR switch in AUTO mode. Ignored for other modes.
+#'   Default: 0.01 (1%).
 #' @param n_threads Integer. Number of parallel threads for the r5r routing
 #'   engine. Default: 4.
 #' @param gtfs_zip_path Character or NULL. Path to a GTFS `.zip` file for
@@ -219,8 +262,11 @@ optim_control <- function(
 #'   per parameter.
 #'
 #' @examples
-#' # Default settings (walking, 2h max)
+#' # Default settings (AUTO mode: walk first, car fallback if needed)
 #' routing_control()
+#'
+#' # Explicit walking mode (no fallback)
+#' routing_control(mode = "WALK")
 #'
 #' # Transit mode with GTFS
 #' routing_control(
@@ -229,6 +275,9 @@ optim_control <- function(
 #'   departure_datetime = as.POSIXct("2022-10-02 10:00:00")
 #' )
 #'
+#' # AUTO mode with more lenient threshold (10% unreachable to trigger CAR)
+#' routing_control(unreachable_threshold = 0.10)
+#'
 #' # Bicycle with centroid-based points
 #' routing_control(mode = "BICYCLE", point_method = "centroid")
 #'
@@ -236,23 +285,25 @@ optim_control <- function(
 #'
 #' @export
 routing_control <- function(
-    mode                    = "WALK",
-    point_method            = "pop_weighted",
-    min_area_for_pop_weight = 1,
-    max_trip_duration       = 120L,
-    n_threads               = 4L,
-    gtfs_zip_path           = NULL,
-    departure_datetime      = NULL,
-    pop_raster              = NULL,
-    osm_buffer_km           = 10,
-    fill_missing            = NULL
+    mode                       = "AUTO",
+    point_method               = "pop_weighted",
+    min_area_for_pop_weight    = 1,
+    max_trip_duration          = 120L,
+    fallback_max_trip_duration = 90L,
+    unreachable_threshold      = 0.01,
+    n_threads                  = 4L,
+    gtfs_zip_path              = NULL,
+    departure_datetime         = NULL,
+    pop_raster                 = NULL,
+    osm_buffer_km              = 10,
+    fill_missing               = NULL
 ) {
   # --- Validation ---
   if (!is.character(mode) || length(mode) == 0) {
-    stop("`mode` must be a character vector (e.g., \"WALK\", c(\"WALK\", \"TRANSIT\"))",
+    stop("`mode` must be a character vector (e.g., \"AUTO\", \"WALK\", c(\"WALK\", \"TRANSIT\"))",
          call. = FALSE)
   }
-  valid_modes <- c("WALK", "BICYCLE", "CAR", "TRANSIT", "BUS", "RAIL",
+  valid_modes <- c("AUTO", "WALK", "BICYCLE", "CAR", "TRANSIT", "BUS", "RAIL",
                     "FERRY", "CABLE_CAR", "GONDOLA", "FUNICULAR")
   bad <- setdiff(toupper(mode), valid_modes)
   if (length(bad) > 0) {
@@ -261,6 +312,19 @@ routing_control <- function(
          call. = FALSE)
   }
   mode <- toupper(mode)
+  if ("AUTO" %in% mode && length(mode) > 1) {
+    stop("\"AUTO\" cannot be combined with other modes", call. = FALSE)
+  }
+  if (!is.numeric(fallback_max_trip_duration) ||
+      length(fallback_max_trip_duration) != 1 ||
+      fallback_max_trip_duration <= 0) {
+    stop("`fallback_max_trip_duration` must be a positive number", call. = FALSE)
+  }
+  if (!is.numeric(unreachable_threshold) ||
+      length(unreachable_threshold) != 1 ||
+      unreachable_threshold < 0 || unreachable_threshold > 1) {
+    stop("`unreachable_threshold` must be a number between 0 and 1", call. = FALSE)
+  }
 
   valid_methods <- c("pop_weighted", "point_on_surface", "centroid")
   point_method <- match.arg(point_method, valid_methods)
@@ -304,16 +368,18 @@ routing_control <- function(
 
   structure(
     list(
-      mode                    = mode,
-      point_method            = point_method,
-      min_area_for_pop_weight = min_area_for_pop_weight,
-      max_trip_duration       = as.integer(max_trip_duration),
-      n_threads               = as.integer(n_threads),
-      gtfs_zip_path           = gtfs_zip_path,
-      departure_datetime      = departure_datetime,
-      pop_raster              = pop_raster,
-      osm_buffer_km           = osm_buffer_km,
-      fill_missing            = fill_resolved
+      mode                       = mode,
+      point_method               = point_method,
+      min_area_for_pop_weight    = min_area_for_pop_weight,
+      max_trip_duration          = as.integer(max_trip_duration),
+      fallback_max_trip_duration = as.integer(fallback_max_trip_duration),
+      unreachable_threshold      = unreachable_threshold,
+      n_threads                  = as.integer(n_threads),
+      gtfs_zip_path              = gtfs_zip_path,
+      departure_datetime         = departure_datetime,
+      pop_raster                 = pop_raster,
+      osm_buffer_km              = osm_buffer_km,
+      fill_missing               = fill_resolved
     ),
     class = "interpElections_routing_control"
   )
@@ -342,6 +408,8 @@ print.interpElections_optim_control <- function(x, ...) {
   cat("  use_gpu:", gpu_str, "\n")
   cat("  device:", x$device %||% "auto", "\n")
   cat("  dtype:", x$dtype, "\n")
+  if (!is.null(x$report_every)) cat("  report_every:", x$report_every, "\n")
+  if (!is.null(x$perf_log))    cat("  perf_log:", x$perf_log, "\n")
   invisible(x)
 }
 
@@ -350,6 +418,10 @@ print.interpElections_optim_control <- function(x, ...) {
 print.interpElections_routing_control <- function(x, ...) {
   cat("interpElections routing control:\n")
   cat("  mode:", paste(x$mode, collapse = ";"), "\n")
+  if (identical(x$mode, "AUTO")) {
+    cat("  fallback_max_trip_duration:", x$fallback_max_trip_duration, "min\n")
+    cat("  unreachable_threshold:", sprintf("%.0f%%", x$unreachable_threshold * 100), "\n")
+  }
   cat("  point_method:", x$point_method, "\n")
   cat("  min_area_for_pop_weight:", x$min_area_for_pop_weight, "\n")
   cat("  max_trip_duration:", x$max_trip_duration, "min\n")

@@ -136,6 +136,8 @@ optimize_alpha <- function(
   dual_eta        <- optim$dual_eta %||% 1.0
   force_chunked   <- optim$force_chunked
   chunk_size      <- optim$chunk_size
+  report_every_opt <- optim$report_every
+  perf_log_opt     <- optim$perf_log
   # Enable per-op MPS fallback BEFORE loading torch.  The env var is read
   # at libtorch initialization; setting it after requireNamespace() is too late.
   # Harmless on non-MPS platforms (only activated when an MPS op is missing).
@@ -273,6 +275,8 @@ optimize_alpha <- function(
       dual_eta       = dual_eta,
       force_chunked  = force_chunked,
       chunk_size     = chunk_size,
+      report_every   = report_every_opt,
+      perf_log       = perf_log_opt,
       verbose        = verbose
     )
   }
@@ -421,6 +425,8 @@ print.interpElections_optim <- function(x, ...) {
                              dual_eta = 1.0,
                              force_chunked = NULL,
                              chunk_size = NULL,
+                             report_every = NULL,
+                             perf_log = NULL,
                              verbose) {
 
   # --- RStudio subprocess delegation ---
@@ -444,6 +450,7 @@ print.interpElections_optim <- function(x, ...) {
                kernel, entropy_mu,
                target_eff_src, dual_eta,
                force_chunked, chunk_size,
+               report_every, perf_log,
                verbose, pkg_path) {
         Sys.setenv(INTERPELECTIONS_SUBPROCESS = "1")
         # Enable per-op MPS fallback BEFORE torch loads (env var is read
@@ -473,6 +480,8 @@ print.interpElections_optim <- function(x, ...) {
           dual_eta = dual_eta,
           force_chunked = force_chunked,
           chunk_size = chunk_size,
+          report_every = report_every,
+          perf_log = perf_log,
           verbose = verbose
         )
       },
@@ -492,6 +501,8 @@ print.interpElections_optim <- function(x, ...) {
         dual_eta = dual_eta,
         force_chunked = force_chunked,
         chunk_size = chunk_size,
+        report_every = report_every,
+        perf_log = perf_log,
         verbose = verbose,
         pkg_path = .find_package_root()
       ),
@@ -540,8 +551,9 @@ print.interpElections_optim <- function(x, ...) {
   lr_eta_min_rat <- 0.01           # floor at 1% of lr_init
   min_lr         <- lr_init * lr_eta_min_rat
 
-  # Verbose: print ~20 lines regardless of epoch count
-  report_every <- max(1L, max_epochs %/% 20L)
+  # Verbose: user-specified frequency or auto (~20 lines for current max_epochs)
+  report_every <- if (!is.null(report_every)) as.integer(report_every) else
+    max(1L, max_epochs %/% 20L)
 
   # --- Station-chunked path gate ---
   # When ka*n*m > 25M, use the analytical (station-chunked) gradient path.
@@ -869,6 +881,19 @@ print.interpElections_optim <- function(x, ...) {
     needs_W_3d <- entropy_mu > 0 || adaptive
 
     prev_dH_dW_agg <- NULL  # delayed entropy gradient: updated at end of each epoch
+
+    # Minimum epoch count: prevent premature convergence before the optimizer
+    # has had a chance to explore the loss landscape (constant, hoisted out).
+    min_epochs <- max(3L * patience, 500L)
+
+    # Timing state for verbose reporting and performance log.
+    # proc.time()[3] is wall-clock elapsed seconds (platform-independent).
+    t_loop_start   <- proc.time()[3]
+    t_last_report  <- t_loop_start
+    last_report_ep <- 0L
+    # perf_rows accumulates one data.frame row per reported epoch.
+    # Allocated only when perf_log is requested to avoid overhead.
+    perf_rows <- if (!is.null(perf_log)) list() else NULL
 
     for (epoch in seq_len(max_epochs)) {
 
@@ -1340,11 +1365,25 @@ print.interpElections_optim <- function(x, ...) {
         }
       }
 
+      # Deviance trend check: block convergence when deviance is rising
+      # (dual-ascent tension — the entropy penalty is fighting the fit).
+      deviance_ok <- TRUE
+      if (adaptive && epoch > 500L) {
+        recent_dev <- deviance_history[max(1L, epoch - 99L):epoch]
+        early_dev  <- deviance_history[max(1L, epoch - 499L):max(1L, epoch - 400L)]
+        recent_dev <- recent_dev[is.finite(recent_dev)]
+        early_dev  <- early_dev[is.finite(early_dev)]
+        if (length(recent_dev) >= 5L && length(early_dev) >= 5L) {
+          deviance_ok <- mean(recent_dev) <= mean(early_dev) * 1.01
+        }
+      }
+
       # Tier 1: Gradient-based convergence (true stationarity).
       # rel_grad = |grad|_2 / (1 + |theta|_2) is scale-invariant.
-      # Require 5 consecutive epochs to filter transient cancellations
+      # Require 10 consecutive epochs to filter transient cancellations
       # in the non-stationary objective (entropy_mu changes each epoch).
-      if (isTRUE(is.finite(last_grad_norm)) && epoch >= 20L && grad_ok) {
+      if (isTRUE(is.finite(last_grad_norm)) && epoch >= min_epochs &&
+          grad_ok && deviance_ok) {
         theta_norm <- tryCatch(
           as.numeric(theta_torch$detach()$norm()$cpu()),
           error = function(e) NA_real_
@@ -1356,35 +1395,57 @@ print.interpElections_optim <- function(x, ...) {
         }
 
         if (isTRUE(rel_grad < 1e-4) && isTRUE(eff_near_target_tight) &&
-            (dual_stable || total_loss_stable)) {
+            dual_stable && total_loss_stable) {
           grad_conv_counter <- grad_conv_counter + 1L
         } else {
           grad_conv_counter <- 0L
         }
 
-        if (grad_conv_counter >= 5L) {
+        if (grad_conv_counter >= 10L) {
           converged <- TRUE
+          t_conv <- proc.time()[3]
+          total_sec_conv <- t_conv - t_loop_start
+          if (!is.null(perf_rows)) {
+            alpha_min_c <- as.numeric(alpha_all$min()$item())
+            alpha_med_c <- as.numeric(alpha_all$median()$item())
+            alpha_max_c <- as.numeric(alpha_all$max()$item())
+            perf_rows[[length(perf_rows) + 1L]] <- data.frame(
+              epoch         = epoch,
+              total_loss    = total_loss_val,
+              deviance      = data_loss_val,
+              barrier       = barrier_val,
+              entropy       = entropy_val,
+              grad_norm     = last_grad_norm %||% NA_real_,
+              lr            = optimizer$param_groups[[1]]$lr,
+              alpha_min     = alpha_min_c,
+              alpha_med     = alpha_med_c,
+              alpha_max     = alpha_max_c,
+              eff_src       = if (!is.na(median_eff_src)) median_eff_src else NA_real_,
+              entropy_mu_val = if (adaptive) entropy_mu else NA_real_,
+              elapsed_sec   = total_sec_conv,
+              sec_per_epoch = NA_real_,
+              stringsAsFactors = FALSE
+            )
+          }
           if (verbose) {
             quad_conv_log <- if (adaptive && quad_val > 0) {
               sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
             } else ""
             stability_log <- if (adaptive && !is.na(mu_rel_change)) {
-              gate <- if (dual_stable) "mu" else if (total_loss_stable) "total_loss" else "?"
-              sprintf(", mu_change=%.4f%%, tl_change=%.4f%% [gate=%s]",
+              sprintf(", mu_change=%.4f%%, tl_change=%.4f%%",
                       mu_rel_change * 100,
-                      if (!is.na(tl_rel_change)) tl_rel_change * 100 else NA_real_,
-                      gate)
+                      if (!is.na(tl_rel_change)) tl_rel_change * 100 else NA_real_)
             } else ""
             message(sprintf(paste0(
               "  Converged at epoch %d (gradient criterion: ",
-              "rel_grad=%.2e for 5 epochs, loss=%s",
-              " [deviance=%s, barrier=%s, entropy=%s%s]%s)"),
+              "rel_grad=%.2e for 10 epochs, loss=%s",
+              " [deviance=%s, barrier=%s, entropy=%s%s]%s, %.0fs elapsed)"),
               epoch, rel_grad,
               format(round(total_loss_val), big.mark = ","),
               format(round(data_loss_val), big.mark = ","),
               format(round(barrier_val), big.mark = ","),
               format(round(entropy_val), big.mark = ","),
-              quad_conv_log, stability_log))
+              quad_conv_log, stability_log, total_sec_conv))
           }
           break
         }
@@ -1401,18 +1462,44 @@ print.interpElections_optim <- function(x, ...) {
       # by dual ascent adjustments.
       # Only active in the refinement phase (LR < 10% of lr_init) to avoid
       # triggering during high-LR exploration after warm restarts.
+      # In adaptive mode, requires BOTH dual_stable AND total_loss_stable
+      # to prevent premature convergence while entropy_mu is still drifting.
       conv_metric <- if (adaptive) data_loss_val else total_loss_val
       lr_in_refinement <- if (adaptive) TRUE else (current_lr < lr_init * 0.1)
 
-      if (epoch > patience && lr_in_refinement &&
-          isTRUE(eff_near_target) && (dual_stable || total_loss_stable) &&
-          isTRUE(is.finite(conv_metric))) {
+      if (epoch >= min_epochs && epoch > patience && lr_in_refinement &&
+          isTRUE(eff_near_target) && dual_stable && total_loss_stable &&
+          deviance_ok && isTRUE(is.finite(conv_metric))) {
         lookback <- if (adaptive) deviance_history[epoch - patience]
                     else epoch_losses[epoch - patience]
         if (isTRUE(is.finite(lookback)) && abs(lookback) > 1e-10) {
           window_rel_change <- (lookback - conv_metric) / abs(lookback)
           if (isTRUE(abs(window_rel_change) < convergence_tol)) {
             converged <- TRUE
+            t_conv <- proc.time()[3]
+            total_sec_conv <- t_conv - t_loop_start
+            if (!is.null(perf_rows)) {
+              alpha_min_c <- as.numeric(alpha_all$min()$item())
+              alpha_med_c <- as.numeric(alpha_all$median()$item())
+              alpha_max_c <- as.numeric(alpha_all$max()$item())
+              perf_rows[[length(perf_rows) + 1L]] <- data.frame(
+                epoch         = epoch,
+                total_loss    = total_loss_val,
+                deviance      = data_loss_val,
+                barrier       = barrier_val,
+                entropy       = entropy_val,
+                grad_norm     = last_grad_norm %||% NA_real_,
+                lr            = optimizer$param_groups[[1]]$lr,
+                alpha_min     = alpha_min_c,
+                alpha_med     = alpha_med_c,
+                alpha_max     = alpha_max_c,
+                eff_src       = if (!is.na(median_eff_src)) median_eff_src else NA_real_,
+                entropy_mu_val = if (adaptive) entropy_mu else NA_real_,
+                elapsed_sec   = total_sec_conv,
+                sec_per_epoch = NA_real_,
+                stringsAsFactors = FALSE
+              )
+            }
             if (verbose) {
               eff_conv <- if ((entropy_mu > 0 || adaptive) &&
                               !is.na(median_eff_src)) {
@@ -1422,11 +1509,9 @@ print.interpElections_optim <- function(x, ...) {
                 sprintf(", entropy_mu=%.4f", entropy_mu)
               } else ""
               stability_log <- if (adaptive && !is.na(mu_rel_change)) {
-                gate <- if (dual_stable) "mu" else if (total_loss_stable) "total_loss" else "?"
-                sprintf(", mu_change=%.4f%%, tl_change=%.4f%% [gate=%s]",
+                sprintf(", mu_change=%.4f%%, tl_change=%.4f%%",
                         mu_rel_change * 100,
-                        if (!is.na(tl_rel_change)) tl_rel_change * 100 else NA_real_,
-                        gate)
+                        if (!is.na(tl_rel_change)) tl_rel_change * 100 else NA_real_)
               } else ""
               quad_win_log <- if (adaptive && quad_val > 0) {
                 sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
@@ -1434,7 +1519,7 @@ print.interpElections_optim <- function(x, ...) {
               message(sprintf(paste0(
                 "  Converged at epoch %d (loss=%s",
                 " [deviance=%s, barrier=%s, entropy=%s%s]%s%s%s, ",
-                "lr=%.1e, %.6f%% change over last %d epochs)"),
+                "lr=%.1e, %.6f%% change over last %d epochs, %.0fs elapsed)"),
                 epoch,
                 format(round(total_loss_val), big.mark = ","),
                 format(round(data_loss_val), big.mark = ","),
@@ -1444,7 +1529,8 @@ print.interpElections_optim <- function(x, ...) {
                 eff_conv,
                 dual_conv,
                 stability_log,
-                current_lr, abs(window_rel_change) * 100, patience))
+                current_lr, abs(window_rel_change) * 100, patience,
+                total_sec_conv))
             }
             break
           }
@@ -1494,42 +1580,95 @@ print.interpElections_optim <- function(x, ...) {
         }
       }
 
-      if (verbose &&
-          (epoch == 1L || epoch %% report_every == 0L)) {
-        eff_src_log <- if ((entropy_mu > 0 || adaptive) &&
-                            !is.na(median_eff_src)) {
-          sprintf(", eff_src=%.1f", median_eff_src)
-        } else ""
-        dual_log <- if (adaptive) {
-          sprintf(", entropy_mu=%.4f", entropy_mu)
-        } else ""
-        quad_log <- if (adaptive && quad_val > 0) {
-          sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
-        } else ""
-        components <- sprintf(" [deviance=%s, barrier=%s, entropy=%s%s]",
-          format(round(data_loss_val), big.mark = ","),
-          format(round(barrier_val), big.mark = ","),
-          format(round(entropy_val), big.mark = ","),
-          quad_log)
-        # Compute alpha stats on GPU (3 scalars) instead of transferring
-        # the full alpha matrix to CPU for min/median/max.
-        alpha_min_val <- as.numeric(alpha_all$min()$item())
-        alpha_med_val <- as.numeric(alpha_all$median()$item())
-        alpha_max_val <- as.numeric(alpha_all$max()$item())
-        message(sprintf(paste0(
-          "  Epoch %3d/%d: loss=%s%s, grad=%.2e, lr=%.1e, ",
-          "alpha=[%.2f, %.2f, %.2f]%s%s"),
-          epoch, max_epochs,
-          format(round(total_loss_val), big.mark = ","),
-          components,
-          last_grad_norm,
-          optimizer$param_groups[[1]]$lr,
-          alpha_min_val, alpha_med_val, alpha_max_val,
-          eff_src_log,
-          dual_log
-        ))
+      if (verbose || !is.null(perf_rows)) {
+        if (epoch == 1L || epoch %% report_every == 0L) {
+          # --- Timing ---
+          t_now         <- proc.time()[3]
+          n_ep_batch    <- epoch - last_report_ep
+          sec_batch     <- t_now - t_last_report
+          sec_per_ep    <- if (n_ep_batch > 0L) sec_batch / n_ep_batch else NA_real_
+          total_sec     <- t_now - t_loop_start
+          t_last_report  <- t_now
+          last_report_ep <- epoch
+
+          # Compute alpha stats on GPU (3 scalars) instead of transferring
+          # the full alpha matrix to CPU for min/median/max.
+          alpha_min_val <- as.numeric(alpha_all$min()$item())
+          alpha_med_val <- as.numeric(alpha_all$median()$item())
+          alpha_max_val <- as.numeric(alpha_all$max()$item())
+
+          if (!is.null(perf_rows)) {
+            perf_rows[[length(perf_rows) + 1L]] <- data.frame(
+              epoch          = epoch,
+              total_loss     = total_loss_val,
+              deviance       = data_loss_val,
+              barrier        = barrier_val,
+              entropy        = entropy_val,
+              grad_norm      = last_grad_norm %||% NA_real_,
+              lr             = optimizer$param_groups[[1]]$lr,
+              alpha_min      = alpha_min_val,
+              alpha_med      = alpha_med_val,
+              alpha_max      = alpha_max_val,
+              eff_src        = if (!is.na(median_eff_src)) median_eff_src else NA_real_,
+              entropy_mu_val = if (adaptive) entropy_mu else NA_real_,
+              elapsed_sec    = total_sec,
+              sec_per_epoch  = sec_per_ep,
+              stringsAsFactors = FALSE
+            )
+          }
+
+          if (verbose) {
+            eff_src_log <- if ((entropy_mu > 0 || adaptive) &&
+                               !is.na(median_eff_src)) {
+              sprintf(", eff_src=%.1f", median_eff_src)
+            } else ""
+            dual_log <- if (adaptive) {
+              sprintf(", entropy_mu=%.4f", entropy_mu)
+            } else ""
+            quad_log <- if (adaptive && quad_val > 0) {
+              sprintf(", quad=%s", format(round(quad_val), big.mark = ","))
+            } else ""
+            components <- sprintf(" [deviance=%s, barrier=%s, entropy=%s%s]",
+              format(round(data_loss_val), big.mark = ","),
+              format(round(barrier_val), big.mark = ","),
+              format(round(entropy_val), big.mark = ","),
+              quad_log)
+            timing_log <- if (is.finite(sec_per_ep)) {
+              sprintf(" [%.2fs/ep, %.0fs total]", sec_per_ep, total_sec)
+            } else {
+              sprintf(" [%.0fs total]", total_sec)
+            }
+            message(sprintf(paste0(
+              "  Epoch %3d/%d: loss=%s%s, grad=%.2e, lr=%.1e, ",
+              "alpha=[%.2f, %.2f, %.2f]%s%s%s"),
+              epoch, max_epochs,
+              format(round(total_loss_val), big.mark = ","),
+              components,
+              last_grad_norm,
+              optimizer$param_groups[[1]]$lr,
+              alpha_min_val, alpha_med_val, alpha_max_val,
+              eff_src_log,
+              dual_log,
+              timing_log
+            ))
+          }
+        }
       }
     }  # end epoch loop
+
+    # Write performance log if requested
+    if (!is.null(perf_log) && !is.null(perf_rows) && length(perf_rows) > 0L) {
+      tryCatch({
+        perf_df <- do.call(rbind, perf_rows)
+        log_dir <- dirname(normalizePath(perf_log, mustWork = FALSE))
+        if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE)
+        write.csv(perf_df, perf_log, row.names = FALSE)
+        if (verbose) message(sprintf("  Performance log saved: %s", perf_log))
+      }, error = function(e) {
+        warning(sprintf("Could not write perf_log '%s': %s",
+                        perf_log, conditionMessage(e)), call. = FALSE)
+      })
+    }
 
     # Extract final-epoch W for post-loop model selection (convergence
     # override, fallback paths).  Single transfer, amortized over all epochs.

@@ -63,15 +63,21 @@ compute_travel_times <- function(
     verbose = TRUE
 ) {
   # Extract from control object
-  point_method            <- routing$point_method
-  pop_raster              <- routing$pop_raster
-  min_area_for_pop_weight <- routing$min_area_for_pop_weight
-  mode                    <- routing$mode
-  max_trip_duration       <- routing$max_trip_duration
-  fill_missing            <- routing$fill_missing
-  n_threads               <- routing$n_threads
-  departure_datetime      <- routing$departure_datetime
-  gtfs_zip_path           <- routing$gtfs_zip_path
+  point_method               <- routing$point_method
+  pop_raster                 <- routing$pop_raster
+  min_area_for_pop_weight    <- routing$min_area_for_pop_weight
+  original_mode              <- routing$mode
+  max_trip_duration          <- routing$max_trip_duration
+  fallback_max_trip_duration <- routing$fallback_max_trip_duration %||% 60L
+  unreachable_threshold      <- routing$unreachable_threshold %||% 0.05
+  fill_missing               <- routing$fill_missing
+  n_threads                  <- routing$n_threads
+  departure_datetime         <- routing$departure_datetime
+  gtfs_zip_path              <- routing$gtfs_zip_path
+
+  # AUTO mode: start with WALK, may escalate to CAR after routing
+  is_auto_mode <- identical(original_mode, "AUTO")
+  mode <- if (is_auto_mode) "WALK" else original_mode
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("The 'sf' package is required for compute_travel_times()",
          call. = FALSE)
@@ -374,15 +380,13 @@ compute_travel_times <- function(
       tt_values[valid]
   }
 
-  # Replace any remaining NA with fill_missing (if fill_missing is not NA)
-  if (!is.na(fill_missing)) {
-    mat[is.na(mat)] <- fill_missing
-  }
-
   # Convert any Inf to NA (supports legacy fill_missing = Inf)
   if (any(is.infinite(mat))) {
     mat[is.infinite(mat)] <- NA_real_
   }
+
+  # NOTE: fill_missing replacement is deferred until after AUTO escalation
+  # and centroid retry, so unreachable detection works on raw NAs.
 
   # Diagnostic: detect tracts where ALL travel times are NA
   all_na <- rowSums(!is.na(mat)) == 0L
@@ -481,6 +485,194 @@ compute_travel_times <- function(
         n_valid <- sum(!is.na(mat))
       }
     }
+  }
+
+  # --- AUTO mode escalation: switch to CAR if too many unreachable ---
+  mode_used <- if (is_auto_mode) "WALK" else paste(original_mode, collapse = ";")
+  if (is_auto_mode && n_unreachable > 0) {
+    n_tracts <- nrow(mat)
+    unreachable_frac <- n_unreachable / n_tracts
+    if (unreachable_frac >= unreachable_threshold) {
+      if (verbose) {
+        message(sprintf(
+          "  AUTO mode: %.1f%% of tracts (%d/%d) unreachable with WALK. Re-routing entire matrix with CAR (max %d min)...",
+          unreachable_frac * 100, n_unreachable, n_tracts,
+          fallback_max_trip_duration))
+      }
+      # Re-route entire matrix with CAR — no mixing
+      if (use_subprocess) {
+        tt_car <- .run_r5r_subprocess(
+          network_path       = network_path,
+          origins            = origins,
+          destinations       = destinations,
+          mode               = "CAR",
+          max_trip_duration  = fallback_max_trip_duration,
+          n_threads          = n_threads,
+          departure_datetime = departure_datetime,
+          verbose            = verbose
+        )
+      } else {
+        tt_car_args <- list(
+          r5r_core,
+          origins            = origins,
+          destinations       = destinations,
+          mode               = "CAR",
+          max_trip_duration  = fallback_max_trip_duration,
+          n_threads          = n_threads,
+          verbose            = FALSE,
+          max_rides          = 1L
+        )
+        if (!is.null(departure_datetime)) {
+          tt_car_args$departure_datetime <- departure_datetime
+        }
+        if (verbose) message("  Computing CAR travel times...")
+        tt_car <- suppressMessages(do.call(r5r::travel_time_matrix, tt_car_args))
+      }
+
+      # Rebuild matrix from CAR results
+      mat <- matrix(fill_missing,
+                    nrow = length(tract_ids),
+                    ncol = length(point_ids),
+                    dimnames = list(tract_ids, point_ids))
+
+      from_car <- as.character(tt_car$from_id)
+      to_car   <- as.character(tt_car$to_id)
+      fwd_car  <- sum(from_car %in% tract_ids)
+      rev_car  <- sum(to_car   %in% tract_ids)
+
+      if (fwd_car >= rev_car) {
+        row_car <- match(from_car, tract_ids)
+        col_car <- match(to_car, point_ids)
+      } else {
+        if (verbose) {
+          message("  Note: r5r swapped origins/destinations (CAR); adjusting ID mapping")
+        }
+        row_car <- match(to_car, tract_ids)
+        col_car <- match(from_car, point_ids)
+      }
+      valid_car <- !is.na(row_car) & !is.na(col_car)
+
+      tt_car_col <- intersect(c("travel_time_p50", "travel_time"), names(tt_car))
+      if (length(tt_car_col) == 0) {
+        stop("r5r CAR output missing travel time column. ",
+             "Found: ", paste(names(tt_car), collapse = ", "),
+             call. = FALSE)
+      }
+      if (any(valid_car)) {
+        mat[cbind(row_car[valid_car], col_car[valid_car])] <-
+          tt_car[[tt_car_col[1]]][valid_car]
+      }
+      if (any(is.infinite(mat))) {
+        mat[is.infinite(mat)] <- NA_real_
+      }
+
+      # Recount unreachable after CAR routing
+      all_na <- rowSums(!is.na(mat)) == 0L
+      n_unreachable_car <- sum(all_na)
+      n_valid <- sum(!is.na(mat))
+      n_total <- length(tract_ids) * length(point_ids)
+
+      if (verbose) {
+        message(sprintf(
+          "  AUTO mode switched to CAR: %d unreachable tracts after CAR routing (was %d with WALK)",
+          n_unreachable_car, as.integer(unreachable_frac * n_tracts)))
+      }
+
+      # Centroid retry for tracts still unreachable after CAR routing
+      if (n_unreachable_car > 0) {
+        unreachable_car_ids <- tract_ids[all_na]
+        unreachable_car_sf <- tracts_sf[
+          as.character(tracts_sf[[tract_id]]) %in% unreachable_car_ids, ]
+
+        if (nrow(unreachable_car_sf) > 0) {
+          centroid_car_pts <- suppressWarnings(
+            sf::st_point_on_surface(sf::st_transform(unreachable_car_sf, 4326))
+          )
+          centroid_car_origins <- data.frame(
+            id  = as.character(centroid_car_pts[[tract_id]]),
+            lon = sf::st_coordinates(centroid_car_pts)[, 1],
+            lat = sf::st_coordinates(centroid_car_pts)[, 2]
+          )
+
+          if (verbose) {
+            message(sprintf(
+              "  Retrying %d unreachable tract(s) with centroid fallback (CAR)...",
+              nrow(centroid_car_origins)))
+          }
+
+          if (use_subprocess) {
+            tt_car2 <- .run_r5r_subprocess(
+              network_path       = network_path,
+              origins            = centroid_car_origins,
+              destinations       = destinations,
+              mode               = "CAR",
+              max_trip_duration  = fallback_max_trip_duration,
+              n_threads          = n_threads,
+              departure_datetime = departure_datetime,
+              verbose            = FALSE
+            )
+          } else {
+            retry_car_args <- list(
+              r5r_core,
+              origins            = centroid_car_origins,
+              destinations       = destinations,
+              mode               = "CAR",
+              max_trip_duration  = fallback_max_trip_duration,
+              n_threads          = n_threads,
+              verbose            = FALSE,
+              max_rides          = 1L
+            )
+            if (!is.null(departure_datetime)) {
+              retry_car_args$departure_datetime <- departure_datetime
+            }
+            tt_car2 <- suppressMessages(do.call(r5r::travel_time_matrix, retry_car_args))
+          }
+
+          if (nrow(tt_car2) > 0) {
+            from_car2 <- as.character(tt_car2$from_id)
+            to_car2   <- as.character(tt_car2$to_id)
+            row_car2  <- match(from_car2, tract_ids)
+            col_car2  <- match(to_car2, point_ids)
+            valid_car2 <- !is.na(row_car2) & !is.na(col_car2)
+            if (any(valid_car2)) {
+              mat[cbind(row_car2[valid_car2], col_car2[valid_car2])] <-
+                tt_car2[[tt_car_col[1]]][valid_car2]
+            }
+
+            all_na <- rowSums(!is.na(mat)) == 0L
+            n_fixed_car <- n_unreachable_car - sum(all_na)
+            n_unreachable_car <- sum(all_na)
+            if (n_fixed_car > 0 && verbose) {
+              message(sprintf("  Recovered %d tract(s) via centroid fallback (CAR)",
+                              n_fixed_car))
+            }
+            n_valid <- sum(!is.na(mat))
+          }
+        }
+      }
+
+      n_unreachable <- n_unreachable_car
+      if (n_unreachable > 0) {
+        attr(mat, "unreachable_tracts") <- tract_ids[all_na]
+      } else {
+        attr(mat, "unreachable_tracts") <- NULL
+      }
+
+      mode_used <- "CAR"
+    } else {
+      if (verbose) {
+        message(sprintf(
+          "  AUTO mode: %.1f%% unreachable, below %.0f%% threshold. Keeping WALK.",
+          unreachable_frac * 100, unreachable_threshold * 100))
+      }
+    }
+  }
+  attr(mat, "mode_used") <- mode_used
+
+  # Apply fill_missing now (deferred from initial routing to allow
+  # unreachable detection and AUTO escalation to work on raw NAs).
+  if (!is.na(fill_missing)) {
+    mat[is.na(mat)] <- fill_missing
   }
 
   # Propagate attributes from representative points

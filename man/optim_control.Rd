@@ -5,7 +5,7 @@
 \title{Optimization control parameters}
 \usage{
 optim_control(
-  max_epochs = 10000L,
+  max_epochs = 50000L,
   lr_init = 0.05,
   convergence_tol = 1e-05,
   patience = 100L,
@@ -18,13 +18,17 @@ optim_control(
   kernel = "power",
   use_gpu = NULL,
   device = NULL,
-  dtype = "float32"
+  dtype = "float32",
+  force_chunked = NULL,
+  chunk_size = NULL,
+  report_every = NULL,
+  perf_log = NULL
 )
 }
 \arguments{
 \item{max_epochs}{Integer. Maximum number of epochs (full passes through
 all tracts). The optimizer may stop earlier if convergence is detected.
-Default: 10000.}
+Default: 50000.}
 
 \item{lr_init}{Numeric. Initial ADAM learning rate. In adaptive mode
 (\code{target_eff_src} set), uses constant LR throughout (the dual update
@@ -43,7 +47,9 @@ convergence criterion. The optimizer compares the current deviance
 against the deviance \code{patience} epochs ago and converges when the
 relative improvement is less than \code{convergence_tol}. Works alongside a
 gradient-based criterion that triggers when the relative gradient norm
-is small for several consecutive epochs. Default: 100.}
+is small for several consecutive epochs. Convergence is never declared
+before \code{max(3 * patience, 500)} epochs to allow sufficient exploration.
+Default: 100.}
 
 \item{barrier_mu}{Numeric. Strength of the log-barrier penalty that
 prevents any census tract from receiving zero predicted voters.
@@ -97,6 +103,17 @@ kernel does not need an offset and allows \code{alpha_min = 0}.}
 
 \item{dtype}{Character. Torch dtype: \code{"float32"} or \code{"float64"}. Default:
 \code{"float32"}. Float32 halves memory usage with negligible precision loss.}
+
+\item{report_every}{Integer or NULL. How often to print epoch progress.
+\code{NULL} (default) prints ~20 lines automatically (\code{max_epochs \%/\% 20}).
+Set to a smaller value (e.g., \code{10}) for detailed per-batch reporting with
+timing. With \code{report_every = 1} every epoch is printed.}
+
+\item{perf_log}{Character or NULL. Path to a CSV file for saving per-epoch
+performance metrics (loss components, gradient norm, lr, alpha stats,
+effective sources, wall-clock time per epoch). Useful for benchmarking
+and studying convergence. \code{NULL} (default) disables the log. The file is
+written once after the epoch loop completes (or at convergence).}
 }
 \value{
 A list of class \code{"interpElections_optim_control"} with one element

@@ -41,8 +41,64 @@ test_that("optim_control() and routing_control() create classed lists", {
 
   rc <- routing_control()
   expect_s3_class(rc, "interpElections_routing_control")
-  expect_equal(rc$mode, "WALK")
+  expect_equal(rc$mode, "AUTO")
   expect_equal(rc$point_method, "pop_weighted")
   expect_equal(rc$max_trip_duration, 120L)
+  expect_equal(rc$fallback_max_trip_duration, 90L)
+  expect_equal(rc$unreachable_threshold, 0.01)
   expect_true(is.na(rc$fill_missing))
+})
+
+test_that("routing_control() AUTO mode validation", {
+  # AUTO cannot be combined with other modes
+
+  expect_error(
+    routing_control(mode = c("AUTO", "WALK")),
+    "cannot be combined"
+  )
+
+  # Explicit WALK still works
+  rc_walk <- routing_control(mode = "WALK")
+  expect_equal(rc_walk$mode, "WALK")
+
+  # Explicit CAR still works
+  rc_car <- routing_control(mode = "CAR")
+  expect_equal(rc_car$mode, "CAR")
+
+  # Custom threshold
+  rc <- routing_control(unreachable_threshold = 0.10)
+  expect_equal(rc$unreachable_threshold, 0.10)
+
+  # Custom fallback duration
+  rc <- routing_control(fallback_max_trip_duration = 45L)
+  expect_equal(rc$fallback_max_trip_duration, 45L)
+
+  # Invalid threshold
+  expect_error(
+    routing_control(unreachable_threshold = -0.1),
+    "between 0 and 1"
+  )
+  expect_error(
+    routing_control(unreachable_threshold = 1.5),
+    "between 0 and 1"
+  )
+
+  # Invalid fallback duration
+  expect_error(
+    routing_control(fallback_max_trip_duration = -10),
+    "positive"
+  )
+})
+
+test_that("routing_control() print method shows AUTO params", {
+  rc <- routing_control()
+  out <- capture.output(print(rc))
+  expect_true(any(grepl("AUTO", out)))
+  expect_true(any(grepl("fallback", out)))
+  expect_true(any(grepl("threshold", out)))
+
+  # Non-AUTO mode does not show fallback params
+  rc_walk <- routing_control(mode = "WALK")
+  out_walk <- capture.output(print(rc_walk))
+  expect_false(any(grepl("fallback", out_walk)))
 })
