@@ -1278,10 +1278,16 @@ print.interpElections_optim <- function(x, ...) {
         } else {
           eff_src_ema <- 0.95 * eff_src_ema + 0.05 * mean_eff_src
         }
+        # Diminishing step: mirrors the warm-restart dampening in non-adaptive
+        # mode (dual_cycle_T doubles each restart).  In adaptive mode there is
+        # no scheduler, so we decay as 1/sqrt(cycle_count) — the standard
+        # Robbins-Monro rate for primal-dual convergence.
+        dual_decay <- 1 / sqrt(max(1, epoch / dual_cycle_T))
         entropy_mu <- entropy_mu +
-          (dual_eta * rho_quad / dual_cycle_T) * (mean_H_val - h_target)
-        entropy_mu <- max(entropy_mu, 0.01)
-        entropy_mu <- min(entropy_mu, 1e3)
+          dual_decay * (dual_eta * rho_quad / dual_cycle_T) *
+          (mean_H_val - h_target)
+        entropy_mu <- max(entropy_mu, 0)    # was 0.01; floor→0 prevents
+        entropy_mu <- min(entropy_mu, 1e3)  # dead-zone oscillations
       }
       entropy_mu_history[epoch] <- entropy_mu
 

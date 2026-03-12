@@ -42,11 +42,13 @@
 #'   Default: NULL (disabled).
 #' @param dual_eta Numeric. Scaling factor for the per-epoch additive dual
 #'   update of `entropy_mu` (augmented Lagrangian). Each epoch:
-#'   `entropy_mu += dual_eta * rho / T_damp * (mean_H - log(target))`,
-#'   where `rho = m` (number of source stations) and `T_damp = 500` is a
-#'   fixed dampening constant. The quadratic penalty
-#'   `(m/2) * n * (mean_H - log(target))^2` in the loss does the heavy
-#'   lifting; this dual update ensures exactness. Default: 1.0.
+#'   `entropy_mu += decay * dual_eta * rho / T_damp * (mean_H - log(target))`,
+#'   where `rho = m` (number of source stations), `T_damp = 500` is a
+#'   dampening constant, and `decay = 1/sqrt(max(1, epoch/T_damp))` is a
+#'   diminishing factor that stabilizes the dual variable over time (Robbins-
+#'   Monro rate). The quadratic penalty `(m/2) * n * (mean_H - log(target))^2`
+#'   in the loss does the heavy lifting; this dual update ensures exactness.
+#'   Default: 1.0.
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all tracts and
 #'   brackets. Default: 2.
