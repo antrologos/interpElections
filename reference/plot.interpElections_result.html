@@ -43,7 +43,7 @@ candidate name, or party abbreviation."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Plot an interpolated variable as a choropleth map</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/plot-methods.R" class="external-link"><code>R/plot-methods.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/plot-methods.R" class="external-link"><code>R/plot-methods.R</code></a></small>
       <div class="d-none name"><code>plot.interpElections_result.Rd</code></div>
     </div>
 
@@ -59,7 +59,7 @@ candidate name, or party abbreviation.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
 <span>  variable <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  type <span class="op">=</span> <span class="st">"pct_tract"</span>,</span>
+<span>  quantity <span class="op">=</span> <span class="st">"pct_tract"</span>,</span>
 <span>  palette <span class="op">=</span> <span class="st">"RdYlBu"</span>,</span>
 <span>  breaks <span class="op">=</span> <span class="st">"quantile"</span>,</span>
 <span>  n_breaks <span class="op">=</span> <span class="fl">5L</span>,</span>
@@ -95,7 +95,7 @@ Multiple values produce a faceted comparison.
 If NULL, auto-selects the first candidate variable.</p></dd>
 
 
-<dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
+<dt id="arg-quantity">quantity<a class="anchor" aria-label="anchor" href="#arg-quantity"></a></dt>
 <dd><p>Quantity to map: <code>"pct_tract"</code> (default), <code>"absolute"</code>,
 <code>"pct_muni"</code>, <code>"pct_valid"</code>, <code>"pct_eligible"</code>, <code>"density"</code>.</p></dd>
 
@@ -189,7 +189,7 @@ with ggplot2 <code>+</code> syntax.</p>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span>, variable <span class="op">=</span> <span class="fl">13</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Absolute counts with continuous scale</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span>, variable <span class="op">=</span> <span class="st">"PT"</span>, type <span class="op">=</span> <span class="st">"absolute"</span>,</span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span>, variable <span class="op">=</span> <span class="st">"PT"</span>, quantity <span class="op">=</span> <span class="st">"absolute"</span>,</span></span>
 <span class="r-in"><span>     breaks <span class="op">=</span> <span class="st">"continuous"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Faceted comparison</span></span></span>
@@ -215,7 +215,7 @@ with ggplot2 <code>+</code> syntax.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

@@ -43,7 +43,7 @@ centroid, or population-density-weighted using WorldPop raster data."></head><bo
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Compute representative points for census tracts</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/representative-points.R" class="external-link"><code>R/representative-points.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/representative-points.R" class="external-link"><code>R/representative-points.R</code></a></small>
       <div class="d-none name"><code>compute_representative_points.Rd</code></div>
     </div>
 
@@ -61,6 +61,7 @@ centroid, or population-density-weighted using WorldPop raster data.</p>
 <span>  pop_raster <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_area_for_pop_weight <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  tract_id <span class="op">=</span> <span class="st">"id"</span>,</span>
+<span>  osm_roads <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -85,8 +86,9 @@ May fall outside concave polygons.</p></dd>
 
 <dt><code>"pop_weighted"</code></dt>
 <dd><p>Uses a population density raster (WorldPop
-Constrained 2020 by default) to find the most populated cell within
-each tract. Only applied to tracts with area &gt;= <code>min_area_for_pop_weight</code>;
+Constrained 2020 by default) to find the best representative point
+within each tract via cluster analysis and optional road proximity.
+Only applied to tracts with area &gt;= <code>min_area_for_pop_weight</code>;
 smaller tracts use <code>point_on_surface</code>. Requires the <code>terra</code> package.</p></dd>
 
 
@@ -112,6 +114,17 @@ population-weighted method. Tracts smaller than this threshold use
 Default: <code>"id"</code>.</p></dd>
 
 
+<dt id="arg-osm-roads">osm_roads<a class="anchor" aria-label="anchor" href="#arg-osm-roads"></a></dt>
+<dd><p>An <code>sf</code> object with OSM road geometries, or <code>NULL</code>.
+When provided and <code>method = "pop_weighted"</code>, cells within 200m of
+roads are preferred, using a tiered hierarchy: Tier 1 (primary,
+secondary, tertiary, residential) &gt; Tier 2 (unclassified, service) &gt;
+Tier 3 (track, path, footway). The algorithm tries the highest tier
+first and falls back only if no cells are within 200m of that tier's
+roads. Typically read from the clipped PBF file by
+<code><a href="compute_travel_times.html">compute_travel_times()</a></code>.</p></dd>
+
+
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
 <dd><p>Logical. Print progress messages? Default: <code>TRUE</code>.</p></dd>
 
@@ -119,8 +132,38 @@ Default: <code>"id"</code>.</p></dd>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An <code>sf</code> POINT object in WGS84 (EPSG:4326) with one row per tract,
-preserving the <code>tract_id</code> column. Carries an attribute <code>"point_method"</code>
-recording which method was used.</p>
+preserving the <code>tract_id</code> column. Carries attributes:</p><dl><dt><code>"point_method"</code></dt>
+<dd><p>Character. Which method was used.</p></dd>
+
+<dt><code>"pop_raster"</code></dt>
+<dd><p>The SpatRaster object (if <code>pop_weighted</code>).</p></dd>
+
+<dt><code>"no_pop_tracts"</code></dt>
+<dd><p>Character vector of tract IDs that fell back
+to <code>point_on_surface</code> due to zero population.</p></dd>
+
+<dt><code>"pop_weighted_diagnostics"</code></dt>
+<dd><p>Named list of per-tract diagnostic
+records (cluster counts, patch populations, selected point, road
+proximity info, road tier used). See <code><a href="plot_representative_points.html">plot_representative_points()</a></code>.</p></dd>
+
+
+</dl></div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>The <code>pop_weighted</code> method uses cluster-based selection: it identifies
+connected clusters of populated cells via <code><a href="https://rspatial.github.io/terra/reference/patches.html" class="external-link">terra::patches()</a></code> and selects
+the largest cluster by total population. If OSM road data is available
+(via <code>osm_roads</code>), it applies <strong>tiered road proximity refinement</strong>:
+cells within 200m of well-connected road types (primary, secondary,
+tertiary, residential) are preferred over cells near isolated rural
+roads (tracks, paths). This reduces the chance of placing the
+representative point near a disconnected road fragment that r5r
+cannot route from.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p><code><a href="plot_representative_points.html">plot_representative_points()</a></code> to visualize the selection process.</p></div>
     </div>
 
     <div class="section level2">
@@ -147,7 +190,7 @@ recording which method was used.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

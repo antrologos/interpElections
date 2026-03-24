@@ -41,7 +41,7 @@ Spatial Association (LISA) clusters for an interpolated variable."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Moran's I and LISA cluster map for an interpolated variable</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/diagnostics-spatial.R" class="external-link"><code>R/diagnostics-spatial.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/diagnostics-spatial.R" class="external-link"><code>R/diagnostics-spatial.R</code></a></small>
       <div class="d-none name"><code>plot_moran.Rd</code></div>
     </div>
 
@@ -56,6 +56,7 @@ Spatial Association (LISA) clusters for an interpolated variable.</p>
 <span>  <span class="va">result</span>,</span>
 <span>  variable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lisa"</span>, <span class="st">"moran"</span><span class="op">)</span>,</span>
+<span>  quantity <span class="op">=</span> <span class="st">"pct_tract"</span>,</span>
 <span>  significance <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  nsim <span class="op">=</span> <span class="fl">999L</span>,</span>
 <span>  <span class="va">...</span></span>
@@ -80,12 +81,23 @@ candidate name, or party abbreviation.</p></dd>
 <code>"lisa"</code> for the LISA cluster map. Default: <code>"lisa"</code>.</p></dd>
 
 
+<dt id="arg-quantity">quantity<a class="anchor" aria-label="anchor" href="#arg-quantity"></a></dt>
+<dd><p>Quantity to analyze: <code>"pct_tract"</code> (default),
+<code>"absolute"</code>, <code>"pct_muni"</code>, <code>"pct_valid"</code>, <code>"pct_eligible"</code>,
+<code>"density"</code>. The default <code>"pct_tract"</code> divides raw vote counts by
+tract turnout, revealing political preference patterns rather than
+population density patterns. Matches the default of
+<code><a href="plot.interpElections_result.html">plot.interpElections_result()</a></code>.</p></dd>
+
+
 <dt id="arg-significance">significance<a class="anchor" aria-label="anchor" href="#arg-significance"></a></dt>
 <dd><p>Significance level for LISA. Default: 0.05.</p></dd>
 
 
 <dt id="arg-nsim">nsim<a class="anchor" aria-label="anchor" href="#arg-nsim"></a></dt>
-<dd><p>Number of permutations. Default: 999.</p></dd>
+<dd><p>Number of permutations for LISA significance testing
+(conditional permutation test via <code><a href="https://r-spatial.github.io/spdep/reference/localmoran.html" class="external-link">spdep::localmoran_perm()</a></code>).
+Default: 999. Only used when <code>type = "lisa"</code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -106,7 +118,7 @@ candidate name, or party abbreviation.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

@@ -45,7 +45,7 @@ parties, what types, or election rounds without recomputing travel times."></hea
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Re-interpolate with different electoral variables</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/reinterpolate.R" class="external-link"><code>R/reinterpolate.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/reinterpolate.R" class="external-link"><code>R/reinterpolate.R</code></a></small>
       <div class="d-none name"><code>reinterpolate.Rd</code></div>
     </div>
 
@@ -65,6 +65,7 @@ parties, <code>what</code> types, or election rounds without recomputing travel 
 <span>  parties <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  cargo <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  turno <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reuse_weights <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  optim <span class="op">=</span> <span class="fu"><a href="optim_control.html">optim_control</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  keep <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -105,14 +106,21 @@ See <code><a href="interpolate_election_br.html">interpolate_election_br()</a></
 <dd><p>Integer or NULL. Override the election round (1 or 2).</p></dd>
 
 
+<dt id="arg-reuse-weights">reuse_weights<a class="anchor" aria-label="anchor" href="#arg-reuse-weights"></a></dt>
+<dd><p>Logical. If TRUE (default), reuse the weight matrix
+from the original result to skip optimization. Automatically disabled
+when <code>turno</code> or <code>cargo</code> change (which alter calibration brackets).</p></dd>
+
+
 <dt id="arg-optim">optim<a class="anchor" aria-label="anchor" href="#arg-optim"></a></dt>
 <dd><p>An <code><a href="optim_control.html">optim_control()</a></code> object with optimization parameters.
-Default: <code><a href="optim_control.html">optim_control()</a></code>.</p></dd>
+Only used when <code>reuse_weights = FALSE</code>.</p></dd>
 
 
 <dt id="arg-keep">keep<a class="anchor" aria-label="anchor" href="#arg-keep"></a></dt>
-<dd><p>Character vector or NULL. Heavy objects to include in result.
-See <code><a href="interpolate_election_br.html">interpolate_election_br()</a></code>.</p></dd>
+<dd><p>Character vector or NULL. Extra objects to include in result.
+<code>weights</code>, <code>time_matrix</code>, <code>electoral_sf</code>, and <code>rep_points</code> are always
+kept. Options: <code>"pop_raster"</code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -130,10 +138,12 @@ original, with updated interpolation).</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The previous result must contain a <code>time_matrix</code> (always kept
-by default since v0.2).</p>
-<p><strong>Note</strong>: Alpha is re-optimized (which can take minutes). Only the
-travel-time computation is skipped.</p>
+    <p>The previous result must contain a <code>time_matrix</code> (always kept by default).</p>
+<p>When <code>reuse_weights = TRUE</code> (the default) and the stored weight matrix
+is available, optimization is also skipped — making re-interpolation
+near-instantaneous. Set <code>reuse_weights = FALSE</code> to force re-optimization
+(e.g., when switching <code>turno</code> or <code>cargo</code>, which changes the calibration
+brackets).</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -143,20 +153,24 @@ travel-time computation is skipped.</p>
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># First run (time_matrix is kept by default)</span></span></span>
+<span class="r-in"><span><span class="co"># First run</span></span></span>
 <span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="interpolate_election_br.html">interpolate_election_br</a></span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="fl">3550308</span>, <span class="fl">2022</span>,</span></span>
 <span class="r-in"><span>  cargo <span class="op">=</span> <span class="st">"presidente"</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Re-interpolate for parties instead of candidates</span></span></span>
+<span class="r-in"><span><span class="co"># Re-interpolate for parties (reuses weights, near-instant)</span></span></span>
 <span class="r-in"><span><span class="va">result2</span> <span class="op">&lt;-</span> <span class="fu">reinterpolate</span><span class="op">(</span><span class="va">result</span>, what <span class="op">=</span> <span class="st">"parties"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Re-interpolate for a different cargo</span></span></span>
+<span class="r-in"><span><span class="co"># Re-interpolate for a different cargo (forces re-optimization)</span></span></span>
 <span class="r-in"><span><span class="va">result3</span> <span class="op">&lt;-</span> <span class="fu">reinterpolate</span><span class="op">(</span><span class="va">result</span>, cargo <span class="op">=</span> <span class="st">"governador"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Re-interpolate for turno 2 (runoff)</span></span></span>
+<span class="r-in"><span><span class="co"># Re-interpolate for turno 2 (forces re-optimization)</span></span></span>
 <span class="r-in"><span><span class="va">result4</span> <span class="op">&lt;-</span> <span class="fu">reinterpolate</span><span class="op">(</span><span class="va">result</span>, turno <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Force re-optimization even when calibration hasn't changed</span></span></span>
+<span class="r-in"><span><span class="va">result5</span> <span class="op">&lt;-</span> <span class="fu">reinterpolate</span><span class="op">(</span><span class="va">result</span>, what <span class="op">=</span> <span class="st">"parties"</span>,</span></span>
+<span class="r-in"><span>                          reuse_weights <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
@@ -170,7 +184,7 @@ travel-time computation is skipped.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

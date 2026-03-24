@@ -65,7 +65,7 @@
       <h1>Methodology</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/vignettes/methodology.Rmd" class="external-link"><code>vignettes/methodology.Rmd</code></a></small>
       <div class="d-none name"><code>methodology.Rmd</code></div>
     </div>
 
@@ -109,8 +109,8 @@ station.</p>
 just demographics. In Brazilian cities, the age composition of a
 neighborhood is strongly correlated with its socioeconomic profile.
 Consider two neighborhoods in Rio de Janeiro:</p>
-<p><img src="figures/rocinha-copacabana-map.png" class="r-plt" alt="" width="100%"></p>
-<p><img src="figures/age-pyramids-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/rocinha-copacabana-map.png" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-rocinha-copacabana.png" alt="" width="100%"></p>
 <p><strong>Rocinha</strong>, one of Brazil’s largest favelas, has a
 young population: large cohorts in the 18–29 age range, tapering off
 sharply after 50. <strong>Copacabana</strong>, one of Rio’s wealthiest
@@ -266,7 +266,7 @@ variable
 all six steps into a single call for Brazilian municipalities, handling
 data downloads, geocoding, and default parameter selection
 automatically.</p>
-<p><img src="figures/pipeline-stacked-maps.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/pipeline-stacked-maps.png" alt="" width="100%"></p>
 <p>The figure above illustrates the spatial data layers involved.
 Starting from the bottom: the municipality boundary, census tracts
 colored by population, polling station locations, and the final
@@ -380,7 +380,7 @@ enabling calibration. The calibration crosses gender × 7 age groups (14
 brackets), providing a strong spatial signal because the optimizer must
 simultaneously match the spatial distribution of each gender–age
 subgroup.</p>
-<p><img src="figures/pop-pyramid.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/pop-pyramid.png" alt="" width="90%"></p>
 </div>
 <div class="section level3">
 <h3 id="census-tract-geometries">5. Census Tract Geometries<a class="anchor" aria-label="anchor" href="#census-tract-geometries"></a>
@@ -391,7 +391,7 @@ subgroup.</p>
 green areas (parks, water bodies with zero population), transforms to
 EPSG:5880 (equal-area projection for accurate spatial operations), and
 joins the population columns.</p>
-<p><img src="figures/tracts-pop-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/tracts-pop-map.png" alt="" width="100%"></p>
 <p>Note the urban-rural gradient: small, densely populated tracts in the
 city center; large, sparsely populated tracts on the periphery.</p>
 </div>
@@ -442,7 +442,7 @@ each column (type, cargo, candidate name, party)</li>
 <code>"demographics"</code>: <code>GENERO_*</code> and
 <code>EDUC_*</code> columns</li>
 </ul>
-<p><img src="figures/electoral-stations-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/electoral-stations-map.png" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="calibration-variables-comparing-source-and-target">7. Calibration Variables: Comparing Source and Target<a class="anchor" aria-label="anchor" href="#calibration-variables-comparing-source-and-target"></a>
@@ -461,7 +461,7 @@ voted at this station?” (from TSE)</li>
 Copacabana in Section 1. The demographic signature that varies across
 neighborhoods is precisely what the method uses to calibrate the
 weights.</p>
-<p><img src="figures/age-pyramids-comparison.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/age-pyramids-comparison.png" alt="" width="100%"></p>
 <p>The shapes are similar but totals differ: the census counts
 residents, the TSE counts registered voters. Not everyone of voting age
 is registered, and registration rates vary by age bracket.</p>
@@ -514,7 +514,7 @@ Three methods are available:</p>
 irregularly shaped tracts</strong> in rural and peri-urban areas.
 Consider the southern periphery of São Paulo, where census tracts extend
 over several square kilometers of mixed urban and forested land:</p>
-<p><img src="figures/rep-points-saopaulo-comparison.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/rep-points-saopaulo-comparison.png" alt="" width="100%"></p>
 <p>The three-panel comparison shows the same set of large tracts in
 south São Paulo. The red dots (centroids) frequently fall in uninhabited
 areas — in the middle of Mata Atlântica forest or in empty fields. The
@@ -523,7 +523,7 @@ but may still be far from where people actually live. The green dots
 (pop-weighted) use the WorldPop population raster to find the most
 densely populated cell within each tract, placing the representative
 point where residents actually are.</p>
-<p><img src="figures/rep-points-zoom-inset.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/rep-points-zoom-inset.png" alt="" width="80%"></p>
 <p>Zooming into the largest tract, the centroid falls in dense forest
 while the pop-weighted point correctly identifies the settlement area.
 This difference can affect travel time calculations by tens of
@@ -576,7 +576,7 @@ time. Two examples:</p>
 Corcovado/Sumaré hills. A polling station in Laranjeiras sits on the
 other side. In a straight line, the distance is modest — but the walking
 route must navigate around the steep terrain:</p>
-<p><img src="figures/routes-rj-botafogo-laranjeiras.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-rj-botafogo-laranjeiras.png" alt="" width="100%"></p>
 <p>The solid blue line shows the actual walking route computed by r5r on
 the OSM road network. The dotted red line shows the straight-line
 distance. In mountainous terrain, these can differ by a factor of
@@ -586,14 +586,14 @@ distance. In mountainous terrain, these can differ by a factor of
 Brasília Teimosa peninsula are separated by Recife’s waterways. The
 walking route must navigate around the estuary and cross bridges, adding
 significant distance compared to the straight line.</p>
-<p><img src="figures/routes-recife-water.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-recife-water.png" alt="" width="100%"></p>
 <p><strong>Example 3: Water barrier (Florianópolis)</strong></p>
 <p>Florianópolis, capital of Santa Catarina, is split between the
 mainland and an island in the Atlantic. A point in Coqueiros (mainland)
 and a destination at Costeira do Pirajubaé (island) are separated by the
 bay. The walking route must detour to one of the bridges connecting the
 two sides:</p>
-<p><img src="figures/routes-florianopolis-water.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/routes-florianopolis-water.png" alt="" width="100%"></p>
 <p>These examples illustrate why Euclidean distance is a poor proxy for
 actual accessibility — and why the routing engine matters.</p>
 </div>
@@ -627,16 +627,17 @@ exactly zero weight</li>
 <p>The OSM data is downloaded via <code><a href="../reference/download_r5r_data.html">download_r5r_data()</a></code>,
 which fetches state-level <code>.pbf</code> files and clips them to the
 municipality bounding box using osmium.</p>
-<p><img src="figures/tt-heatmap.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/tt-heatmap.png" alt="" width="90%"></p>
 <p>The heatmap shows spatial structure: a block-diagonal pattern where
 nearby tract-station pairs have short travel times.</p>
-<p><img src="figures/tt-accessibility-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/tt-accessibility-map.png" alt="" width="100%"></p>
 <p>Tracts in the center have short travel times to the nearest station;
 peripheral tracts are farther away.</p>
-<p><strong>The offset</strong>: before applying the IDW kernel, we add 1
-to all travel times (<code>time_matrix + 1</code>) to avoid singularity
-when
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">t = 0</annotation></semantics></math>.</p>
+<p><strong>The offset</strong>: before applying the power-law IDW kernel
+(the default), we add 1 to all travel times
+(<code>time_matrix + 1</code>) to avoid singularity when
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">t = 0</annotation></semantics></math>.
+The exponential kernel does not need this offset (see Section 10).</p>
 </div>
 </div>
 </div>
@@ -682,11 +683,45 @@ tract’s estimate? With a decay parameter
 <div class="section level4">
 <h4 id="the-formula">The formula<a class="anchor" aria-label="anchor" href="#the-formula"></a>
 </h4>
-<p>The raw weight between tract
+<p>The package supports two kernel functions, selected via
+<code>optim_control(kernel = ...)</code>:</p>
+<p><strong>Power-law kernel</strong> (default):
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p><strong>Exponential kernel</strong>:
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">K_{ij} = \exp(-\alpha_i \cdot t_{ij})</annotation></semantics></math></p>
+<p>Both share the unified form
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})</annotation></semantics></math>,
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\phi(t) = \log(t + 1)</annotation></semantics></math>
+for the power kernel and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>t</mi></mrow><annotation encoding="application/x-tex">\phi(t) = t</annotation></semantics></math>
+for the exponential. Everything downstream (column normalization,
+Poisson deviance, gradient computation) is kernel-agnostic.</p>
+<p>The kernels differ in <strong>tail behavior</strong>. For the power
+kernel, the relative decay
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>2</mn><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mi>K</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>≈</mo><msup><mn>2</mn><mrow><mi>−</mi><mi>α</mi></mrow></msup></mrow><annotation encoding="application/x-tex">K(2t)/K(t) \approx 2^{-\alpha}</annotation></semantics></math>
+is approximately constant regardless of distance (<strong>heavy
+tail</strong>). For the exponential kernel, the relative decay
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>2</mn><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mi>K</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>−</mi><mi>α</mi><mo>⋅</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">K(2t)/K(t) = \exp(-\alpha \cdot t)</annotation></semantics></math>
+increases with distance (<strong>light tail</strong>). These are
+structural differences in shape, not claims about which kernel produces
+more localized weights — that depends on what
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+the optimizer finds.</p>
+<p>Note that
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+has <strong>different units</strong> across kernels: it is dimensionless
+for the power kernel but has units of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mtext mathvariant="normal">min</mtext><mrow><mi>−</mi><mn>1</mn></mrow></msup><annotation encoding="application/x-tex">\text{min}^{-1}</annotation></semantics></math>
+for the exponential. The optimizer finds the appropriate scale
+automatically, so comparing kernels at the “same alpha” is
+meaningless.</p>
+<p>For the default power kernel, the raw weight between tract
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
 and station
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>
+is:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mtext mathvariant="normal">raw</mtext></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">W^{\text{raw}}_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
 <p>where:</p>
 <ul>
 <li>
@@ -727,7 +762,7 @@ decay parameter for tract
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span>,</span>
 <span>        legend.position <span class="op">=</span> <span class="st">"right"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/weight-decay-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/weight-decay-1.png" alt="" width="100%"></p>
 <ul>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">\alpha = 0.5</annotation></semantics></math>:
@@ -868,7 +903,7 @@ the raw weight matrix by its sum so that each station’s weights sum to
 1.</p>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mfrac><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mrow><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow></mfrac></mrow><annotation encoding="application/x-tex">W_{ij} = \frac{K_{ij}}{\sum_i K_{ij}}</annotation></semantics></math></p>
 <p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math>
 is the IDW kernel from Section 10.</p>
 </div>
 <div class="section level4">
@@ -956,27 +991,36 @@ each column-normalized independently:</p>
 <ol style="list-style-type: decimal">
 <li>
 <strong>Compute the IDW kernel</strong>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K^{(k)}_{ij} = (t_{ij} + 1)^{-\alpha_{i}}</annotation></semantics></math>
-(same kernel for all brackets, since alpha is shared)</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K^{(k)}_{ij} = (t_{ij} + 1)^{-\alpha_{ik}}</annotation></semantics></math>
+(per-tract, per-bracket decay parameter)</li>
 <li>
 <strong>Column-normalize</strong>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mi>/</mi><msub><mo>∑</mo><mi>i</mi></msub><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup></mrow><annotation encoding="application/x-tex">W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_i K^{(k)}_{ij}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mi>/</mi><msub><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></msub><msubsup><mi>K</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup></mrow><annotation encoding="application/x-tex">W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_{i'} K^{(k)}_{i'j}</annotation></semantics></math>
 </li>
 </ol>
-<p><strong>Aggregate:</strong></p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mtext mathvariant="normal">total</mtext></msub><mo>=</mo><mfrac><mn>1</mn><mi>K</mi></mfrac><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup></mrow><annotation encoding="application/x-tex">W_{\text{total}} = \frac{1}{K} \sum_{k=1}^{K} W^{(k)}</annotation></semantics></math></p>
-<p>followed by a final column normalization to enforce source
-conservation (each station distributes exactly 100% of its data).</p>
+<p><strong>Aggregate (voter-weighted):</strong></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mtext mathvariant="normal">agg</mtext><mo>,</mo><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mfrac><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>⋅</mo><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></mrow><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></mrow></mfrac></mrow><annotation encoding="application/x-tex">W_{\text{agg},ij} = \frac{\sum_{k=1}^{K} W^{(k)}_{ij} \cdot c_{kj}}{\sum_{k=1}^{K} c_{kj}}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">c_{kj}</annotation></semantics></math>
+is the voter count for bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+at station
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>.
+Each bracket’s contribution is weighted by the number of voters it
+represents at that station, so brackets with more voters have
+proportionally more influence on the aggregated weights.</p>
 </div>
 <div class="section level5">
 <h5 id="why-this-works">Why this works<a class="anchor" aria-label="anchor" href="#why-this-works"></a>
 </h5>
 <p>Each bracket’s column-normalized weights distribute that bracket’s
 station-level data across tracts proportionally to the IDW kernel. The
-alpha optimization (Section 13) adjusts the decay parameters so that the
-resulting interpolated demographics match the census demographics across
-all brackets simultaneously. The per-bracket structure allows the loss
-function to separately account for each age group’s spatial pattern.</p>
+alpha optimization (Section 13) adjusts the per-tract, per-bracket decay
+parameters so that the resulting interpolated demographics match the
+census demographics across all brackets simultaneously. The per-bracket
+structure allows different demographic groups to have different spatial
+reaches — young voters may draw from more distant stations than elderly
+voters.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Bracket 1 ("young"): concentrated near station 1</span></span>
 <span><span class="co"># Bracket 2 ("old"): concentrated near station 3</span></span>
@@ -1000,8 +1044,8 @@ function to separately account for each age group’s spatial pattern.</p>
 <span><span class="co">#&gt; Census truth:      60 100 50 30 20</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Column-normalized:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">young_hat</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Column-normalized: 141 70 9 28 12</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"SSE:             "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">young_hat</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; SSE:              9095</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Deviance:        "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">young_hat</span> <span class="op">-</span> <span class="va">pop_young</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">pop_young</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">young_hat</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">pop_young</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">pop_young</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">pop_young</span><span class="op">)</span>, <span class="fl">0</span><span class="op">)</span> <span class="op">-</span> <span class="va">pop_young</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Deviance:         160</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n=== Old bracket ===\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -1010,10 +1054,10 @@ function to separately account for each age group’s spatial pattern.</p>
 <span><span class="co">#&gt; Census truth:      40 200 100 170 230</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Column-normalized:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">old_hat</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Column-normalized: 113 291 44 203 90</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"SSE:             "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">old_hat</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; SSE:              37428</span></span></code></pre></div>
-<p>The alpha optimization reduces this SSE by finding per-tract decay
-parameters that best match both demographic distributions.</p>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Deviance:        "</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">old_hat</span> <span class="op">-</span> <span class="va">pop_old</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">pop_old</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">old_hat</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">pop_old</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">pop_old</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">pop_old</span><span class="op">)</span>, <span class="fl">0</span><span class="op">)</span> <span class="op">-</span> <span class="va">pop_old</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Deviance:         305</span></span></code></pre></div>
+<p>The alpha optimization reduces this deviance by finding per-tract
+decay parameters that best match both demographic distributions.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Visual comparison: census truth vs column-normalized estimate</span></span>
 <span><span class="va">pop_mat_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>young <span class="op">=</span> <span class="va">pop_young</span>, old <span class="op">=</span> <span class="va">pop_old</span><span class="op">)</span></span>
@@ -1038,7 +1082,7 @@ parameters that best match both demographic distributions.</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span>,</span>
 <span>        legend.position <span class="op">=</span> <span class="st">"bottom"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/per-bracket-comparison-plot-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/per-bracket-comparison-plot-1.png" alt="" width="100%"></p>
 </div>
 <div class="section level5">
 <h5 id="connection-to-the-optimizer">Connection to the optimizer<a class="anchor" aria-label="anchor" href="#connection-to-the-optimizer"></a>
@@ -1101,12 +1145,12 @@ brackets simultaneously.</p>
 <h4 id="the-iterative-procedure">13.2 The iterative procedure<a class="anchor" aria-label="anchor" href="#the-iterative-procedure"></a>
 </h4>
 <p>The optimization is a loop:</p>
-<p><img src="figures/optimization-loop-diagram.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/optimization-loop-diagram.png" alt="" width="80%"></p>
 <p>In words:</p>
 <ol style="list-style-type: decimal">
 <li>
 <strong>Initialize</strong>: set
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mi>i</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha_i = 1</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mi>i</mi></msub><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">\alpha_i = 2</annotation></semantics></math>
 for all tracts (moderate decay)</li>
 <li>
 <strong>Build the IDW kernel</strong>: compute raw weights from
@@ -1120,25 +1164,33 @@ travel times and current
 <strong>Interpolate demographics</strong>: multiply normalized
 weights by station-level age profiles</li>
 <li>
-<strong>Compare with census</strong>: compute the squared error
+<strong>Compare with census</strong>: compute the Poisson deviance
 between interpolated and census age profiles</li>
 <li>
 <strong>Adjust
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></strong>:
 use the gradient (via automatic differentiation) to nudge
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
-in the direction that reduces error</li>
+in the direction that reduces the loss</li>
 <li>
-<strong>Repeat</strong> until the error stops decreasing</li>
+<strong>Repeat</strong> until the loss converges</li>
 </ol>
 <p>Each iteration of this loop evaluates the complete forward pass:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>→</mo><mtext mathvariant="normal">kernel</mtext><mo>→</mo><mtext mathvariant="normal">column-normalize</mtext><mo>→</mo><mtext mathvariant="normal">interpolation</mtext><mo>→</mo><mtext mathvariant="normal">error</mtext></mrow><annotation encoding="application/x-tex">\alpha \to \text{kernel} \to \text{column-normalize} \to \text{interpolation}
-\to \text{error}</annotation></semantics></math>.</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>→</mo><mtext mathvariant="normal">kernel</mtext><mo>→</mo><mtext mathvariant="normal">column-normalize</mtext><mo>→</mo><mtext mathvariant="normal">interpolation</mtext><mo>→</mo><mtext mathvariant="normal">loss</mtext></mrow><annotation encoding="application/x-tex">\alpha \to \text{kernel} \to \text{column-normalize} \to \text{interpolation}
+\to \text{loss}</annotation></semantics></math>.</p>
 </div>
 <div class="section level4">
-<h4 id="the-formal-objective">13.3 The formal objective<a class="anchor" aria-label="anchor" href="#the-formal-objective"></a>
+<h4 id="the-data-fit-term-poisson-deviance">13.3 The data-fit term: Poisson deviance<a class="anchor" aria-label="anchor" href="#the-data-fit-term-poisson-deviance"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><munder><mo>∑</mo><mi>k</mi></munder><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">f(\alpha) = \sum_i \sum_k \left( \hat{V}_{ik} - P_{ik} \right)^2</annotation></semantics></math></p>
+<p>Voter counts are non-negative integers. The <strong>Poisson
+deviance</strong> is the natural goodness-of-fit measure for count data:
+it penalizes relative deviations rather than absolute ones. A tract with
+10 predicted voters vs. 20 observed is penalized more heavily than a
+tract with 1,000 predicted vs. 1,010 observed — even though both differ
+by 10.</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>2</mn><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><mrow><mo stretchy="true" form="prefix">[</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>+</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">D(\alpha) = 2 \sum_{i=1}^{N} \sum_{k=1}^{K}
+\left[\hat{V}_{ik} - P_{ik}\log\hat{V}_{ik}
++ P_{ik}\log P_{ik} - P_{ik}\right]</annotation></semantics></math></p>
 <p>where:</p>
 <ul>
 <li>
@@ -1152,16 +1204,92 @@ built via per-bracket column normalization (Section 12.3)</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
 = demographic bracket index
-(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">K = 7</annotation></semantics></math>
-for age-only calibration,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>14</mn></mrow><annotation encoding="application/x-tex">K = 14</annotation></semantics></math>
-for full gender × age calibration)</li>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi><mo>=</mo><mn>14</mn></mrow><annotation encoding="application/x-tex">K = 14</annotation></semantics></math>
+for full gender
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>×</mi><annotation encoding="application/x-tex">\times</annotation></semantics></math>
+age calibration)</li>
 </ul>
-<p>The weight matrix
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">W(\alpha)</annotation></semantics></math>
-is the aggregation of per-bracket column-normalized matrices
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><annotation encoding="application/x-tex">W^{(k)}</annotation></semantics></math>,
-followed by a final column normalization pass.</p>
+<p>When
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>=</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\hat{V}_{ik} = P_{ik}</annotation></semantics></math>
+for all entries,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">D = 0</annotation></semantics></math>.
+The constant terms
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">P_{ik}\log P_{ik} - P_{ik}</annotation></semantics></math>
+are precomputed once and do not depend on
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>.</p>
+</div>
+<div class="section level4">
+<h4 id="regularization-barrier-entropy-and-quadratic-penalties">13.4 Regularization: barrier, entropy, and quadratic penalties<a class="anchor" aria-label="anchor" href="#regularization-barrier-entropy-and-quadratic-penalties"></a>
+</h4>
+<p>Poisson deviance alone can produce degenerate solutions: some tracts
+might receive zero predicted voters (collapsed allocation), or weights
+might be too diffuse or too concentrated. Three penalty terms address
+these pathologies.</p>
+<p><strong>Log-barrier penalty</strong> (prevents zero-voter
+tracts):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>−</mi><msub><mi>μ</mi><mi>B</mi></msub><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><mo>log</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mo>,</mo><mtext mathvariant="normal">total</mtext></mrow></msub></mrow><annotation encoding="application/x-tex">B(\alpha) = -\mu_B \sum_{i=1}^{N}
+\log\hat{V}_{i,\text{total}}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mo>,</mo><mtext mathvariant="normal">total</mtext></mrow></msub><mo>=</mo><msub><mo>∑</mo><mi>k</mi></msub><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\hat{V}_{i,\text{total}} = \sum_k \hat{V}_{ik}</annotation></semantics></math>
+is the total predicted population in tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>.
+The barrier diverges as any tract’s total approaches zero, preventing
+collapsed allocations. Default strength
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>μ</mi><mi>B</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\mu_B = 1</annotation></semantics></math>.</p>
+<p><strong>Entropy penalty</strong> (controls weight concentration):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>μ</mi><mi>E</mi></msub><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><msub><mi>H</mi><mi>i</mi></msub><mo>,</mo><mspace width="1.0em"></mspace><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mi>−</mi><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>log</mo><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">E(\alpha) = \mu_E \sum_{i=1}^{N} H_i, \quad
+H_i = -\sum_{j=1}^{M} p_{ij}\log p_{ij}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">p_{ij}</annotation></semantics></math>
+are the row-normalized aggregated weights.
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>H</mi><mi>i</mi></msub><annotation encoding="application/x-tex">H_i</annotation></semantics></math>
+is the Shannon entropy of tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>’s
+weight distribution — higher values mean more stations contribute. The
+strength
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+can be set manually or tuned automatically via dual ascent (Section
+14.5).</p>
+<p><strong>Per-tract quadratic penalty</strong> (augmented
+Lagrangian):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>Q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><mi>ρ</mi><mn>2</mn></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo>−</mo><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">Q(\alpha) = \frac{\rho}{2}\sum_{i=1}^{N}
+\left(H_i - h_i^*\right)^2</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><annotation encoding="application/x-tex">h_i^*</annotation></semantics></math>
+is the per-tract entropy target (Section 14.5). This quadratic term
+works alongside the linear entropy penalty in an augmented Lagrangian
+framework, driving each tract’s entropy toward its individual target.
+Active only in adaptive mode (<code>target_eff_src</code> set).</p>
+</div>
+<div class="section level4">
+<h4 id="the-total-loss">13.5 The total loss<a class="anchor" aria-label="anchor" href="#the-total-loss"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>L</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>D</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>B</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>E</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>Q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">L(\alpha) = D(\alpha) + B(\alpha) + E(\alpha) + Q(\alpha)</annotation></semantics></math></p>
+<p>The Poisson deviance
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>
+dominates in magnitude; the barrier
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+is a safety net (typically small); and the entropy terms
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>+</mo><mi>Q</mi></mrow><annotation encoding="application/x-tex">E + Q</annotation></semantics></math>
+implement entropy control. In the <strong>default mode</strong> (no
+<code>target_eff_src</code>),
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>=</mo><mi>Q</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">E = Q = 0</annotation></semantics></math>
+and the optimizer minimizes
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>+</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">D + B</annotation></semantics></math>
+only.</p>
+<p>Figure @ref(fig:fig-loss-decomposition) shows the relative
+contribution of each loss component at convergence across 26 Brazilian
+state capitals. Deviance dominates in all cities, but Norte/Centro-Oeste
+capitals with structural infeasibility (Macapá, Manaus, Brasília, Rio de
+Janeiro) show elevated entropy penalties as the dual ascent works harder
+to achieve the entropy targets.</p>
+<div class="figure">
+<img src="figures/loss-decomposition-capitals.png" alt="Loss decomposition at convergence across 26 state capitals. Deviance dominates, but cities with sparse road networks (Norte) show elevated entropy penalties." width="100%"><p class="caption">
+Loss decomposition at convergence across 26 state capitals. Deviance
+dominates, but cities with sparse road networks (Norte) show elevated
+entropy penalties.
+</p>
+</div>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Simplified case: all tracts share the same alpha</span></span>
 <span><span class="va">tt_adj</span> <span class="op">&lt;-</span> <span class="va">tt_toy</span> <span class="op">+</span> <span class="fl">1</span></span>
@@ -1169,30 +1297,35 @@ followed by a final column normalization pass.</p>
 <span><span class="va">src_matrix_toy</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">250</span>, <span class="fl">400</span>, <span class="fl">350</span><span class="op">)</span>, ncol <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">alpha_range</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">8</span>, by <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span>
-<span><span class="va">sse_values</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">alpha_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">a</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="co"># Compute column-normalized weights and SSE</span></span>
+<span><span class="va">deviance_values</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">alpha_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">a</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="co"># Compute column-normalized weights and Poisson deviance</span></span>
 <span>  <span class="va">K</span> <span class="op">&lt;-</span> <span class="va">tt_adj</span> <span class="op">^</span> <span class="op">(</span><span class="op">-</span><span class="va">a</span><span class="op">)</span></span>
 <span>  <span class="va">K</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/is.finite.html" class="external-link">is.finite</a></span><span class="op">(</span><span class="va">K</span><span class="op">)</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">0</span></span>
 <span>  <span class="va">W</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">K</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colSums</a></span><span class="op">(</span><span class="va">K</span><span class="op">)</span><span class="op">)</span>  <span class="co"># column-normalize</span></span>
-<span>  <span class="va">v_hat</span> <span class="op">&lt;-</span> <span class="va">W</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_matrix_toy</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">(</span><span class="va">v_hat</span> <span class="op">-</span> <span class="va">pop_matrix_toy</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span></span>
+<span>  <span class="va">v_hat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">W</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="va">src_matrix_toy</span><span class="op">)</span></span>
+<span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">pop_matrix_toy</span><span class="op">)</span></span>
+<span>  <span class="co"># Poisson deviance: 2 * sum(v_hat - p*log(v_hat) + p*log(p) - p)</span></span>
+<span>  <span class="va">v_safe</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">v_hat</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">v_hat</span>, <span class="fl">1e-30</span><span class="op">)</span></span>
+<span>  <span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">v_safe</span> <span class="op">-</span> <span class="va">p</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">p</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">v_safe</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span>          <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">p</span> <span class="op">&gt;</span> <span class="fl">0</span>, <span class="va">p</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span>, <span class="fl">0</span><span class="op">)</span> <span class="op">-</span> <span class="va">p</span><span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>alpha <span class="op">=</span> <span class="va">alpha_range</span>, sse <span class="op">=</span> <span class="va">sse_values</span><span class="op">)</span>,</span>
-<span>       <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">alpha</span>, y <span class="op">=</span> <span class="va">sse</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>alpha <span class="op">=</span> <span class="va">alpha_range</span>, deviance <span class="op">=</span> <span class="va">deviance_values</span><span class="op">)</span>,</span>
+<span>       <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">alpha</span>, y <span class="op">=</span> <span class="va">deviance</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span>color <span class="op">=</span> <span class="st">"#4575b4"</span>, linewidth <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_abline.html" class="external-link">geom_vline</a></span><span class="op">(</span>xintercept <span class="op">=</span> <span class="va">alpha_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">sse_values</span><span class="op">)</span><span class="op">]</span>,</span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_abline.html" class="external-link">geom_vline</a></span><span class="op">(</span>xintercept <span class="op">=</span> <span class="va">alpha_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">deviance_values</span><span class="op">)</span><span class="op">]</span>,</span>
 <span>             linetype <span class="op">=</span> <span class="st">"dashed"</span>, color <span class="op">=</span> <span class="st">"#d73027"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Objective Function Landscape"</span>,</span>
 <span>       subtitle <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span></span>
 <span>         <span class="st">"Minimum at alpha = %.1f (shared across all tracts)"</span>,</span>
-<span>         <span class="va">alpha_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">sse_values</span><span class="op">)</span><span class="op">]</span><span class="op">)</span>,</span>
-<span>       x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression</a></span><span class="op">(</span><span class="va">alpha</span><span class="op">)</span>, y <span class="op">=</span> <span class="st">"SSE"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>         <span class="va">alpha_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">deviance_values</span><span class="op">)</span><span class="op">]</span><span class="op">)</span>,</span>
+<span>       x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression</a></span><span class="op">(</span><span class="va">alpha</span><span class="op">)</span>, y <span class="op">=</span> <span class="st">"Poisson Deviance"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/objective-landscape-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/objective-landscape-1.png" alt="" width="100%"></p>
 <p>The landscape has a clear minimum. In practice, each tract has its
-own alpha, creating a high-dimensional optimization problem.</p>
+own alpha (per bracket), creating a high-dimensional optimization
+problem.</p>
 </div>
 </div>
 <div class="section level3">
@@ -1203,17 +1336,20 @@ Normalization<a class="anchor" aria-label="anchor" href="#optimization-per-brack
 <h4 id="why-automatic-differentiation">14.1 Why automatic differentiation?<a class="anchor" aria-label="anchor" href="#why-automatic-differentiation"></a>
 </h4>
 <p>The objective function involves column normalization of the IDW
-kernel, followed by matrix multiplication and a squared-error loss.
+kernel, followed by matrix multiplication and Poisson deviance loss.
 Writing the analytical gradient by hand is straightforward for simple
-column normalization, but becomes tedious when combined with the
-per-bracket structure and exponential reparameterization.</p>
-<p>Torch’s <strong>automatic differentiation</strong> handles this: we
-define the forward pass (kernel -&gt; column-normalize -&gt;
-interpolation -&gt; loss), and torch computes the gradient of the loss
-with respect to
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+column normalization, but becomes involved when combined with the
+per-bracket structure, softplus reparameterization, and multiple penalty
+terms.</p>
+<p>For small problems, torch’s <strong>automatic
+differentiation</strong> handles this: we define the forward pass
+(kernel -&gt; column-normalize -&gt; interpolation -&gt; loss), and
+torch computes the gradient of the loss with respect to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>θ</mi><annotation encoding="application/x-tex">\theta</annotation></semantics></math>
 automatically by recording every operation and applying the chain rule
-backward.</p>
+backward. For large problems, the package derives and uses
+<strong>analytical gradients</strong> that are mathematically equivalent
+but computationally faster (Section 14.8).</p>
 </div>
 <div class="section level4">
 <h4 id="log-domain-computation-for-numerical-stability">14.2 Log-domain computation for numerical stability<a class="anchor" aria-label="anchor" href="#log-domain-computation-for-numerical-stability"></a>
@@ -1239,14 +1375,14 @@ astronomically small:</p>
 <span><span class="co">#&gt; Zero weights cause division by zero in column normalization</span></span></code></pre></div>
 <p>In 32-bit floating point (standard for GPU computation), numbers
 smaller than about
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1.2</mn><mo>×</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>38</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1.2 \times 10^{-38}</annotation></semantics></math>
 underflow to zero. When a weight becomes exactly zero, the column
 normalization produces
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>0</mn><mi>/</mi><mn>0</mn><mo>=</mo><mtext mathvariant="normal">NaN</mtext></mrow><annotation encoding="application/x-tex">0/0 = \text{NaN}</annotation></semantics></math>,
 and the optimization collapses.</p>
 <p><strong>The log-domain solution</strong>: the IDW kernel is computed
 in log space as
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math>,
 and the column normalization uses the <strong>logsumexp</strong> trick
 for numerical stability. The logsumexp function
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mo>∑</mo><mi>j</mi></msub><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log(\sum_j \exp(x_j))</annotation></semantics></math>
@@ -1271,8 +1407,8 @@ tensors. The tensor shapes involved:</p>
 </tr>
 <tr class="even">
 <td><code>alpha</code></td>
-<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n]</annotation></semantics></math></td>
-<td>Decay parameters (what we’re optimizing)</td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n \times k_a]</annotation></semantics></math></td>
+<td>Per-tract-per-bracket decay parameters</td>
 </tr>
 <tr class="odd">
 <td><code>P</code></td>
@@ -1286,8 +1422,8 @@ tensors. The tensor shapes involved:</p>
 </tr>
 <tr class="odd">
 <td><code>log_K</code></td>
-<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n \times m]</annotation></semantics></math></td>
-<td>Log-kernel (broadcast to 3D)</td>
+<td><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times n \times m]</annotation></semantics></math></td>
+<td>Per-bracket log-kernels</td>
 </tr>
 <tr class="even">
 <td><code>W_all</code></td>
@@ -1298,62 +1434,263 @@ tensors. The tensor shapes involved:</p>
 </table>
 <p>The first dimension
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>)
-indexes demographic brackets. All
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
-brackets share the same kernel — column normalization is applied
+indexes demographic brackets. Each bracket uses its own alpha values,
+producing bracket-specific kernels. Column normalization is applied
 independently to each bracket slice.</p>
-<pre><code>Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka]
+<pre><code>Input: log_t[n,m], alpha[n,ka], P[n,ka], V[m,ka]
 
-# Log-kernel (same for all brackets)
-log_K[i,j] = -alpha[i] * log_t[i, j]                  # [n x m]
+# Log-kernel (per bracket)
+log_K[b,i,j] = -alpha[i,b] * log_t[i,j]               # [ka x n x m]
 
 # Column normalization in log domain (per bracket)
-log_colsum[j] = logsumexp_i(log_K[i,j])               # [m]
-W[i,j] = exp(log_K[i,j] - log_colsum[j])              # [n x m]
+log_colsum[b,j] = logsumexp_i(log_K[b,i,j])            # [ka x m]
+W[b,i,j] = exp(log_K[b,i,j] - log_colsum[b,j])        # [ka x n x m]
 
-# Per-bracket: broadcast W to [ka x n x m], then interpolate
-V_hat = W @ V                                          # [n x ka]
-loss = sum((V_hat - P)^2)</code></pre>
-<p>Every operation — log, exp, logsumexp, matrix multiply, subtraction,
-squaring — has a defined backward pass in torch. The gradient
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>α</mi></msub><mi>f</mi></mrow><annotation encoding="application/x-tex">\nabla_\alpha f</annotation></semantics></math>
+# Interpolate: per-bracket weighted voter counts
+V_hat[i,b] = sum_j W[b,i,j] * V[j,b]                  # [n x ka]
+loss = poisson_deviance(V_hat, P) + barrier(V_hat) + entropy(W)</code></pre>
+<p>Every operation — log, exp, logsumexp, matrix multiply, Poisson
+deviance — has a defined backward pass in torch. The gradient
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>θ</mi></msub><mi>L</mi></mrow><annotation encoding="application/x-tex">\nabla_\theta L</annotation></semantics></math>
 flows backward through the column normalization automatically.</p>
 </div>
 <div class="section level4">
-<h4 id="adam-optimization-with-per-bracket-weights">14.4 ADAM optimization with per-bracket weights<a class="anchor" aria-label="anchor" href="#adam-optimization-with-per-bracket-weights"></a>
+<h4 id="softplus-reparameterization">14.4 Softplus reparameterization<a class="anchor" aria-label="anchor" href="#softplus-reparameterization"></a>
 </h4>
-<p>We use <strong>ADAM</strong> (Adaptive Moment Estimation) as the
-underlying optimizer, with <strong>per-bracket column
+<p>The decay parameters
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+must satisfy
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>≥</mo><msub><mi>α</mi><mo>min</mo></msub></mrow><annotation encoding="application/x-tex">\alpha_{ib} \geq \alpha_{\min}</annotation></semantics></math>
+(default
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mo>min</mo></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha_{\min} = 1</annotation></semantics></math>
+for the power kernel). Rather than clamping or projecting, the optimizer
+works with <strong>unconstrained</strong> parameters
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>θ</mi><annotation encoding="application/x-tex">\theta</annotation></semantics></math>
+and maps:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>=</mo><msub><mi>α</mi><mo>min</mo></msub><mo>+</mo><mtext mathvariant="normal">softplus</mtext><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>α</mi><mo>min</mo></msub><mo>+</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>+</mo><msup><mi>e</mi><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\alpha_{ib} = \alpha_{\min} + \text{softplus}(\theta_{ib})
+= \alpha_{\min} + \log(1 + e^{\theta_{ib}})</annotation></semantics></math></p>
+<p>The softplus function
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>+</mo><msup><mi>e</mi><mi>x</mi></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log(1 + e^x)</annotation></semantics></math>
+is a smooth approximation to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>max</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>0</mn><mo>,</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\max(0, x)</annotation></semantics></math>.
+Key properties:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+is always strictly above
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>α</mi><mo>min</mo></msub><annotation encoding="application/x-tex">\alpha_{\min}</annotation></semantics></math>
+(softplus
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">&gt; 0</annotation></semantics></math>)</li>
+<li>Gradient
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>∂</mi><mi>α</mi><mi>/</mi><mi>∂</mi><mi>θ</mi><mo>=</mo><mi>σ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>θ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\partial\alpha/\partial\theta = \sigma(\theta)</annotation></semantics></math>,
+always in
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">(0, 1)</annotation></semantics></math>
+— no saturation at any boundary</li>
+<li>No clamping, no projection — smooth and differentiable
+everywhere</li>
+<li>Corner solutions due to hard boundary constraints cannot occur</li>
+</ul>
+<p><strong>Per-tract, per-bracket alpha</strong>: the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+matrix has shape
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><mi>n</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[n \times k_a]</annotation></semantics></math>,
+allowing different decay rates for different demographic groups within
+the same tract. A young-voter bracket might have a different spatial
+reach than an old-voter bracket.</p>
+<p>Initialization:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>θ</mi><mn>0</mn></msub><mo>=</mo><msup><mtext mathvariant="normal">softplus</mtext><mrow><mi>−</mi><mn>1</mn></mrow></msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>α</mi><mtext mathvariant="normal">init</mtext></msub><mo>−</mo><msub><mi>α</mi><mo>min</mo></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\theta_0 = \text{softplus}^{-1}(\alpha_{\text{init}} - \alpha_{\min})</annotation></semantics></math>,
+with a small random perturbation
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>σ</mi><mo>=</mo><mn>0.1</mn></mrow><annotation encoding="application/x-tex">\sigma = 0.1</annotation></semantics></math>)
+to break symmetry across tracts.</p>
+<p>Figure @ref(fig:fig-alpha-bracket) shows how the optimized
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+values vary across the 14 demographic brackets in Belo Horizonte,
+illustrating that the per-bracket structure allows each age-gender group
+to learn its own spatial reach.</p>
+<div class="figure">
+<img src="figures/alpha-per-bracket.png" alt="Distribution of optimized alpha by demographic bracket in Belo Horizonte (5,109 tracts). Each bracket learns a different decay rate, reflecting age- and gender-specific spatial mobility patterns." width="100%"><p class="caption">
+Distribution of optimized alpha by demographic bracket in Belo Horizonte
+(5,109 tracts). Each bracket learns a different decay rate, reflecting
+age- and gender-specific spatial mobility patterns.
+</p>
+</div>
+</div>
+<div class="section level4">
+<h4 id="adaptive-entropy-targets-and-dual-ascent">14.5 Adaptive entropy targets and dual ascent<a class="anchor" aria-label="anchor" href="#adaptive-entropy-targets-and-dual-ascent"></a>
+</h4>
+<p>When the user specifies <code>target_eff_src</code> (e.g.,
+<code>target_eff_src = 5</code>) in <code><a href="../reference/optim_control.html">optim_control()</a></code>, the
+optimizer automatically adapts the entropy penalty strength
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+to achieve approximately that many <strong>effective sources</strong>
+per tract.</p>
+<div class="section level5">
+<h5 id="per-tract-targets">Per-tract targets<a class="anchor" aria-label="anchor" href="#per-tract-targets"></a>
+</h5>
+<p>A global entropy target is infeasible for tracts with sparse or
+uniform travel times. Consider a peripheral tract in the Amazon where
+all reachable stations are at similar distances: no value of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+can produce a weight distribution with low entropy, because the kernel
+values are nearly equal regardless of the decay rate.</p>
+<p>The package computes <strong>per-tract adaptive targets</strong>:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo>=</mo><mo>max</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><mo>min</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>k</mi><mi>i</mi></msub><mo>−</mo><mn>1</mn><mo>,</mo><mspace width="0.278em"></mspace><mi>T</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mspace width="0.278em"></mspace><msub><mi>H</mi><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mspace width="0.278em"></mspace><mo>log</mo><mn>2</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">h_i^* = \max\!\left(
+  \log\min(k_i - 1,\; T),\;
+  H_i(\alpha_{\text{ref}}),\;
+  \log 2
+\right)</annotation></semantics></math></p>
+<p>where:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>i</mi></msub><annotation encoding="application/x-tex">k_i</annotation></semantics></math>
+= number of reachable stations for tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>T</mi><annotation encoding="application/x-tex">T</annotation></semantics></math>
+= user’s <code>target_eff_src</code>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">H_i(\alpha_{\text{ref}})</annotation></semantics></math>
+= Shannon entropy of the weight distribution at a reference decay
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">\alpha_{\text{ref}} = 7</annotation></semantics></math>
+for power kernel, 50 for exponential). This captures the <strong>minimum
+achievable entropy</strong> given the actual travel time structure.
+Tracts where all stations are at similar distances get a higher
+floor.</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">\log 2</annotation></semantics></math>
+= absolute floor (at least 2 effective sources)</li>
+</ul>
+<p><strong>Why this matters</strong>: without adaptive targets, 9 of 26
+Brazilian state capitals (all in Norte or Centro-Oeste — Amazonian and
+Cerrado regions) exhibit optimization instability. With per-tract
+adaptive targets, catastrophic optimization failure (crash-collapse) is
+prevented and all 26 Brazilian state capitals converge. However, cities
+with structurally infeasible constraints (sparse road networks with
+uniform travel times) achieve higher deviance than well-connected cities
+— the per-tract targets mitigate but cannot eliminate this structural
+limitation.</p>
+<p>Figure @ref(fig:fig-eff-sources) shows the distribution of effective
+sources across tracts for four contrasting capitals. Palmas (Norte) is
+concentrated near 1–2 effective sources due to its sparse road network,
+while larger cities achieve broader distributions.</p>
+<div class="figure">
+<img src="figures/eff-sources-distribution.png" alt="Distribution of effective sources across census tracts in four capitals. Dashed red line indicates the target. Palmas (sparse Norte city) concentrates near 1--2 sources; larger Sudeste/Nordeste cities achieve broader distributions." width="100%"><p class="caption">
+Distribution of effective sources across census tracts in four capitals.
+Dashed red line indicates the target. Palmas (sparse Norte city)
+concentrates near 1–2 sources; larger Sudeste/Nordeste cities achieve
+broader distributions.
+</p>
+</div>
+</div>
+<div class="section level5">
+<h5 id="effective-sources">Effective sources<a class="anchor" aria-label="anchor" href="#effective-sources"></a>
+</h5>
+<p>The metric
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">eff_src</mtext><mi>i</mi></msub><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\text{eff\_src}_i = \exp(H_i)</annotation></semantics></math>
+measures how many stations effectively contribute to tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>.
+When
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mo>log</mo><mi>M</mi></mrow><annotation encoding="application/x-tex">H_i = \log M</annotation></semantics></math>
+(uniform weights), all
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>
+stations contribute equally; when
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">H_i = 0</annotation></semantics></math>,
+a single station dominates.</p>
+</div>
+<div class="section level5">
+<h5 id="log-reparameterized-dual-ascent">Log-reparameterized dual ascent<a class="anchor" aria-label="anchor" href="#log-reparameterized-dual-ascent"></a>
+</h5>
+<p>The entropy multiplier is parameterized as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>μ</mi><mi>E</mi></msub><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><mi>μ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mu_E = \exp(\log\mu)</annotation></semantics></math>,
+which structurally ensures
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>μ</mi><mi>E</mi></msub><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\mu_E &gt; 0</annotation></semantics></math>
+(prevents collapse to zero). The dual variable is updated once per epoch
+via the augmented Lagrangian method:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>μ</mi><mo>←</mo><mo>log</mo><mi>μ</mi><mo>+</mo><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mfrac><msub><mi>η</mi><mi>d</mi></msub><msub><mi>T</mi><mi>d</mi></msub></mfrac><mo>⋅</mo><mrow><mo stretchy="true" form="prefix">(</mo><mover><mi>H</mi><mo accent="true">‾</mo></mover><mo>−</mo><msup><mover><mi>h</mi><mo accent="true">‾</mo></mover><mo>*</mo></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log\mu \leftarrow \log\mu
++ d(t) \cdot \frac{\eta_d}{T_d} \cdot (\bar{H} - \bar{h}^*)</annotation></semantics></math></p>
+<p>where:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>1</mn><mi>/</mi><msqrt><mrow><mn>1</mn><mo>+</mo><mi>t</mi><mi>/</mi><mn>5000</mn></mrow></msqrt></mrow><annotation encoding="application/x-tex">d(t) = 1/\sqrt{1 + t/5000}</annotation></semantics></math>
+is a gentle decay schedule</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>η</mi><mi>d</mi></msub><annotation encoding="application/x-tex">\eta_d</annotation></semantics></math>
+= dual step scaling (<code>dual_eta</code>, default 1.0)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mi>d</mi></msub><mo>=</mo><mn>500</mn></mrow><annotation encoding="application/x-tex">T_d = 500</annotation></semantics></math>
+is a dampening constant</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>H</mi><mo accent="true">‾</mo></mover><annotation encoding="application/x-tex">\bar{H}</annotation></semantics></math>
+= current mean entropy across tracts</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mover><mi>h</mi><mo accent="true">‾</mo></mover><mo>*</mo></msup><annotation encoding="application/x-tex">\bar{h}^*</annotation></semantics></math>
+= mean of per-tract targets</li>
+</ul>
+<p>An ALM bound caps
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>μ</mi><mo>≤</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>3</mn><mi>ρ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log\mu \leq \log(3\rho)</annotation></semantics></math>
+to prevent overshoot (Bertsekas, 1999). The quadratic penalty
+coefficient is initialized as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ρ</mi><mo>=</mo><mi>M</mi><mi>/</mi><mi>T</mi></mrow><annotation encoding="application/x-tex">\rho = M / T</annotation></semantics></math>
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>
+is the number of stations and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>T</mi><annotation encoding="application/x-tex">T</annotation></semantics></math>
+is <code>target_eff_src</code>. The per-tract <strong>quadratic
+penalty</strong>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>ρ</mi><mi>/</mi><mn>2</mn><mo stretchy="true" form="postfix">)</mo></mrow><msub><mo>∑</mo><mi>i</mi></msub><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo>−</mo><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">(\rho/2)\sum_i(H_i - h_i^*)^2</annotation></semantics></math>
+does the heavy lifting of driving individual tracts toward their
+targets; the dual update ensures asymptotic exactness of the aggregate
+constraint.</p>
+<p>The effective sources are smoothed via an exponential moving average
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mtext mathvariant="normal">ema</mtext></msub><mo>=</mo><mn>0.05</mn></mrow><annotation encoding="application/x-tex">\alpha_{\text{ema}} = 0.05</annotation></semantics></math>)
+to filter noise from dual updates.</p>
+</div>
+</div>
+<div class="section level4">
+<h4 id="adam-optimizer-and-learning-rate-schedule">14.6 ADAM optimizer and learning rate schedule<a class="anchor" aria-label="anchor" href="#adam-optimizer-and-learning-rate-schedule"></a>
+</h4>
+<p>We use <strong>ADAM</strong> (Adaptive Moment Estimation) with betas
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mn>0.9</mn><mo>,</mo><mn>0.99</mn><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">(0.9, 0.99)</annotation></semantics></math>
+as the underlying optimizer, with <strong>per-bracket column
 normalization</strong>. At each gradient step:</p>
 <ol style="list-style-type: decimal">
 <li>
-<strong>Build the IDW kernel</strong> from current alpha values</li>
+<strong>Build the IDW kernel</strong> from current
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>θ</mi><annotation encoding="application/x-tex">\theta</annotation></semantics></math>
+values (via softplus)</li>
 <li>
-<strong>Per-bracket column normalization</strong>: each demographic
-column uses the same column-normalized kernel</li>
+<strong>Per-bracket column normalization</strong> on 3D tensors</li>
 <li>
-<strong>Compute loss</strong>: SSE between interpolated and observed
-values</li>
+<strong>Compute loss</strong>: Poisson deviance + barrier + entropy
++ quadratic</li>
 <li>
-<strong>Backward + Adam step</strong> on the unconstrained
-<code>theta</code> parameters</li>
+<strong>Backward + Adam step</strong> on unconstrained
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>θ</mi><annotation encoding="application/x-tex">\theta</annotation></semantics></math>
+</li>
 </ol>
-<p>At the end of each epoch, the <strong>true objective</strong> is
-evaluated on the full dataset (no gradient) and used for convergence
-monitoring and logging.</p>
-<p><strong>Exponential reparameterization</strong>: alpha is not
-optimized directly. Instead we optimize <code>theta</code>
-(unconstrained) where <code>alpha = exp(theta)</code>, initialized as
-<code>theta = log(alpha_init)</code>. This ensures:</p>
-<ul>
-<li>Alpha is always strictly positive — no clamping or projection
-needed</li>
-<li>Gradient <code>d(alpha)/d(theta) = alpha</code> — no saturation at
-any boundary</li>
-<li>Corner solutions due to hard boundary constraints cannot occur</li>
-</ul>
-<p>The learning rate is reduced by half when the epoch loss plateaus
-(ReduceLROnPlateau with patience = 2 x early-stop patience).</p>
+<p>At the end of each epoch, the true objective is evaluated on the full
+dataset (no gradient) for convergence monitoring.</p>
+<p><strong>Learning rate schedule</strong> — two modes:</p>
+<p><strong>Non-adaptive mode</strong> (no <code>target_eff_src</code>):
+<strong>SGDR cosine annealing with warm restarts</strong> (Loshchilov
+&amp; Hutter, 2017). The learning rate oscillates between
+<code>lr_init</code> and <code>lr_init * 0.01</code>, with the cycle
+length doubling after each restart
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mn>0</mn></msub><mo>=</mo><mn>500</mn></mrow><annotation encoding="application/x-tex">T_0 = 500</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mtext mathvariant="normal">mult</mtext></msub><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">T_{\text{mult}} = 2</annotation></semantics></math>).
+The maximum learning rate decays by a factor of 0.7 per restart. At warm
+restarts, ADAM’s momentum buffers are cleared to allow fresh
+exploration. This deterministic schedule is decoupled from loss
+values.</p>
+<p><strong>Adaptive mode</strong> (<code>target_eff_src</code> set):
+<strong>constant learning rate</strong> throughout. The dual ascent
+updates change the loss landscape every epoch, making LR decay
+counterproductive. ADAM’s per-parameter adaptive second moment already
+handles oscillations.</p>
+<p><strong>Gradient clipping</strong>: <code>max_norm = 1.0</code>
+prevents exploding gradients.</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">optim_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/optimize_alpha.html">optimize_alpha</a></span><span class="op">(</span></span>
 <span>  time_matrix   <span class="op">=</span> <span class="va">time_matrix</span>,</span>
@@ -1361,17 +1698,36 @@ any boundary</li>
 <span>  source_matrix <span class="op">=</span> <span class="va">source_matrix</span>,</span>
 <span>  row_targets   <span class="op">=</span> <span class="va">row_targets</span>,</span>
 <span>  optim <span class="op">=</span> <span class="fu"><a href="../reference/optim_control.html">optim_control</a></span><span class="op">(</span></span>
-<span>    max_epochs <span class="op">=</span> <span class="fl">200</span>,      <span class="co"># maximum epochs</span></span>
-<span>    lr_init    <span class="op">=</span> <span class="fl">0.05</span>,     <span class="co"># initial learning rate (auto-reduced on plateau)</span></span>
-<span>    use_gpu    <span class="op">=</span> <span class="cn">FALSE</span>     <span class="co"># CPU for small problems</span></span>
+<span>    lr_init        <span class="op">=</span> <span class="fl">0.05</span>,        <span class="co"># initial learning rate</span></span>
+<span>    target_eff_src <span class="op">=</span> <span class="fl">5</span>,           <span class="co"># enable dual ascent (5 effective sources)</span></span>
+<span>    use_gpu        <span class="op">=</span> <span class="cn">FALSE</span>        <span class="co"># CPU for small problems</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p><img src="figures/optim-convergence.png" class="r-plt" alt="" width="90%"></p>
-<p>The epoch loss curve shows the <strong>true objective</strong>
-evaluated on all tracts at the end of each epoch. The package tracks the
-best epoch loss and returns the corresponding alpha values.</p>
-<p><strong>Key tuning parameters</strong>:</p>
-<p>Tuning parameters are grouped in <code><a href="../reference/optim_control.html">optim_control()</a></code>:</p>
+<p><img src="figures/optim-convergence.png" alt="" width="90%"></p>
+<p>The epoch loss curve shows the <strong>total loss</strong> (deviance
++ barrier + entropy + quadratic) evaluated at each epoch. The package
+tracks the best model and returns the corresponding alpha values.</p>
+<p>Figure @ref(fig:fig-convergence-trajectories) compares convergence
+behavior across four contrasting capitals: Aracaju converges in 2,687
+epochs, while Palmas (sparse Norte city) requires 19,383. The entropy
+multiplier
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+panel reveals how the dual ascent adapts penalty strength — healthy
+cities see
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+rise and settle quickly, while structurally difficult cities show
+prolonged oscillations.</p>
+<div class="figure">
+<img src="figures/convergence-trajectories.png" alt="Convergence trajectories for four contrasting capitals. Left: Poisson deviance (log scale). Right: entropy multiplier. Healthy cities (Aracaju, Belo Horizonte) converge quickly; sparse Norte cities (Palmas, Manaus) require many more epochs and show prolonged dual variable dynamics." width="100%"><p class="caption">
+Convergence trajectories for four contrasting capitals. Left: Poisson
+deviance (log scale). Right: entropy multiplier. Healthy cities
+(Aracaju, Belo Horizonte) converge quickly; sparse Norte cities (Palmas,
+Manaus) require many more epochs and show prolonged dual variable
+dynamics.
+</p>
+</div>
+<p><strong>Key tuning parameters</strong> (via
+<code><a href="../reference/optim_control.html">optim_control()</a></code>):</p>
 <table class="table">
 <colgroup>
 <col width="33%">
@@ -1386,32 +1742,158 @@ best epoch loss and returns the corresponding alpha values.</p>
 <tbody>
 <tr class="odd">
 <td><code>max_epochs</code></td>
-<td>2000</td>
-<td>Maximum epochs.</td>
+<td>50000</td>
+<td>Maximum epochs (convergence usually earlier).</td>
 </tr>
 <tr class="even">
 <td><code>lr_init</code></td>
 <td>0.05</td>
-<td>Initial learning rate. Auto-reduced when loss plateaus.</td>
+<td>Initial learning rate. SGDR (non-adaptive) or constant
+(adaptive).</td>
 </tr>
 <tr class="odd">
-<td><code>dtype</code></td>
-<td><code>"float32"</code></td>
-<td>
-<code>"float64"</code> for more precision (2x memory).</td>
+<td><code>convergence_tol</code></td>
+<td>1e-5</td>
+<td>Relative improvement threshold for convergence.</td>
+</tr>
+<tr class="even">
+<td><code>patience</code></td>
+<td>100</td>
+<td>Lookback window (epochs) for convergence check.</td>
+</tr>
+<tr class="odd">
+<td><code>barrier_mu</code></td>
+<td>1</td>
+<td>Log-barrier strength. 0 to disable.</td>
+</tr>
+<tr class="even">
+<td><code>entropy_mu</code></td>
+<td>0</td>
+<td>Manual entropy penalty strength. Superseded by
+<code>target_eff_src</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>target_eff_src</code></td>
+<td>NULL</td>
+<td>Target effective sources per tract. Enables dual ascent.</td>
+</tr>
+<tr class="even">
+<td><code>dual_eta</code></td>
+<td>1.0</td>
+<td>Dual step scaling factor.</td>
+</tr>
+<tr class="odd">
+<td><code>alpha_init</code></td>
+<td>2</td>
+<td>Initial guess for alpha (scalar, vector, or matrix).</td>
 </tr>
 <tr class="even">
 <td><code>alpha_min</code></td>
-<td>1</td>
-<td>Lower bound for alpha (via softplus reparameterization).</td>
+<td>1 (power)</td>
+<td>Lower bound via softplus reparameterization.</td>
+</tr>
+<tr class="odd">
+<td><code>kernel</code></td>
+<td>“power”</td>
+<td>“power” or “exponential”.</td>
+</tr>
+<tr class="even">
+<td><code>dtype</code></td>
+<td>“float32”</td>
+<td>“float64” for more precision (2x memory).</td>
 </tr>
 <tr class="odd">
 <td><code>use_gpu</code></td>
-<td><code>FALSE</code></td>
-<td>Enable GPU acceleration (CUDA/MPS).</td>
+<td>NULL</td>
+<td>GPU acceleration (auto-detected when NULL).</td>
 </tr>
 </tbody>
 </table>
+</div>
+<div class="section level4">
+<h4 id="convergence-criteria">14.7 Convergence criteria<a class="anchor" aria-label="anchor" href="#convergence-criteria"></a>
+</h4>
+<p>The optimizer uses a <strong>two-tier convergence system</strong>,
+never declaring convergence before
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>max</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>3</mn><mo>×</mo><mtext mathvariant="normal">patience</mtext><mo>,</mo><mn>500</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\max(3 \times \text{patience}, 500)</annotation></semantics></math>
+epochs:</p>
+<p><strong>Tier 1 — Gradient-based</strong> (true stationarity).
+Requires <strong>10 consecutive epochs</strong> satisfying all of:</p>
+<ul>
+<li>Relative gradient norm:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><msub><mi>∇</mi><mi>θ</mi></msub><mi>L</mi><mo stretchy="false" form="postfix">∥</mo><mi>/</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mi>+</mi><mo stretchy="false" form="postfix">∥</mo><mi>θ</mi><mo stretchy="false" form="postfix">∥</mo><mo stretchy="true" form="postfix">)</mo></mrow><mo>&lt;</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">\|\nabla_\theta L\| / (1 + \|\theta\|) &lt; 10^{-4}</annotation></semantics></math>
+</li>
+<li>Effective sources within 5% of adjusted target (adaptive mode)</li>
+<li>Dual variable
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+stable over <code>patience</code> epochs</li>
+<li>Total loss stable over <code>patience</code> epochs</li>
+<li>Deviance not rising: mean deviance over the last 100 epochs must not
+exceed mean deviance from 400–500 epochs ago by more than 1%</li>
+</ul>
+<p><strong>Tier 2 — Window-based</strong> (diminishing returns).
+Triggered when the loss metric improves by less than
+<code>convergence_tol</code> over the last <code>patience</code> epochs,
+provided:</p>
+<ul>
+<li>Effective sources within 20% of target (coarser than Tier 1)</li>
+<li>Dual variable and total loss both stable</li>
+<li>In refinement phase: adaptive mode (always), or non-adaptive mode
+with LR below 10% of initial</li>
+</ul>
+<p>In adaptive mode, the convergence metric is Poisson deviance alone;
+in non-adaptive mode, total loss (deviance + barrier) is used.</p>
+<p><strong>Best model tracking</strong>: in adaptive mode, the optimizer
+tracks the model with the <strong>lowest Poisson deviance</strong> among
+epochs where effective sources are within 20% of the adjusted target.
+This ensures the returned weights satisfy the entropy constraint while
+maximizing fit.</p>
+</div>
+<div class="section level4">
+<h4 id="station-chunked-computation">14.8 Station-chunked computation<a class="anchor" aria-label="anchor" href="#station-chunked-computation"></a>
+</h4>
+<p>For large problems where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>&gt;</mo><mn>25</mn><mo>×</mo><msup><mn>10</mn><mn>6</mn></msup></mrow><annotation encoding="application/x-tex">k_a \times n \times m &gt; 25 \times 10^6</annotation></semantics></math>,
+the optimizer automatically switches to a
+<strong>station-chunked</strong> computation path. Instead of building
+the full
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times n \times m]</annotation></semantics></math>
+tensor, the forward pass iterates over station chunks of size:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>m</mi><mtext mathvariant="normal">chunk</mtext></msub><mo>=</mo><mrow><mo stretchy="true" form="prefix">⌈</mo><mfrac><mrow><mn>25</mn><mo>×</mo><msup><mn>10</mn><mn>6</mn></msup></mrow><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi></mrow></mfrac><mo stretchy="true" form="postfix">⌉</mo></mrow></mrow><annotation encoding="application/x-tex">m_{\text{chunk}} = \left\lceil
+\frac{25 \times 10^6}{k_a \times n}\right\rceil</annotation></semantics></math></p>
+<p>capped by available GPU memory (60% of VRAM).</p>
+<p><strong>Two-pass structure</strong>:</p>
+<ul>
+<li><p><strong>Pass 1</strong> (no gradient): loops over station chunks,
+accumulating the predicted values
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>V</mi><mo accent="true">̂</mo></mover><annotation encoding="application/x-tex">\hat{V}</annotation></semantics></math>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub></mrow><annotation encoding="application/x-tex">n \times k_a</annotation></semantics></math>)
+and the aggregated weight matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mtext mathvariant="normal">agg</mtext></msub><annotation encoding="application/x-tex">W_{\text{agg}}</annotation></semantics></math>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>×</mo><mi>m</mi></mrow><annotation encoding="application/x-tex">n \times m</annotation></semantics></math>).
+Computes the loss value and entropy/barrier gradient signals.</p></li>
+<li><p><strong>Pass 2</strong> (analytical gradient): computes
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>∂</mi><mi>L</mi><mi>/</mi><mi>∂</mi><mi>α</mi></mrow><annotation encoding="application/x-tex">\partial L / \partial\alpha</annotation></semantics></math>
+directly using the derived softmax Jacobian formula, without autograd
+backward:</p></li>
+</ul>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>L</mi></mrow><mrow><mi>∂</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow></mfrac><mo>=</mo><munder><mo>∑</mo><mi>j</mi></munder><msub><mi>c</mi><mrow><mi>b</mi><mi>j</mi></mrow></msub><mspace width="0.167em"></mspace><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>b</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mspace width="0.167em"></mspace><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo stretchy="true" form="prefix">(</mo><msub><mover><mrow><mi>d</mi><mi>L</mi></mrow><mo accent="true">¯</mo></mover><mrow><mi>b</mi><mi>j</mi></mrow></msub><mo>−</mo><mi>d</mi><msub><mi>L</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\frac{\partial L}{\partial \alpha_{ib}}
+= \sum_j c_{bj}\, W^{(b)}_{ij}\, \phi(t_{ij})
+\left(\overline{dL}_{bj} - dL_{ib}\right)</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mrow><mi>d</mi><mi>L</mi></mrow><mo accent="true">¯</mo></mover><mrow><mi>b</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></msub><msubsup><mi>W</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>b</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mspace width="0.167em"></mspace><mi>d</mi><msub><mi>L</mi><mrow><mi>i</mi><mi>′</mi><mi>b</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\overline{dL}_{bj} = \sum_{i'} W^{(b)}_{i'j}\, dL_{i'b}</annotation></semantics></math>
+is the weight-averaged loss gradient at station
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>
+(see Section 20 for the full derivation).</p>
+<p>The entropy gradient uses a <strong>one-epoch-delayed
+signal</strong>: the gradient
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>∂</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>E</mi><mo>+</mo><mi>Q</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mi>∂</mi><msub><mi>W</mi><mtext mathvariant="normal">agg</mtext></msub></mrow><annotation encoding="application/x-tex">\partial(E+Q)/\partial W_{\text{agg}}</annotation></semantics></math>
+from the previous epoch is propagated through the same softmax Jacobian,
+adding the corresponding terms. This avoids rebuilding the computational
+graph while introducing negligible lag.</p>
+<p><strong>Speedup</strong>: the analytical path achieves 2–3x speedup
+over autograd backward for large cities (e.g., 2.62 s/epoch vs. 7.77
+s/epoch for S0e3o Paulo with 26,611 tracts and 2,028 stations).</p>
 </div>
 </div>
 </div>
@@ -1421,10 +1903,10 @@ best epoch loss and returns the corresponding alpha values.</p>
 <div class="section level3">
 <h3 id="the-effect-of-alpha-spatial-interpretation">15. The Effect of Alpha: Spatial Interpretation<a class="anchor" aria-label="anchor" href="#the-effect-of-alpha-spatial-interpretation"></a>
 </h3>
-<p><img src="figures/alpha-histogram.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/alpha-histogram.png" alt="" width="80%"></p>
 <p>Most alphas cluster in a moderate range, with tails extending toward
 0 (uniform allocation) and large values (nearest-station-only).</p>
-<p><img src="figures/alpha-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/alpha-map.png" alt="" width="100%"></p>
 <ul>
 <li>
 <strong>Low alpha</strong> (blue, urban core): weight is spread
@@ -1455,7 +1937,7 @@ on the nearest station. Isolated tracts with one dominant station.</li>
 <span>       y <span class="op">=</span> <span class="st">"Normalized weight"</span>, fill <span class="op">=</span> <span class="st">""</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>plot.title <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_text</a></span><span class="op">(</span>face <span class="op">=</span> <span class="st">"bold"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="methodology_files/figure-html/alpha-effect-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="methodology_files/figure-html/alpha-effect-1.png" alt="" width="100%"></p>
 <p>At
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha = 1</annotation></semantics></math>,
 weights are nearly uniform. At
@@ -1509,14 +1991,14 @@ is [M × P].</p>
 <span></span>
 <span><span class="va">pct_lula</span> <span class="op">&lt;-</span> <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"CAND_13"</span><span class="op">]</span> <span class="op">/</span></span>
 <span>  <span class="va">interpolated</span><span class="op">[</span>, <span class="st">"QT_COMPARECIMENTO"</span><span class="op">]</span> <span class="op">*</span> <span class="fl">100</span></span></code></pre></div>
-<p><img src="figures/interp-lula.png" class="r-plt" alt="" width="100%"></p>
-<p><img src="figures/interp-bolsonaro.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/interp-lula.png" alt="" width="100%"></p>
+<p><img src="figures/interp-bolsonaro.png" alt="" width="100%"></p>
 <p>Geographic polarization becomes visible at the tract level — a
 spatial pattern that was previously impossible to observe with
 station-level data alone.</p>
 <p><strong>Calibration validation</strong>: interpolated demographics
 should match census demographics (the optimization objective).</p>
-<p><img src="figures/interp-scatter-calib.png" class="r-plt" alt="" width="80%"></p>
+<p><img src="figures/interp-scatter-calib.png" alt="" width="80%"></p>
 <p>Points cluster tightly around the 45-degree line, confirming that the
 optimization found good weights.</p>
 <p><strong>The reuse principle</strong>: the weight matrix
@@ -1547,7 +2029,7 @@ are preserved exactly.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Per-tract:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">interpolated_votes</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Per-tract: 506 722 106 461 204</span></span></code></pre></div>
 <p><strong>Calibration residuals</strong>:</p>
-<p><img src="figures/residuals-boxplot.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/residuals-boxplot.png" alt="" width="90%"></p>
 <p>Residuals should be centered near zero with small magnitude. Outliers
 may indicate boundary effects (voters crossing municipality borders) or
 data quality issues.</p>
@@ -1558,7 +2040,7 @@ data quality issues.</p>
 <p>In Section 1, we showed that Rocinha and Copacabana have strikingly
 different age structures. Does the interpolation recover these
 patterns?</p>
-<p><img src="figures/age-recovery-rocinha-copacabana.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/age-recovery-rocinha-copacabana.png" alt="" width="100%"></p>
 <p>The blue bars show the census truth (population by age bracket) and
 the yellow bars show the IDW-interpolated voter profiles. The
 interpolation closely recovers the distinctive age patterns of both
@@ -1580,7 +2062,7 @@ Voronoi (Thiessen) polygons around each station and assigning each tract
 <p>We compare both methods across <strong>four Brazilian state
 capitals</strong> with diverse urban morphologies: Palmas (TO), Cuiabá
 (MT), Manaus (AM), and Natal (RN).</p>
-<p><img src="figures/voronoi-palmas-map.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/voronoi-palmas-map.png" alt="" width="100%"></p>
 <p>In the Voronoi approach, each tract inherits the complete demographic
 and electoral profile of a single station. This ignores the many-to-many
 structure: a tract near the boundary between two Voronoi cells gets none
@@ -1596,7 +2078,7 @@ different demographic composition.</p>
 residuals are tightly centered around zero, while Voronoi residuals have
 much larger spread.</p>
 <p>The aggregate SSE ratio quantifies the advantage:</p>
-<p><img src="figures/voronoi-sse-ratio-cities.png" class="r-plt" alt="" width="90%"></p>
+<p><img src="figures/voronoi-sse-ratio-cities.png" alt="" width="90%"></p>
 <p>In every city, the IDW method achieves dramatically lower squared
 error than Voronoi assignment — by a factor of 275x (Cuiaba) to 1,624x
 (Manaus), with Palmas at 601x and Natal at 639x. The advantage is
@@ -1619,7 +2101,7 @@ obtained from the 2022 Census (via
 this correlation for four cities with very different socioeconomic
 profiles: São Paulo (SP), Salvador (BA), Porto Alegre (RS), and Cuiabá
 (MT).</p>
-<p><img src="figures/lula-income-correlation.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="figures/lula-income-correlation.png" alt="" width="100%"></p>
 <p>The negative correlation is consistent across all four cities and
 with well-established patterns in Brazilian electoral geography:
 lower-income areas tend to vote more heavily for PT candidates, while
@@ -1641,7 +2123,9 @@ to reduce the influence of extreme values and improve linearity.</p>
 <h3 id="performance-and-tuning">18. Performance and Tuning<a class="anchor" aria-label="anchor" href="#performance-and-tuning"></a>
 </h3>
 <p>All timings below assume default optimization parameters:
-<code>max_epochs = 200</code>, <code>dtype = "float32"</code>.</p>
+<code>max_epochs = 50000</code>, <code>dtype = "float32"</code>. The
+optimizer typically converges well before <code>max_epochs</code> due to
+the two-tier convergence system (Section 14.7).</p>
 <table class="table">
 <thead><tr class="header">
 <th>Problem size (tracts)</th>
@@ -1662,22 +2146,79 @@ to reduce the influence of extreme values and improve linearity.</p>
 <tr class="odd">
 <td>1,000–5,000</td>
 <td>GPU recommended</td>
-<td>15s – 2 min</td>
+<td>1 – 5 min</td>
 </tr>
 <tr class="even">
 <td>&gt; 5,000</td>
 <td>GPU strongly recommended</td>
-<td>2–10 min</td>
+<td>5–15 min</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Practical runtimes</strong> (optimization step only, from
-actual runs):</p>
+<div class="section level4">
+<h4 id="automatic-station-chunking">18.1 Automatic station chunking<a class="anchor" aria-label="anchor" href="#automatic-station-chunking"></a>
+</h4>
+<p>For large problems where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>&gt;</mo><mn>25</mn><mo>×</mo><msup><mn>10</mn><mn>6</mn></msup></mrow><annotation encoding="application/x-tex">k_a \times n \times m &gt; 25 \times 10^6</annotation></semantics></math>,
+the optimizer automatically switches to the station-chunked computation
+path (Section 14.8). This reduces both per-epoch time and peak GPU
+memory:</p>
+<table class="table">
+<thead><tr class="header">
+<th>Municipality</th>
+<th>Tracts</th>
+<th>Stations</th>
+<th>Auto-chunks</th>
+<th>~s/epoch (GPU)</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Varginha</td>
+<td>279</td>
+<td>37</td>
+<td>1 (monolithic)</td>
+<td>~0.05</td>
+</tr>
+<tr class="even">
+<td>Belo Horizonte</td>
+<td>5,109</td>
+<td>407</td>
+<td>2</td>
+<td>~0.085</td>
+</tr>
+<tr class="odd">
+<td>Rio de Janeiro</td>
+<td>13,354</td>
+<td>1,392</td>
+<td>11</td>
+<td>~0.52</td>
+</tr>
+<tr class="even">
+<td>S0e3o Paulo</td>
+<td>26,611</td>
+<td>2,028</td>
+<td>30</td>
+<td>~0.96</td>
+</tr>
+</tbody>
+</table>
+<p>The chunk size is computed as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>m</mi><mtext mathvariant="normal">chunk</mtext></msub><mo>=</mo><mo stretchy="false" form="prefix">⌈</mo><mn>25</mn><mtext mathvariant="normal">M</mtext><mi>/</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="false" form="postfix">⌉</mo></mrow><annotation encoding="application/x-tex">m_{\text{chunk}} = \lceil 25\text{M} / (k_a \times n) \rceil</annotation></semantics></math>,
+capped by available GPU memory. Users can override via
+<code>force_chunked</code> and <code>chunk_size</code> in
+<code><a href="../reference/optim_control.html">optim_control()</a></code>, but the defaults work well for the tested
+range.</p>
+</div>
+<div class="section level4">
+<h4 id="practical-runtimes">18.2 Practical runtimes<a class="anchor" aria-label="anchor" href="#practical-runtimes"></a>
+</h4>
+<p>Runtimes for the optimization step only (GPU, RTX 3060 8GB,
+convergence or max_epochs):</p>
 <ul>
 <li>Igrejinha (85 tracts, 17 stations): ~24s CPU</li>
 <li>Varginha (279 tracts, 37 stations): ~52s CPU</li>
 <li>Palmas (660 tracts, 71 stations): ~135s CPU</li>
-<li>Niterói (1,169 tracts, 135 stations): ~17s GPU</li>
+<li>Niter0f3i (1,169 tracts, 135 stations): ~17s GPU</li>
 <li>Belo Horizonte (5,113 tracts, 407 stations): ~105s GPU</li>
 <li>Rio de Janeiro (13,370 tracts, 1,392 stations): ~10 min GPU</li>
 </ul>
@@ -1685,31 +2226,40 @@ actual runs):</p>
 <code><a href="../reference/interpolate_election_br.html">interpolate_election_br()</a></code> also includes data downloads,
 travel time computation (via r5r), and weight matrix construction, which
 can dominate for larger cities.</p>
-<p><strong>Memory estimation.</strong> GPU memory during optimization
-has two main components:</p>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Full kernel matrix</strong> (always in memory):
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>n</mi><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="normal">bytes</mtext></mrow><annotation encoding="application/x-tex">n \times m \times
-\text{bytes}</annotation></semantics></math> — e.g., 5,100 x 407 x 4 = 8
-MB for Belo Horizonte in float32.</li>
-<li>
-<strong>Per-bracket weight tensors</strong>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="normal">bytes</mtext></mrow><annotation encoding="application/x-tex">k_a \times n \times m \times
-\text{bytes}</annotation></semantics></math> — torch must store
-intermediate tensors for backpropagation through the column
-normalization.</li>
-</ol>
-<p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>=</mo><mn>14</mn></mrow><annotation encoding="application/x-tex">k_a = 14</annotation></semantics></math>
-(gender × 7 age brackets) and <code>bytes</code> is 4 (float32) or 8
-(float64).</p>
-<table class="table">
+</div>
+<div class="section level4">
+<h4 id="memory-estimation">18.3 Memory estimation<a class="anchor" aria-label="anchor" href="#memory-estimation"></a>
+</h4>
+<p>GPU memory during optimization depends on the computation path:</p>
+<p><strong>Monolithic path</strong>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>≤</mo><mn>25</mn><mtext mathvariant="normal">M</mtext></mrow><annotation encoding="application/x-tex">k_a \times n \times m \leq 25\text{M}</annotation></semantics></math>):
+the full 3D tensor
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times n \times m]</annotation></semantics></math>
+is held in memory, plus autograd intermediate tensors. Peak usage
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>≈</mo><mn>6</mn><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>×</mo><mtext mathvariant="normal">bytes</mtext></mrow><annotation encoding="application/x-tex">\approx 6 \times k_a \times n \times
+m \times \text{bytes}</annotation></semantics></math>.</p>
+<p><strong>Station-chunked path</strong>
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><mi>m</mi><mo>&gt;</mo><mn>25</mn><mtext mathvariant="normal">M</mtext></mrow><annotation encoding="application/x-tex">k_a \times n \times m &gt; 25\text{M}</annotation></semantics></math>):
+only one chunk
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><msub><mi>m</mi><mtext mathvariant="normal">chunk</mtext></msub><mo stretchy="true" form="postfix">]</mo></mrow><annotation encoding="application/x-tex">[k_a \times n \times m_{\text{chunk}}]</annotation></semantics></math>
+is in memory at a time, reducing peak usage to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>n</mi><mo>×</mo><msub><mi>m</mi><mtext mathvariant="normal">chunk</mtext></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">O(k_a \times n \times m_{\text{chunk}})</annotation></semantics></math>.
+No autograd graph is built (analytical gradients).</p>
+<table style="width:100%;" class="table">
+<colgroup>
+<col width="16%">
+<col width="16%">
+<col width="16%">
+<col width="16%">
+<col width="16%">
+<col width="16%">
+</colgroup>
 <thead><tr class="header">
 <th>Municipality</th>
 <th>Tracts</th>
 <th>Stations</th>
 <th><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math></th>
+<th>Path</th>
 <th>Estimated GPU memory</th>
 </tr></thead>
 <tbody>
@@ -1718,6 +2268,7 @@ normalization.</li>
 <td>279</td>
 <td>37</td>
 <td>14</td>
+<td>Monolithic</td>
 <td>~28 MB</td>
 </tr>
 <tr class="even">
@@ -1725,6 +2276,7 @@ normalization.</li>
 <td>1,169</td>
 <td>135</td>
 <td>14</td>
+<td>Monolithic</td>
 <td>~242 MB</td>
 </tr>
 <tr class="odd">
@@ -1732,24 +2284,25 @@ normalization.</li>
 <td>5,113</td>
 <td>407</td>
 <td>14</td>
-<td>~729 MB</td>
+<td>Chunked (2)</td>
+<td>~400 MB</td>
 </tr>
 <tr class="even">
 <td>Rio de Janeiro</td>
 <td>13,370</td>
 <td>1,392</td>
 <td>14</td>
-<td>~2.5 GB</td>
+<td>Chunked (11)</td>
+<td>~1.5 GB</td>
 </tr>
 </tbody>
 </table>
-<p>These are actual values reported by the optimizer during
-precomputation. For very large cities on GPU, consider using
-<code>dtype = "float32"</code> (the default) rather than
-<code>"float64"</code> to halve memory usage.</p>
+<p>For very large cities, <code>dtype = "float32"</code> (the default)
+halves memory compared to <code>"float64"</code>.</p>
 <p><strong>RStudio</strong>: torch inside RStudio IDE requires
 subprocess execution via <code>callr</code> (automatic and transparent
 to the user). Standalone R scripts run directly.</p>
+</div>
 </div>
 <div class="section level3">
 <h3 id="setup-torch-java-and-r5r">19. Setup: Torch, Java, and r5r<a class="anchor" aria-label="anchor" href="#setup-torch-java-and-r5r"></a>
@@ -1786,35 +2339,105 @@ loading r5r for large municipalities.</p>
 = number of polling stations</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
-= number of calibration brackets (7 for age-only, 14 for full)</li>
+= number of calibration brackets (14 for full gender
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>×</mi><annotation encoding="application/x-tex">\times</annotation></semantics></math>
+age)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>a</mi></msub><annotation encoding="application/x-tex">k_a</annotation></semantics></math>
+= number of active brackets (those with nonzero population and
+voters)</li>
 <li>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">t \in \mathbb{R}^{N \times M}</annotation></semantics></math>:
 travel time matrix (minutes)</li>
 <li>
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>∈</mo><msup><mi>ℝ</mi><mi>N</mi></msup></mrow><annotation encoding="application/x-tex">\alpha \in \mathbb{R}^N</annotation></semantics></math>:
-per-tract decay parameters</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>α</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">\alpha \in \mathbb{R}^{N \times k_a}</annotation></semantics></math>:
+per-tract-per-bracket decay parameters</li>
 <li>
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>K</mi></mrow></msup></mrow><annotation encoding="application/x-tex">P \in \mathbb{R}^{N \times K}</annotation></semantics></math>:
-census population by age bracket</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>θ</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">\theta \in \mathbb{R}^{N \times k_a}</annotation></semantics></math>:
+unconstrained optimizer variables</li>
 <li>
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>S</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>M</mi><mo>×</mo><mi>K</mi></mrow></msup></mrow><annotation encoding="application/x-tex">S \in \mathbb{R}^{M \times K}</annotation></semantics></math>:
-voter counts by age bracket at stations</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">P \in \mathbb{R}^{N \times k_a}</annotation></semantics></math>:
+census population by bracket</li>
 <li>
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>∈</mo><msup><mi>ℝ</mi><mi>M</mi></msup></mrow><annotation encoding="application/x-tex">c \in \mathbb{R}^M</annotation></semantics></math>:
-column targets
-(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>j</mi></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">c_j = 1</annotation></semantics></math>,
-enforced by column normalization)</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>S</mi><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>M</mi><mo>×</mo><msub><mi>k</mi><mi>a</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">S \in \mathbb{R}^{M \times k_a}</annotation></semantics></math>:
+voter counts by bracket at stations</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">c_{kj} = S_{jk}</annotation></semantics></math>:
+voter count for bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+at station
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><annotation encoding="application/x-tex">\hat{V}_{ik}</annotation></semantics></math>:
+predicted population for tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>,
+bracket
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><annotation encoding="application/x-tex">W^{(k)}_{ij}</annotation></semantics></math>:
+per-bracket column-normalized weight</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mrow><mtext mathvariant="normal">agg</mtext><mo>,</mo><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">W_{\text{agg},ij}</annotation></semantics></math>:
+voter-weighted aggregated weight</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>H</mi><mi>i</mi></msub><annotation encoding="application/x-tex">H_i</annotation></semantics></math>:
+Shannon entropy of tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>’s
+weight distribution</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><annotation encoding="application/x-tex">h_i^*</annotation></semantics></math>:
+per-tract entropy target</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>B</mi></msub><annotation encoding="application/x-tex">\mu_B</annotation></semantics></math>:
+barrier penalty strength (default 1)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>:
+entropy penalty multiplier (dual variable in adaptive mode)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ρ</mi><annotation encoding="application/x-tex">\rho</annotation></semantics></math>:
+quadratic penalty coefficient</li>
 </ul>
 </div>
 <div class="section level4">
 <h4 id="idw-kernel">IDW kernel<a class="anchor" aria-label="anchor" href="#idw-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math></p>
+<p>Both kernels share the form
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>⋅</mo><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_{ib} \cdot \phi(t_{ij})</annotation></semantics></math>:</p>
+<table class="table">
+<colgroup>
+<col width="22%">
+<col width="30%">
+<col width="30%">
+<col width="16%">
+</colgroup>
+<thead><tr class="header">
+<th align="center">Kernel</th>
+<th align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">K_{ij}</annotation></semantics></math></th>
+<th align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\phi(t)</annotation></semantics></math></th>
+<th align="center">Tail</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="center">Power (default)</td>
+<td align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow></msup><annotation encoding="application/x-tex">(t_{ij} + 1)^{-\alpha_{ib}}</annotation></semantics></math></td>
+<td align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log(t_{ij} + 1)</annotation></semantics></math></td>
+<td align="center">Heavy</td>
+</tr>
+<tr class="even">
+<td align="center">Exponential</td>
+<td align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>⋅</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\exp(-\alpha_{ib} \cdot t_{ij})</annotation></semantics></math></td>
+<td align="center"><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">t_{ij}</annotation></semantics></math></td>
+<td align="center">Light</td>
+</tr>
+</tbody>
+</table>
 </div>
 <div class="section level4">
 <h4 id="log-domain-kernel">Log-domain kernel<a class="anchor" aria-label="anchor" href="#log-domain-kernel"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub><mo>⋅</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_i \cdot \log(t_{ij} + 1)</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>⋅</mo><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log K_{ij} = -\alpha_{ib} \cdot \phi(t_{ij})</annotation></semantics></math></p>
 </div>
 <div class="section level4">
 <h4 id="column-normalization">Column normalization<a class="anchor" aria-label="anchor" href="#column-normalization"></a>
@@ -1827,33 +2450,281 @@ enforced by column normalization)</li>
 <h4 id="per-bracket-column-normalization-1">Per-bracket column normalization<a class="anchor" aria-label="anchor" href="#per-bracket-column-normalization-1"></a>
 </h4>
 <p>For each demographic bracket
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><mi>K</mi></mrow><annotation encoding="application/x-tex">k = 1, \ldots, K</annotation></semantics></math>:</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><msub><mi>k</mi><mi>a</mi></msub></mrow><annotation encoding="application/x-tex">k = 1, \ldots, k_a</annotation></semantics></math>:</p>
 <ol style="list-style-type: decimal">
 <li>Compute kernel:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo>−</mo><msub><mi>α</mi><mi>i</mi></msub></mrow></msup></mrow><annotation encoding="application/x-tex">K_{ij} = (t_{ij} + 1)^{-\alpha_i}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>−</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>⋅</mo><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">K^{(k)}_{ij} = \exp(-\alpha_{ik} \cdot \phi(t_{ij}))</annotation></semantics></math>
 </li>
 <li>Column-normalize:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msub><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mi>/</mi><msub><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></msub><msub><mi>K</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">W^{(k)}_{ij} = K_{ij} / \sum_{i'} K_{i'j}</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>=</mo><msubsup><mi>K</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mi>/</mi><msub><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></msub><msubsup><mi>K</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup></mrow><annotation encoding="application/x-tex">W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_{i'} K^{(k)}_{i'j}</annotation></semantics></math>
 </li>
 </ol>
-<p>Aggregate and column-normalize:
-<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mtext mathvariant="normal">total</mtext></msub><mo>=</mo><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup></mrow><annotation encoding="application/x-tex">W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}</annotation></semantics></math><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mi>W</mi><mrow><mtext mathvariant="normal">total</mtext><mo>,</mo><mi>i</mi><mi>j</mi></mrow></msub><mi minsize="2.4" maxsize="2.4">/</mi><munder><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></munder><msub><mi>W</mi><mrow><mtext mathvariant="normal">total</mtext><mo>,</mo><mi>i</mi><mi>′</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">W_{ij} = W_{\text{total},ij} \bigg/ \sum_{i'} W_{\text{total},i'j}</annotation></semantics></math></p>
 </div>
 <div class="section level4">
-<h4 id="objective-function-full-data">Objective function (full data)<a class="anchor" aria-label="anchor" href="#objective-function-full-data"></a>
+<h4 id="aggregated-weight-matrix">Aggregated weight matrix<a class="anchor" aria-label="anchor" href="#aggregated-weight-matrix"></a>
 </h4>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo stretchy="false" form="postfix">∥</mo><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mo>=</mo><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msub><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><msub><mi>S</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i=1}^N \sum_{k=1}^K \left( \sum_{j=1}^M W_{ij} S_{jk} - P_{ik} \right)^2</annotation></semantics></math></p>
+<p>The voter-weighted aggregation across brackets:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mrow><mtext mathvariant="normal">agg</mtext><mo>,</mo><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mfrac><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>k</mi><mi>a</mi></msub></munderover><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>⋅</mo><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></mrow><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>k</mi><mi>a</mi></msub></munderover><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></mrow></mfrac></mrow><annotation encoding="application/x-tex">W_{\text{agg},ij} = \frac{\sum_{k=1}^{k_a} W^{(k)}_{ij} \cdot c_{kj}}{\sum_{k=1}^{k_a} c_{kj}}</annotation></semantics></math></p>
+<p>This is the weight matrix used for entropy computation and for
+interpolating non-demographic variables after optimization.</p>
+</div>
+<div class="section level4">
+<h4 id="interpolation">Interpolation<a class="anchor" aria-label="anchor" href="#interpolation"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>=</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>k</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mo>⋅</mo><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\hat{V}_{ik} = \sum_{j=1}^{M} W^{(k)}_{ij} \cdot c_{kj}</annotation></semantics></math></p>
+</div>
+<div class="section level4">
+<h4 id="softplus-reparameterization-1">Softplus reparameterization<a class="anchor" aria-label="anchor" href="#softplus-reparameterization-1"></a>
+</h4>
+<p>The decay parameters
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>α</mi><annotation encoding="application/x-tex">\alpha</annotation></semantics></math>
+must satisfy
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>≥</mo><msub><mi>α</mi><mo>min</mo></msub></mrow><annotation encoding="application/x-tex">\alpha_{ib} \geq \alpha_{\min}</annotation></semantics></math>
+(default
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mo>min</mo></msub><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">\alpha_{\min} = 1</annotation></semantics></math>
+for the power kernel). Rather than clamping, the optimizer works with
+unconstrained
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>θ</mi><annotation encoding="application/x-tex">\theta</annotation></semantics></math>
+and maps:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>=</mo><msub><mi>α</mi><mo>min</mo></msub><mo>+</mo><mtext mathvariant="normal">softplus</mtext><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>α</mi><mo>min</mo></msub><mo>+</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>+</mo><msup><mi>e</mi><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\alpha_{ib} = \alpha_{\min} + \text{softplus}(\theta_{ib})
+= \alpha_{\min} + \log(1 + e^{\theta_{ib}})</annotation></semantics></math></p>
+<p>Gradient through softplus:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>α</mi></mrow><mrow><mi>∂</mi><mi>θ</mi></mrow></mfrac><mo>=</mo><mi>σ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>θ</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mrow><mn>1</mn><mo>+</mo><msup><mi>e</mi><mrow><mi>−</mi><mi>θ</mi></mrow></msup></mrow></mfrac></mrow><annotation encoding="application/x-tex">\frac{\partial \alpha}{\partial \theta} = \sigma(\theta)
+= \frac{1}{1 + e^{-\theta}}</annotation></semantics></math></p>
+<p>Inverse (for initialization):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>θ</mi><mo>=</mo><mo>log</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><msup><mi>e</mi><mrow><mi>α</mi><mo>−</mo><msub><mi>α</mi><mo>min</mo></msub></mrow></msup><mo>−</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\theta = \log\!\left(e^{\alpha - \alpha_{\min}} - 1\right)</annotation></semantics></math></p>
+</div>
+<div class="section level4">
+<h4 id="poisson-deviance-data-loss">Poisson deviance (data loss)<a class="anchor" aria-label="anchor" href="#poisson-deviance-data-loss"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>2</mn><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>k</mi><mi>a</mi></msub></munderover><mrow><mo stretchy="true" form="prefix">[</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>+</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">D(\alpha) = 2 \sum_{i=1}^{N} \sum_{k=1}^{k_a}
+\left[\hat{V}_{ik} - P_{ik}\log\hat{V}_{ik}
++ P_{ik}\log P_{ik} - P_{ik}\right]</annotation></semantics></math></p>
+<p>When
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>=</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\hat{V}_{ik} = P_{ik}</annotation></semantics></math>
+for all entries,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">D = 0</annotation></semantics></math>.
+The constant terms
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>−</mo><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">P_{ik}\log P_{ik} - P_{ik}</annotation></semantics></math>
+are precomputed once.</p>
+<p>Gradient with respect to predicted values:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>D</mi></mrow><mrow><mi>∂</mi><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow></mfrac><mo>=</mo><mn>2</mn><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>−</mo><mfrac><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mfrac><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\frac{\partial D}{\partial \hat{V}_{ik}}
+= 2\!\left(1 - \frac{P_{ik}}{\hat{V}_{ik}}\right)</annotation></semantics></math></p>
+<p>Safe-log convention: where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">P_{ik} = 0</annotation></semantics></math>,
+the term
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mrow><mi>i</mi><mi>k</mi></mrow></msub><mo>log</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">P_{ik}\log\hat{V}_{ik}</annotation></semantics></math>
+is treated as zero (the contribution vanishes regardless of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>V</mi><mo accent="true">̂</mo></mover><annotation encoding="application/x-tex">\hat{V}</annotation></semantics></math>).</p>
+</div>
+<div class="section level4">
+<h4 id="log-barrier-penalty">Log-barrier penalty<a class="anchor" aria-label="anchor" href="#log-barrier-penalty"></a>
+</h4>
+<p>Prevents any census tract from receiving zero total predicted
+voters:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>−</mi><msub><mi>μ</mi><mi>B</mi></msub><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><mo>log</mo><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mo>,</mo><mtext mathvariant="normal">total</mtext></mrow></msub><mo>,</mo><mspace width="1.0em"></mspace><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mo>,</mo><mtext mathvariant="normal">total</mtext></mrow></msub><mo>=</mo><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>k</mi><mi>a</mi></msub></munderover><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">B(\alpha) = -\mu_B \sum_{i=1}^{N}
+\log\hat{V}_{i,\text{total}}, \quad
+\hat{V}_{i,\text{total}} = \sum_{k=1}^{k_a} \hat{V}_{ik}</annotation></semantics></math></p>
+<p>Gradient:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>B</mi></mrow><mrow><mi>∂</mi><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>k</mi></mrow></msub></mrow></mfrac><mo>=</mo><mi>−</mi><mfrac><msub><mi>μ</mi><mi>B</mi></msub><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mo>,</mo><mtext mathvariant="normal">total</mtext></mrow></msub></mfrac></mrow><annotation encoding="application/x-tex">\frac{\partial B}{\partial \hat{V}_{ik}}
+= -\frac{\mu_B}{\hat{V}_{i,\text{total}}}</annotation></semantics></math></p>
+<p>This signal is the same for all brackets
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+within a tract, gently pushing all brackets away from zero.</p>
+</div>
+<div class="section level4">
+<h4 id="entropy-penalty">Entropy penalty<a class="anchor" aria-label="anchor" href="#entropy-penalty"></a>
+</h4>
+<p>Operates on the row-normalized aggregated weights:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><mfrac><msub><mi>W</mi><mrow><mtext mathvariant="normal">agg</mtext><mo>,</mo><mi>i</mi><mi>j</mi></mrow></msub><mrow><munder><mo>∑</mo><mrow><mi>j</mi><mi>′</mi></mrow></munder><msub><mi>W</mi><mrow><mtext mathvariant="normal">agg</mtext><mo>,</mo><mi>i</mi><mi>j</mi><mi>′</mi></mrow></msub></mrow></mfrac><mo>,</mo><mspace width="1.0em"></mspace><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mi>−</mi><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>log</mo><msub><mi>p</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">p_{ij} = \frac{W_{\text{agg},ij}}{\sum_{j'} W_{\text{agg},ij'}},
+\quad H_i = -\sum_{j=1}^{M} p_{ij}\log p_{ij}</annotation></semantics></math></p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>μ</mi><mi>E</mi></msub><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><msub><mi>H</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">E(\alpha) = \mu_E \sum_{i=1}^{N} H_i</annotation></semantics></math></p>
+<p>The <strong>effective number of sources</strong> for tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
+is
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\exp(H_i)</annotation></semantics></math>.
+When
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mo>log</mo><mi>M</mi></mrow><annotation encoding="application/x-tex">H_i = \log M</annotation></semantics></math>
+(uniform weights), all stations contribute equally; when
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">H_i = 0</annotation></semantics></math>,
+a single station dominates.</p>
+</div>
+<div class="section level4">
+<h4 id="quadratic-penalty-augmented-lagrangian">Quadratic penalty (augmented Lagrangian)<a class="anchor" aria-label="anchor" href="#quadratic-penalty-augmented-lagrangian"></a>
+</h4>
+<p>Active only in adaptive mode (<code>target_eff_src</code> set):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>Q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><mi>ρ</mi><mn>2</mn></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo>−</mo><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">Q(\alpha) = \frac{\rho}{2}\sum_{i=1}^{N}\left(H_i - h_i^*\right)^2</annotation></semantics></math></p>
+<p>The quadratic term drives each tract’s entropy toward its individual
+target. Together with the linear entropy penalty
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>E</mi><annotation encoding="application/x-tex">E</annotation></semantics></math>,
+this forms the augmented Lagrangian:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>ℒ</mi><mtext mathvariant="normal">aug</mtext></msub><mo>=</mo><mi>D</mi><mo>+</mo><mi>B</mi><mo>+</mo><msub><mi>μ</mi><mi>E</mi></msub><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>H</mi><mi>i</mi></msub><mo>+</mo><mfrac><mi>ρ</mi><mn>2</mn></mfrac><munder><mo>∑</mo><mi>i</mi></munder><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>H</mi><mi>i</mi></msub><mo>−</mo><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">\mathcal{L}_{\text{aug}} = D + B + \mu_E\sum_i H_i
++ \frac{\rho}{2}\sum_i(H_i - h_i^*)^2</annotation></semantics></math></p>
+</div>
+<div class="section level4">
+<h4 id="per-tract-adaptive-entropy-targets">Per-tract adaptive entropy targets<a class="anchor" aria-label="anchor" href="#per-tract-adaptive-entropy-targets"></a>
+</h4>
+<p>A global entropy target is infeasible for tracts with sparse or
+uniform travel times. Per-tract targets account for local geography:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup><mo>=</mo><mo>max</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><mo>min</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>k</mi><mi>i</mi></msub><mo>−</mo><mn>1</mn><mo>,</mo><mspace width="0.278em"></mspace><mi>T</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mspace width="0.278em"></mspace><msub><mi>H</mi><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mspace width="0.278em"></mspace><mo>log</mo><mn>2</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">h_i^* = \max\!\left(
+  \log\min(k_i - 1,\; T),\;
+  H_i(\alpha_{\text{ref}}),\;
+  \log 2
+\right)</annotation></semantics></math></p>
+<p>where:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>k</mi><mi>i</mi></msub><annotation encoding="application/x-tex">k_i</annotation></semantics></math>
+= number of reachable stations for tract
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>T</mi><annotation encoding="application/x-tex">T</annotation></semantics></math>
+= user-specified <code>target_eff_src</code>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">H_i(\alpha_{\text{ref}})</annotation></semantics></math>
+= Shannon entropy of the softmax weights at a reference decay
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>α</mi><mtext mathvariant="normal">ref</mtext></msub><mo>=</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">\alpha_{\text{ref}} = 7</annotation></semantics></math>
+for power kernel, 50 for exponential), capturing the minimum achievable
+entropy given the actual travel time distribution</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">\log 2</annotation></semantics></math>
+= absolute floor (at least 2 effective sources)</li>
+</ul>
+<p>The aggregate target used for the dual update is
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mover><mi>h</mi><mo accent="true">‾</mo></mover><mo>*</mo></msup><mo>=</mo><mfrac><mn>1</mn><mi>N</mi></mfrac><msub><mo>∑</mo><mi>i</mi></msub><msubsup><mi>h</mi><mi>i</mi><mo>*</mo></msubsup></mrow><annotation encoding="application/x-tex">\bar{h}^* = \frac{1}{N}\sum_i h_i^*</annotation></semantics></math>.</p>
+</div>
+<div class="section level4">
+<h4 id="total-loss">Total loss<a class="anchor" aria-label="anchor" href="#total-loss"></a>
+</h4>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>L</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>D</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>B</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>E</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>Q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">L(\alpha) = D(\alpha) + B(\alpha) + E(\alpha) + Q(\alpha)</annotation></semantics></math></p>
+<p>In the default mode (no <code>target_eff_src</code>),
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>=</mo><mi>Q</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">E = Q = 0</annotation></semantics></math>
+and the optimizer minimizes
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>+</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">D + B</annotation></semantics></math>.</p>
+</div>
+<div class="section level4">
+<h4 id="dual-ascent-update">Dual ascent update<a class="anchor" aria-label="anchor" href="#dual-ascent-update"></a>
+</h4>
+<p>The entropy multiplier
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+is reparameterized as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>μ</mi><mi>E</mi></msub><mo>=</mo><mo>exp</mo><mrow><mo stretchy="true" form="prefix">(</mo><mo>log</mo><mi>μ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mu_E = \exp(\log\mu)</annotation></semantics></math>,
+ensuring strict positivity. The dual variable is updated once per
+epoch:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>μ</mi><mo>←</mo><mo>log</mo><mi>μ</mi><mo>+</mo><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mfrac><msub><mi>η</mi><mi>d</mi></msub><msub><mi>T</mi><mi>d</mi></msub></mfrac><mo>⋅</mo><mrow><mo stretchy="true" form="prefix">(</mo><mover><mi>H</mi><mo accent="true">‾</mo></mover><mo>−</mo><msup><mover><mi>h</mi><mo accent="true">‾</mo></mover><mo>*</mo></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log\mu \leftarrow \log\mu
++ d(t) \cdot \frac{\eta_d}{T_d} \cdot (\bar{H} - \bar{h}^*)</annotation></semantics></math></p>
+<p>where:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>1</mn><mi>/</mi><msqrt><mrow><mn>1</mn><mo>+</mo><mi>t</mi><mi>/</mi><mn>5000</mn></mrow></msqrt></mrow><annotation encoding="application/x-tex">d(t) = 1/\sqrt{1 + t/5000}</annotation></semantics></math>
+is a gentle decay schedule</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>η</mi><mi>d</mi></msub><annotation encoding="application/x-tex">\eta_d</annotation></semantics></math>
+= dual step scaling (<code>dual_eta</code>, default 1.0)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mi>d</mi></msub><mo>=</mo><mn>500</mn></mrow><annotation encoding="application/x-tex">T_d = 500</annotation></semantics></math>
+is a dampening constant</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>H</mi><mo accent="true">‾</mo></mover><mo>=</mo><mfrac><mn>1</mn><mi>N</mi></mfrac><msub><mo>∑</mo><mi>i</mi></msub><msub><mi>H</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\bar{H} = \frac{1}{N}\sum_i H_i</annotation></semantics></math>
+= current mean entropy</li>
+</ul>
+<p>ALM bound:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mi>μ</mi><mo>≤</mo><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>3</mn><mi>ρ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log\mu \leq \log(3\rho)</annotation></semantics></math>
+prevents overshoot (Bertsekas, 1999).</p>
+</div>
+<div class="section level4">
+<h4 id="sgdr-cosine-annealing-with-warm-restarts">SGDR cosine annealing with warm restarts<a class="anchor" aria-label="anchor" href="#sgdr-cosine-annealing-with-warm-restarts"></a>
+</h4>
+<p>The primal learning rate (non-adaptive mode) follows Loshchilov &amp;
+Hutter (2017):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>η</mi><mi>t</mi></msub><mo>=</mo><msub><mi>η</mi><mo>min</mo></msub><mo>+</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>η</mi><mo>max</mo></msub><mo>−</mo><msub><mi>η</mi><mo>min</mo></msub><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>+</mo><mo>cos</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mfrac><msub><mi>T</mi><mtext mathvariant="normal">cur</mtext></msub><msub><mi>T</mi><mi>i</mi></msub></mfrac><mi>π</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\eta_t = \eta_{\min} + \frac{1}{2}(\eta_{\max} - \eta_{\min})
+\left(1 + \cos\!\left(\frac{T_{\text{cur}}}{T_i}\pi\right)\right)</annotation></semantics></math></p>
 <p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>∈</mo><msup><mi>ℝ</mi><mrow><mi>N</mi><mo>×</mo><mi>M</mi></mrow></msup></mrow><annotation encoding="application/x-tex">W(\alpha) \in \mathbb{R}^{N \times M}</annotation></semantics></math>
-is the per-bracket column-normalized weight matrix.</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mn>0</mn></msub><mo>=</mo><mn>500</mn></mrow><annotation encoding="application/x-tex">T_0 = 500</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>T</mi><mtext mathvariant="normal">mult</mtext></msub><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">T_{\text{mult}} = 2</annotation></semantics></math>
+(cycle length doubles after each restart),
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>η</mi><mo>min</mo></msub><mo>=</mo><mn>0.01</mn><mo>⋅</mo><msub><mi>η</mi><mo>max</mo></msub></mrow><annotation encoding="application/x-tex">\eta_{\min} = 0.01 \cdot \eta_{\max}</annotation></semantics></math>,
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>η</mi><mo>max</mo></msub><annotation encoding="application/x-tex">\eta_{\max}</annotation></semantics></math>
+decays by a factor of 0.7 per restart. In adaptive mode, the learning
+rate is held constant (dual updates make the loss landscape
+non-stationary).</p>
 </div>
 <div class="section level4">
-<h4 id="gradient">Gradient<a class="anchor" aria-label="anchor" href="#gradient"></a>
+<h4 id="analytical-gradient-station-chunked-path">Analytical gradient (station-chunked path)<a class="anchor" aria-label="anchor" href="#analytical-gradient-station-chunked-path"></a>
 </h4>
-<p>Computed by torch autograd through the column normalization. Each
-operation (log, exp, logsumexp, matrix multiply, subtraction, squaring)
-has a defined backward pass in torch:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>α</mi></msub><mi>f</mi><mo>=</mo><mfrac><mi>∂</mi><mrow><mi>∂</mi><mi>α</mi></mrow></mfrac><mo stretchy="false" form="postfix">∥</mo><mtext mathvariant="normal">colnorm</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">kernel</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>α</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow><mo>⋅</mo><mi>S</mi><mo>−</mo><mi>P</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup></mrow><annotation encoding="application/x-tex">\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{colnorm}(\text{kernel}(\alpha)) \cdot S - P \|_F^2</annotation></semantics></math></p>
+<p>For large problems
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>N</mi><mo>×</mo><mi>M</mi><mo>&gt;</mo><mn>25</mn><mo>×</mo><msup><mn>10</mn><mn>6</mn></msup></mrow><annotation encoding="application/x-tex">k_a \times N \times M &gt; 25 \times 10^6</annotation></semantics></math>),
+the gradient is computed analytically instead of via autograd. The
+derivative of the total loss with respect to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><annotation encoding="application/x-tex">\alpha_{ib}</annotation></semantics></math>,
+through the softmax column normalization, is:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>L</mi></mrow><mrow><mi>∂</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow></mfrac><mo>=</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>M</mi></munderover><msub><mi>c</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mspace width="0.167em"></mspace><msubsup><mi>W</mi><mrow><mi>i</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>b</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mspace width="0.167em"></mspace><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mo stretchy="true" form="prefix">(</mo><msub><mover><mrow><mi>d</mi><mi>L</mi></mrow><mo accent="true">¯</mo></mover><mrow><mi>b</mi><mi>j</mi></mrow></msub><mo>−</mo><mi>d</mi><msub><mi>L</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\frac{\partial L}{\partial \alpha_{ib}}
+= \sum_{j=1}^{M} c_{kj}\, W^{(b)}_{ij}\, \phi(t_{ij})
+\left(\overline{dL}_{bj} - dL_{ib}\right)</annotation></semantics></math></p>
+<p>where:</p>
+<ul>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><msub><mi>L</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo>=</mo><mi>∂</mi><mi>L</mi><mi>/</mi><mi>∂</mi><msub><mover><mi>V</mi><mo accent="true">̂</mo></mover><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow><annotation encoding="application/x-tex">dL_{ib} = \partial L / \partial\hat{V}_{ib}</annotation></semantics></math>
+is the loss gradient with respect to predicted values (deviance +
+barrier contributions)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover><mrow><mi>d</mi><mi>L</mi></mrow><mo accent="true">¯</mo></mover><mrow><mi>b</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mo>∑</mo><mrow><mi>i</mi><mi>′</mi></mrow></msub><msubsup><mi>W</mi><mrow><mi>i</mi><mi>′</mi><mi>j</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>b</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mspace width="0.167em"></mspace><mi>d</mi><msub><mi>L</mi><mrow><mi>i</mi><mi>′</mi><mi>b</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\overline{dL}_{bj} = \sum_{i'} W^{(b)}_{i'j}\, dL_{i'b}</annotation></semantics></math>
+is the weight-averaged gradient signal at station
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>j</mi><annotation encoding="application/x-tex">j</annotation></semantics></math>
+</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\phi(t_{ij})</annotation></semantics></math>
+is the kernel basis function
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>log</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>+</mo><mn>1</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\log(t_{ij}+1)</annotation></semantics></math>
+for power,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>t</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><annotation encoding="application/x-tex">t_{ij}</annotation></semantics></math>
+for exponential)</li>
+</ul>
+<p>This formula arises from the Jacobian of the softmax (column
+normalization) and avoids building the full
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>k</mi><mi>a</mi></msub><mo>×</mo><mi>N</mi><mo>×</mo><mi>M</mi></mrow><annotation encoding="application/x-tex">k_a \times N \times M</annotation></semantics></math>
+computational graph. The chain rule through softplus gives the final
+parameter gradient:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mrow><mi>∂</mi><mi>L</mi></mrow><mrow><mi>∂</mi><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow></mfrac><mo>=</mo><mfrac><mrow><mi>∂</mi><mi>L</mi></mrow><mrow><mi>∂</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow></mfrac><mo>⋅</mo><mi>σ</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>θ</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\frac{\partial L}{\partial \theta_{ib}}
+= \frac{\partial L}{\partial \alpha_{ib}} \cdot \sigma(\theta_{ib})</annotation></semantics></math></p>
+<p>The entropy gradient on
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mtext mathvariant="normal">agg</mtext></msub><annotation encoding="application/x-tex">W_{\text{agg}}</annotation></semantics></math>
+is incorporated via a one-epoch-delayed signal: the gradient
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>∂</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>E</mi><mo>+</mo><mi>Q</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mi>∂</mi><msub><mi>W</mi><mtext mathvariant="normal">agg</mtext></msub></mrow><annotation encoding="application/x-tex">\partial(E + Q)/\partial W_{\text{agg}}</annotation></semantics></math>
+from the previous epoch is propagated through the same softmax Jacobian
+formula, adding the corresponding terms to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>∂</mi><mi>L</mi><mi>/</mi><mi>∂</mi><msub><mi>α</mi><mrow><mi>i</mi><mi>b</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\partial L / \partial\alpha_{ib}</annotation></semantics></math>.</p>
+</div>
+<div class="section level4">
+<h4 id="convergence-criteria-1">Convergence criteria<a class="anchor" aria-label="anchor" href="#convergence-criteria-1"></a>
+</h4>
+<p><strong>Tier 1 — Gradient-based</strong> (true stationarity).
+Requires 10 consecutive epochs satisfying all of:</p>
+<ul>
+<li>Relative gradient:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><msub><mi>∇</mi><mi>θ</mi></msub><mi>L</mi><mo stretchy="false" form="postfix">∥</mo><mi>/</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mi>+</mi><mo stretchy="false" form="postfix">∥</mo><mi>θ</mi><mo stretchy="false" form="postfix">∥</mo><mo stretchy="true" form="postfix">)</mo></mrow><mo>&lt;</mo><msup><mn>10</mn><mrow><mi>−</mi><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">\|\nabla_\theta L\| / (1 + \|\theta\|) &lt; 10^{-4}</annotation></semantics></math>
+</li>
+<li>Effective sources within 5% of adjusted target (adaptive mode)</li>
+<li>Dual variable
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mi>E</mi></msub><annotation encoding="application/x-tex">\mu_E</annotation></semantics></math>
+stable over <code>patience</code> epochs</li>
+<li>Total loss stable over <code>patience</code> epochs</li>
+<li>Deviance not rising (mean of last 100 epochs
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>≤</mo><mn>1.01</mn><mo>×</mo></mrow><annotation encoding="application/x-tex">\leq 1.01 \times</annotation></semantics></math>
+mean of epochs 400–500 ago)</li>
+</ul>
+<p><strong>Tier 2 — Window-based</strong> (diminishing returns).
+Triggered when the loss metric improves by less than
+<code>convergence_tol</code> over the last <code>patience</code> epochs,
+provided effective sources are within 20% of target. In adaptive mode
+the metric is Poisson deviance; in non-adaptive mode it is total loss
+(deviance + barrier).</p>
+<p>Both tiers require a minimum of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>max</mo><mrow><mo stretchy="true" form="prefix">(</mo><mn>3</mn><mo>×</mo><mtext mathvariant="normal">patience</mtext><mo>,</mo><mn>500</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\max(3 \times \text{patience}, 500)</annotation></semantics></math>
+epochs before declaring convergence.</p>
 </div>
 </div>
 </div>
@@ -1868,7 +2739,7 @@ has a defined backward pass in torch:</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>

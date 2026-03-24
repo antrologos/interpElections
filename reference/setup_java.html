@@ -43,7 +43,7 @@ level, optionally installs and configures rJava, and verifies the setup."></head
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Download and configure Java 21 for r5r</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/r5r-setup.R" class="external-link"><code>R/r5r-setup.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/r5r-setup.R" class="external-link"><code>R/r5r-setup.R</code></a></small>
       <div class="d-none name"><code>setup_java.Rd</code></div>
     </div>
 
@@ -59,7 +59,8 @@ level, optionally installs and configures rJava, and verifies the setup.</p>
 <span>  install_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu">tools</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/tools/userdir.html" class="external-link">R_user_dir</a></span><span class="op">(</span><span class="st">"interpElections"</span>, <span class="st">"data"</span><span class="op">)</span>, <span class="st">"java"</span><span class="op">)</span>,</span>
 <span>  persist <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/interactive.html" class="external-link">interactive</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  setup_rjava <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  .ask_consent <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -92,8 +93,9 @@ Default: TRUE.</p></dd>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The function performs the following steps:</p><ol><li><p>Scans for existing Java installations on the system</p></li>
-<li><p>Warns about non-Java-21 versions that may conflict</p></li>
+    <p>The function performs the following steps:</p><ol><li><p>Asks for consent (interactive mode only)</p></li>
+<li><p>Scans for existing Java installations on the system</p></li>
+<li><p>Offers to remove incompatible (non-21) Java versions</p></li>
 <li><p>Uses an existing Java 21 if found, or downloads Adoptium JDK 21</p></li>
 <li><p>Configures <code>JAVA_HOME</code> and <code>PATH</code> for the current R session</p></li>
 <li><p>Persists <code>JAVA_HOME</code> to <code>~/.Renviron</code></p></li>
@@ -130,7 +132,7 @@ configuration without re-downloading.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

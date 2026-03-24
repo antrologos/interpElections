@@ -45,7 +45,7 @@ custom cache directory ("set_dir").'></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Manage the interpElections download cache</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/cache.R" class="external-link"><code>R/cache.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/cache.R" class="external-link"><code>R/cache.R</code></a></small>
       <div class="d-none name"><code>interpElections_cache.Rd</code></div>
     </div>
 
@@ -92,11 +92,59 @@ Pass <code>path = NULL</code> to reset to the OS default.</p></dd>
 
 
 <dt id="arg-category">category<a class="anchor" aria-label="anchor" href="#arg-category"></a></dt>
-<dd><p>Character (for <code>action = "clean"</code>). Which category to
-clear. One of: <code>"all"</code>, <code>"downloads"</code>, <code>"processed"</code>, <code>"networks"</code>,
-<code>"travel_times"</code>, <code>"pop_raster"</code>, <code>"votes"</code>, <code>"turnout"</code>, <code>"geocode"</code>,
-<code>"profile"</code>, <code>"hidalgo"</code>, <code>"osm"</code>, <code>"electoral"</code>, <code>"tracts"</code>, <code>"r5r"</code>.
-Default: <code>"all"</code>.</p></dd>
+<dd><p>Character vector (for <code>action = "clean"</code>). One or more
+categories to delete. Default: <code>"all"</code>.</p><dl><dt><code>"all"</code></dt>
+<dd><p>Delete the entire cache directory.</p></dd>
+
+<dt><code>"downloads"</code></dt>
+<dd><p>All raw downloads (votes, turnout, geocode,
+profile, hidalgo, OSM, population rasters).</p></dd>
+
+<dt><code>"processed"</code></dt>
+<dd><p>All processed/cleaned data (electoral and tracts).</p></dd>
+
+<dt><code>"networks"</code></dt>
+<dd><p>All routing network files (r5r).</p></dd>
+
+<dt><code>"votes"</code></dt>
+<dd><p>Raw candidate vote ZIP files from TSE.</p></dd>
+
+<dt><code>"turnout"</code></dt>
+<dd><p>Raw voter turnout ZIP files from TSE.</p></dd>
+
+<dt><code>"geocode"</code></dt>
+<dd><p>Raw polling-station geocode ZIP files from TSE.</p></dd>
+
+<dt><code>"profile"</code></dt>
+<dd><p>Raw voter-profile (age/gender) ZIP files from TSE.</p></dd>
+
+<dt><code>"hidalgo"</code></dt>
+<dd><p>Geocoded polling-station coordinates from
+Hidalgo (2022).</p></dd>
+
+<dt><code>"osm"</code></dt>
+<dd><p>OpenStreetMap <code>.pbf</code> extracts used to build routing
+networks.</p></dd>
+
+<dt><code>"pop_raster"</code></dt>
+<dd><p>WorldPop population raster files.</p></dd>
+
+<dt><code>"electoral"</code></dt>
+<dd><p>Processed/cleaned electoral <code>sf</code> objects (merged
+votes, turnout, geocodes, and voter profiles).</p></dd>
+
+<dt><code>"tracts"</code></dt>
+<dd><p>Processed/cleaned census-tract <code>sf</code> objects.</p></dd>
+
+<dt><code>"travel_times"</code></dt>
+<dd><p>Precomputed travel-time matrices.</p></dd>
+
+<dt><code>"r5r"</code></dt>
+<dd><p>Built r5r routing network files (<code>.dat</code>, <code>.mapdb</code>,
+etc.).</p></dd>
+
+
+</dl></dd>
 
 
 <dt id="arg-path">path<a class="anchor" aria-label="anchor" href="#arg-path"></a></dt>
@@ -162,8 +210,11 @@ paths (before any deletion).</p></dd>
 <span class="r-in"><span><span class="co"># Reset to default directory</span></span></span>
 <span class="r-in"><span><span class="fu">interpElections_cache</span><span class="op">(</span><span class="st">"set_dir"</span>, path <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Clean by category</span></span></span>
+<span class="r-in"><span><span class="co"># Clean a single category</span></span></span>
 <span class="r-in"><span><span class="fu">interpElections_cache</span><span class="op">(</span><span class="st">"clean"</span>, category <span class="op">=</span> <span class="st">"votes"</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Clean multiple categories at once</span></span></span>
+<span class="r-in"><span><span class="fu">interpElections_cache</span><span class="op">(</span><span class="st">"clean"</span>, category <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"networks"</span>, <span class="st">"travel_times"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Clean everything</span></span></span>
 <span class="r-in"><span><span class="fu">interpElections_cache</span><span class="op">(</span><span class="st">"clean"</span>, category <span class="op">=</span> <span class="st">"all"</span><span class="op">)</span></span></span>
@@ -180,7 +231,7 @@ paths (before any deletion).</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

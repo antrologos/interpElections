@@ -43,7 +43,7 @@ to geolocated source points (e.g., polling locations)."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Compute a travel-time matrix from census tract representative points to source points</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/travel-time.R" class="external-link"><code>R/travel-time.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/travel-time.R" class="external-link"><code>R/travel-time.R</code></a></small>
       <div class="d-none name"><code>compute_travel_times.Rd</code></div>
     </div>
 
@@ -62,8 +62,7 @@ to geolocated source points (e.g., polling locations).</p>
 <span>  tract_id <span class="op">=</span> <span class="st">"id"</span>,</span>
 <span>  point_id <span class="op">=</span> <span class="st">"id"</span>,</span>
 <span>  routing <span class="op">=</span> <span class="fu"><a href="routing_control.html">routing_control</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -105,15 +104,6 @@ osm_buffer_km, fill_missing). Default: <code><a href="routing_control.html">rout
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
 <dd><p>Logical. Default: TRUE.</p></dd>
 
-
-<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p><strong>Deprecated</strong>. Old-style individual parameters
-(<code>point_method</code>, <code>pop_raster</code>, <code>min_area_for_pop_weight</code>, <code>mode</code>,
-<code>max_trip_duration</code>, <code>fill_missing</code>, <code>n_threads</code>,
-<code>departure_datetime</code>, <code>gtfs_zip_path</code>) are still accepted via
-<code>...</code> for backward compatibility but will be removed in a future
-release. Use <code>routing = routing_control(...)</code> instead.</p></dd>
-
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -131,9 +121,7 @@ Use <code><a href="download_r5r_data.html">download_r5r_data()</a></code> to obt
     <div class="dont-index"><p><code><a href="routing_control.html">routing_control()</a></code> for routing parameters,
 <code><a href="download_r5r_data.html">download_r5r_data()</a></code> to download OSM and elevation data.</p>
 <p>Other spatial:
-<code><a href="areal_interpolate.html">areal_interpolate()</a></code>,
-<code><a href="areal_weights.html">areal_weights()</a></code>,
-<code><a href="download_r5r_data.html">download_r5r_data()</a></code></p></div>
+<code><a href="download_r5r_data.html">download_r5r_data</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -168,7 +156,7 @@ Use <code><a href="download_r5r_data.html">download_r5r_data()</a></code> to obt
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

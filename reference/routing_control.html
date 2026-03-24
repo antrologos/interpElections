@@ -43,7 +43,7 @@ override only what you need."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Routing control parameters</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/control.R" class="external-link"><code>R/control.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/control.R" class="external-link"><code>R/control.R</code></a></small>
       <div class="d-none name"><code>routing_control.Rd</code></div>
     </div>
 
@@ -56,10 +56,12 @@ override only what you need.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">routing_control</span><span class="op">(</span></span>
-<span>  mode <span class="op">=</span> <span class="st">"WALK"</span>,</span>
+<span>  mode <span class="op">=</span> <span class="st">"AUTO"</span>,</span>
 <span>  point_method <span class="op">=</span> <span class="st">"pop_weighted"</span>,</span>
 <span>  min_area_for_pop_weight <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  max_trip_duration <span class="op">=</span> <span class="fl">300L</span>,</span>
+<span>  max_trip_duration <span class="op">=</span> <span class="fl">120L</span>,</span>
+<span>  fallback_max_trip_duration <span class="op">=</span> <span class="fl">90L</span>,</span>
+<span>  unreachable_threshold <span class="op">=</span> <span class="fl">0.01</span>,</span>
 <span>  n_threads <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  gtfs_zip_path <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  departure_datetime <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -75,9 +77,17 @@ override only what you need.</p>
 
 <dl><dt id="arg-mode">mode<a class="anchor" aria-label="anchor" href="#arg-mode"></a></dt>
 <dd><p>Character. Routing mode, using r5r convention:
-<code>"WALK"</code> (default), <code>"BICYCLE"</code>, <code>"CAR"</code>, <code>"TRANSIT"</code>, or
+<code>"AUTO"</code> (default), <code>"WALK"</code>, <code>"BICYCLE"</code>, <code>"CAR"</code>, <code>"TRANSIT"</code>, or
 combinations like <code>c("WALK", "TRANSIT")</code>. Passed directly to
-<code><a href="https://ipeagit.github.io/r5r/reference/travel_time_matrix.html" class="external-link">r5r::travel_time_matrix()</a></code>.</p></dd>
+<code><a href="https://ipeagit.github.io/r5r/reference/travel_time_matrix.html" class="external-link">r5r::travel_time_matrix()</a></code>.</p>
+<p>When <code>mode = "AUTO"</code>, routing first tries <code>"WALK"</code> with
+<code>max_trip_duration</code>. If the fraction of tracts with no reachable
+station exceeds <code>unreachable_threshold</code>, the <strong>entire</strong> matrix is
+re-computed with <code>"CAR"</code> and <code>fallback_max_trip_duration</code>. Travel
+times in the returned matrix are always from a single mode — never
+mixed. For municipalities with large rural areas or complex geography
+(rivers, forests), CAR mode may provide better coverage; AUTO handles
+this automatically.</p></dd>
 
 
 <dt id="arg-point-method">point_method<a class="anchor" aria-label="anchor" href="#arg-point-method"></a></dt>
@@ -95,8 +105,22 @@ point_on_surface. Default: 1.</p></dd>
 
 <dt id="arg-max-trip-duration">max_trip_duration<a class="anchor" aria-label="anchor" href="#arg-max-trip-duration"></a></dt>
 <dd><p>Integer. Maximum trip duration in minutes.
-Also used as fill value for unreachable pairs (unless <code>fill_missing</code>
-is set). Default: 300 (5 hours walking).</p></dd>
+Pairs beyond this threshold are not routed and receive zero weight.
+Default: 120 (2 hours walking). In AUTO mode, this is used for the
+initial WALK attempt.</p></dd>
+
+
+<dt id="arg-fallback-max-trip-duration">fallback_max_trip_duration<a class="anchor" aria-label="anchor" href="#arg-fallback-max-trip-duration"></a></dt>
+<dd><p>Integer. Maximum trip duration in minutes
+for the CAR fallback when <code>mode = "AUTO"</code>. Ignored for other modes.
+Default: 90 (1.5 hours driving).</p></dd>
+
+
+<dt id="arg-unreachable-threshold">unreachable_threshold<a class="anchor" aria-label="anchor" href="#arg-unreachable-threshold"></a></dt>
+<dd><p>Numeric between 0 and 1. Fraction of tracts
+that must be unreachable (zero reachable stations) to trigger the
+WALK-to-CAR switch in AUTO mode. Ignored for other modes.
+Default: 0.01 (1%).</p></dd>
 
 
 <dt id="arg-n-threads">n_threads<a class="anchor" aria-label="anchor" href="#arg-n-threads"></a></dt>
@@ -128,8 +152,11 @@ box of tracts and points when clipping OSM data. Default: 10.</p></dd>
 
 
 <dt id="arg-fill-missing">fill_missing<a class="anchor" aria-label="anchor" href="#arg-fill-missing"></a></dt>
-<dd><p>Numeric or NULL. Value for unreachable OD pairs.
-NULL (default) uses <code>max_trip_duration</code>.</p></dd>
+<dd><p>Numeric, <code>NA</code>, or NULL. Value for unreachable OD pairs.
+<code>NA</code> (default when NULL) leaves unreachable pairs as <code>NA</code> in the travel
+time matrix, which maps to exactly zero weight in the weight matrix.
+These pairs are immune to alpha optimization. Set to a numeric value
+(e.g., <code>max_trip_duration</code>) to impute a travel time instead.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -144,13 +171,29 @@ per parameter.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Default settings (walking, 5h max)</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Default settings (AUTO mode: walk first, car fallback if needed)</span></span></span>
 <span class="r-in"><span><span class="fu">routing_control</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> interpElections routing control:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   mode: AUTO </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fallback_max_trip_duration: 90 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   unreachable_threshold: 1% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   point_method: pop_weighted </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   min_area_for_pop_weight: 1 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 120 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   n_threads: 4 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   gtfs_zip_path: NULL </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   departure_datetime: NULL </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   pop_raster: NULL (auto-download) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   osm_buffer_km: 10 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fill_missing: NA </span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Explicit walking mode (no fallback)</span></span></span>
+<span class="r-in"><span><span class="fu">routing_control</span><span class="op">(</span>mode <span class="op">=</span> <span class="st">"WALK"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> interpElections routing control:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   mode: WALK </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   point_method: pop_weighted </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   min_area_for_pop_weight: 1 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 180 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 120 min</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   n_threads: 4 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   gtfs_zip_path: NULL </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   departure_datetime: NULL </span>
@@ -168,10 +211,26 @@ per parameter.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   mode: WALK;TRANSIT </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   point_method: pop_weighted </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   min_area_for_pop_weight: 1 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 180 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 120 min</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   n_threads: 4 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   gtfs_zip_path: sptrans.zip </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   departure_datetime: 2022-10-02 10:00:00 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   pop_raster: NULL (auto-download) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   osm_buffer_km: 10 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fill_missing: NA </span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># AUTO mode with more lenient threshold (10% unreachable to trigger CAR)</span></span></span>
+<span class="r-in"><span><span class="fu">routing_control</span><span class="op">(</span>unreachable_threshold <span class="op">=</span> <span class="fl">0.10</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> interpElections routing control:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   mode: AUTO </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fallback_max_trip_duration: 90 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   unreachable_threshold: 10% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   point_method: pop_weighted </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   min_area_for_pop_weight: 1 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 120 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   n_threads: 4 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   gtfs_zip_path: NULL </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   departure_datetime: NULL </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   pop_raster: NULL (auto-download) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   osm_buffer_km: 10 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   fill_missing: NA </span>
@@ -182,7 +241,7 @@ per parameter.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   mode: BICYCLE </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   point_method: centroid </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   min_area_for_pop_weight: 1 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 180 min</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   max_trip_duration: 120 min</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   n_threads: 4 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   gtfs_zip_path: NULL </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   departure_datetime: NULL </span>
@@ -201,7 +260,7 @@ per parameter.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

@@ -47,7 +47,7 @@ computed via r5r."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>One-step IDW interpolation from source points to census tracts</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/interpolate-wrapper.R" class="external-link"><code>R/interpolate-wrapper.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/interpolate-wrapper.R" class="external-link"><code>R/interpolate-wrapper.R</code></a></small>
       <div class="d-none name"><code>interpolate_election.Rd</code></div>
     </div>
 
@@ -70,6 +70,7 @@ computed via r5r.</p>
 <span>  tract_id <span class="op">=</span> <span class="st">"id"</span>,</span>
 <span>  point_id <span class="op">=</span> <span class="st">"id"</span>,</span>
 <span>  time_matrix <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  weights <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  optim <span class="op">=</span> <span class="fu"><a href="optim_control.html">optim_control</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  routing <span class="op">=</span> <span class="fu"><a href="routing_control.html">routing_control</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  min_tract_pop <span class="op">=</span> <span class="fl">1</span>,</span>
@@ -126,6 +127,12 @@ Default: <code>"id"</code>.</p></dd>
 times. If provided, skips all travel time computation.</p></dd>
 
 
+<dt id="arg-weights">weights<a class="anchor" aria-label="anchor" href="#arg-weights"></a></dt>
+<dd><p>Numeric matrix or NULL. Pre-computed weight matrix
+[n x m]. When provided, optimization is skipped and these weights
+are used directly. Useful for <code><a href="reinterpolate.html">reinterpolate()</a></code> fast path.</p></dd>
+
+
 <dt id="arg-optim">optim<a class="anchor" aria-label="anchor" href="#arg-optim"></a></dt>
 <dd><p>An <code><a href="optim_control.html">optim_control()</a></code> object with optimization parameters.
 Default: <code><a href="optim_control.html">optim_control()</a></code>.</p></dd>
@@ -142,14 +149,15 @@ Default: <code><a href="routing_control.html">routing_control()</a></code>.</p><
 
 
 <dt id="arg-offset">offset<a class="anchor" aria-label="anchor" href="#arg-offset"></a></dt>
-<dd><p>Numeric. Travel time offset. Default: 1.</p></dd>
+<dd><p>Numeric. Travel time offset (power kernel only; ignored
+when <code>kernel = "exponential"</code> in <code>optim</code>). Default: 1.</p></dd>
 
 
 <dt id="arg-keep">keep<a class="anchor" aria-label="anchor" href="#arg-keep"></a></dt>
 <dd><p>Character vector or NULL. Names of extra intermediate
-objects to include in the result. <code>weights</code> and <code>time_matrix</code> are
-always kept. Options: <code>"electoral_sf"</code>, <code>"pop_raster"</code>,
-<code>"rep_points"</code>.</p></dd>
+objects to include in the result. <code>weights</code>, <code>time_matrix</code>,
+<code>electoral_sf</code>, and <code>rep_points</code> are always kept.
+Options: <code>"pop_raster"</code>, <code>"osm_roads"</code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -159,9 +167,7 @@ always kept. Options: <code>"electoral_sf"</code>, <code>"pop_raster"</code>,
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Advanced arguments. <code>network_path</code> (character) for
 pre-downloaded OSM data, <code>elevation_path</code> (character) for
-elevation GeoTIFF. Also accepts <strong>deprecated</strong> old-style
-parameters (<code>max_epochs</code>, <code>alpha_min</code>, <code>use_gpu</code>, <code>mode</code>,
-<code>gtfs_zip_path</code>, etc.) for backward compatibility.</p></dd>
+elevation GeoTIFF.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -197,19 +203,28 @@ parameters (<code>max_epochs</code>, <code>alpha_min</code>, <code>use_gpu</code
 <dd><p>List with <code>$tracts</code> and <code>$sources</code>.</p></dd>
 
 <dt>weights</dt>
-<dd><p>Weight matrix or NULL (opt-in via <code>keep</code>).</p></dd>
+<dd><p>Weight matrix. Always kept.</p></dd>
 
 <dt>time_matrix</dt>
-<dd><p>Travel time matrix or NULL (opt-in via <code>keep</code>).</p></dd>
+<dd><p>Travel time matrix. Always kept.</p></dd>
 
 <dt>electoral_sf</dt>
-<dd><p><code>sf</code> point object or NULL (opt-in via <code>keep</code>).</p></dd>
+<dd><p><code>sf</code> point object. Always kept.</p></dd>
+
+<dt>rep_points</dt>
+<dd><p>Representative points <code>sf</code> object. Always kept.</p></dd>
+
+<dt>kernel</dt>
+<dd><p>Character. Kernel type used (<code>"power"</code> or <code>"stretched_exp"</code>).</p></dd>
+
+<dt>row_targets</dt>
+<dd><p>Numeric vector. Row target proportions for Sinkhorn.</p></dd>
 
 <dt>pop_raster</dt>
 <dd><p>Population raster or NULL (opt-in via <code>keep</code>).</p></dd>
 
-<dt>rep_points</dt>
-<dd><p>Representative points or NULL (opt-in via <code>keep</code>).</p></dd>
+<dt>osm_roads</dt>
+<dd><p>OSM road network <code>sf</code> object or NULL (opt-in via <code>keep</code>).</p></dd>
 
 
 </dl></div>
@@ -224,7 +239,7 @@ auto-downloads all required data.</p>
 <code><a href="optimize_alpha.html">optimize_alpha()</a></code>, <code><a href="compute_weight_matrix.html">compute_weight_matrix()</a></code>,
 <code><a href="interpolate_election_br.html">interpolate_election_br()</a></code> for the Brazilian-specific wrapper.</p>
 <p>Other wrappers:
-<code><a href="interpolate_election_br.html">interpolate_election_br()</a></code></p></div>
+<code><a href="interpolate_election_br.html">interpolate_election_br</a>()</code></p></div>
     </div>
 
     <div class="section level2">
@@ -269,7 +284,7 @@ auto-downloads all required data.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>

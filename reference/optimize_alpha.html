@@ -49,7 +49,7 @@ gradients flow through all computations. Works on both CPU and GPU
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Find optimal decay parameters (alpha) for spatial interpolation</h1>
-      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/master/R/optimize.R" class="external-link"><code>R/optimize.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/antrologos/interpElections/blob/HEAD/R/optimize.R" class="external-link"><code>R/optimize.R</code></a></small>
       <div class="d-none name"><code>optimize_alpha.Rd</code></div>
     </div>
 
@@ -71,8 +71,7 @@ gradients flow through all computations. Works on both CPU and GPU
 <span>  row_targets <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  optim <span class="op">=</span> <span class="fu"><a href="optim_control.html">optim_control</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  offset <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -110,20 +109,13 @@ alpha_init, alpha_min, use_gpu, device, dtype). Default:
 
 
 <dt id="arg-offset">offset<a class="anchor" aria-label="anchor" href="#arg-offset"></a></dt>
-<dd><p>Numeric. Value added to travel times before exponentiation.
+<dd><p>Numeric. Value added to travel times before exponentiation
+(power kernel only; ignored when <code>kernel = "exponential"</code>).
 Default: 1.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
 <dd><p>Logical. Print progress messages? Default: TRUE.</p></dd>
-
-
-<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p><strong>Deprecated</strong>. Old-style individual parameters
-(<code>alpha_init</code>, <code>max_epochs</code>, <code>lr_init</code>, <code>use_gpu</code>, <code>device</code>, <code>dtype</code>,
-<code>convergence_tol</code>, <code>patience</code>, <code>barrier_mu</code>, <code>alpha_min</code>) are still
-accepted via <code>...</code> for backward compatibility, but will be removed
-in a future release. Use <code>optim = optim_control(...)</code> instead.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -135,8 +127,10 @@ demographic bracket. Inactive brackets (zero population or voters)
 are filled with 1.</p></dd>
 
 <dt>value</dt>
-<dd><p>Numeric. Objective function value at optimum (Poisson
-deviance).</p></dd>
+<dd><p>Numeric. Poisson deviance at optimum.</p></dd>
+
+<dt>loss</dt>
+<dd><p>Numeric. Full loss at optimum (deviance + barrier + entropy).</p></dd>
 
 <dt>W</dt>
 <dd><p>Numeric matrix [n x m]. Column-normalized weight matrix
@@ -148,8 +142,8 @@ via <code>W \%*\% data</code>. Column sums are approximately 1.</p></dd>
 <code>"pb_sgd_colnorm_cpu"</code>, <code>"pb_sgd_colnorm_cuda"</code>).</p></dd>
 
 <dt>convergence</dt>
-<dd><p>Integer. 0 = early-stopped (improvement plateau
-detected); 1 = stopped at max_epochs.</p></dd>
+<dd><p>Integer. 0 = converged (gradient-based or
+window-based early stopping); 1 = stopped at max_epochs.</p></dd>
 
 <dt>epochs</dt>
 <dd><p>Integer. Number of epochs completed.</p></dd>
@@ -176,21 +170,31 @@ each epoch.</p></dd>
 <dt>lr_history</dt>
 <dd><p>Numeric vector. Learning rate at each epoch.</p></dd>
 
+<dt>kernel</dt>
+<dd><p>Character. Kernel used (<code>"power"</code> or <code>"exponential"</code>).</p></dd>
+
 
 </dl></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The optimization requires the <code>torch</code> R package. Install it with
 <code><a href="setup_torch.html">setup_torch()</a></code> if not already available.</p>
-<p><strong>Parameterization</strong>: alpha[i,b] is reparameterized as
+<p><strong>Kernel</strong>: Two kernel functions are available, controlled via the
+<code>kernel</code> field in <code><a href="optim_control.html">optim_control()</a></code>:</p><ul><li><p><strong>Power</strong> (default): \(K(t) = (t + \text{offset})^{-\alpha}\).
+Classic inverse distance weighting.</p></li>
+<li><p><strong>Exponential</strong>: \(K(t) = \exp(-\alpha \cdot t)\).
+Lighter tail; relative decay increases with distance. Does not use
+<code>offset</code>.</p></li>
+</ul><p><strong>Parameterization</strong>: alpha[i,b] is reparameterized as
 <code>alpha = alpha_min + softplus(theta)</code> with <code>theta</code> unconstrained,
 where <code>softplus(x) = log(1 + exp(x))</code>. With the default
-<code>alpha_min = 1</code>, alpha is always at least 1 (inverse-distance
-decay or steeper). Set <code>alpha_min = 0</code> for unconstrained
+<code>alpha_min = 1</code> (power kernel), alpha is always at least 1
+(inverse-distance decay or steeper). The exponential kernel defaults
+to <code>alpha_min = 0</code>. Set <code>alpha_min = 0</code> for unconstrained
 optimization (similar to legacy <code>exp(theta)</code>).</p>
 <p><strong>Epoch structure</strong>: Each epoch is one full-data gradient step with
 exact gradients (column sums require all tracts). The loss reported at
-each epoch is the true objective evaluated on the full dataset.</p>
+each epoch is the true loss evaluated on the full dataset.</p>
 <p>Two execution paths:</p><ul><li><p><strong>CPU</strong> (default): <code>use_gpu = FALSE</code> or <code>NULL</code>. Uses torch on CPU
 device. Fast for small/medium problems (&lt; 2000 tracts).</p></li>
 <li><p><strong>GPU</strong>: <code>use_gpu = TRUE</code>. Uses CUDA or MPS. Faster for large
@@ -232,7 +236,7 @@ to rebuild the weight matrix from pre-computed alpha,
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer></div>
