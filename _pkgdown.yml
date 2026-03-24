@@ -66,6 +66,8 @@ reference:
       - coef.interpElections_result
       - residuals.interpElections_result
       - as.data.frame.interpElections_result
+      - save_interpolation
+      - load_interpolation
 
   - title: Diagnostics
     desc: Model validation, residual analysis, and weight matrix diagnostics.
@@ -85,11 +87,13 @@ reference:
       - plot_income
       - plot_turnout_rates
       - plot_ecological
+      - plot_representative_points
 
   - title: Setup
     desc: Configure GPU, Java, and cache.
     contents:
       - setup_java
+      - set_java_memory
       - setup_torch
       - use_gpu
       - interpElections_cache
