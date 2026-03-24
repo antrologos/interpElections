@@ -95,7 +95,7 @@ A list of class \code{"interpElections_result"} with components:
 \item{electoral_sf}{\code{sf} point object. Always kept.}
 \item{rep_points}{Representative points \code{sf} object. Always kept.}
 \item{kernel}{Character. Kernel type used (\code{"power"} or \code{"stretched_exp"}).}
-\item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
+\item{row_targets}{Numeric vector. Population-proportional row targets for adaptive entropy control.}
 \item{pop_raster}{Population raster or NULL (opt-in via \code{keep}).}
 \item{osm_roads}{OSM road network \code{sf} object or NULL (opt-in via \code{keep}).}
 }

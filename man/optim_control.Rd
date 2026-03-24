@@ -70,13 +70,16 @@ automatically adapts \code{entropy_mu} during training to reach this target.
 Must be > 1. Mutually exclusive with manual \code{entropy_mu} tuning.
 Default: NULL (disabled).}
 
-\item{dual_eta}{Numeric. Scaling factor for the per-epoch additive dual
+\item{dual_eta}{Numeric. Scaling factor for the per-epoch log-space dual
 update of \code{entropy_mu} (augmented Lagrangian). Each epoch:
-\verb{entropy_mu += dual_eta * rho / T_damp * (mean_H - log(target))},
-where \code{rho = m} (number of source stations) and \code{T_damp = 500} is a
-fixed dampening constant. The quadratic penalty
-\code{(m/2) * n * (mean_H - log(target))^2} in the loss does the heavy
-lifting; this dual update ensures exactness. Default: 1.0.}
+\verb{log_mu += decay * dual_eta / T_damp * (mean_H - h_target_mean)},
+then \code{entropy_mu = exp(log_mu)} (always positive). \code{T_damp = 500} is a
+dampening constant and \code{decay = 1/sqrt(1 + epoch/5000)} is a gentle
+schedule. The per-tract quadratic penalty \code{(rho/2)*sum((H_i - h_target_i)^2)}
+does the heavy lifting; this dual update ensures exactness. Per-tract
+targets are adaptively set using a feasibility floor from the travel time
+structure at alpha_ref=7 (power) or 50 (exponential).
+Default: 1.0.}
 
 \item{alpha_init}{Numeric scalar, vector of length n, or matrix [n x k].
 Initial guess for alpha. A scalar is recycled to all tracts and

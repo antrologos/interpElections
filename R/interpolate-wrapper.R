@@ -64,7 +64,7 @@
 #'   \item{electoral_sf}{`sf` point object. Always kept.}
 #'   \item{rep_points}{Representative points `sf` object. Always kept.}
 #'   \item{kernel}{Character. Kernel type used (`"power"` or `"stretched_exp"`).}
-#'   \item{row_targets}{Numeric vector. Row target proportions for Sinkhorn.}
+#'   \item{row_targets}{Numeric vector. Population-proportional row targets for adaptive entropy control.}
 #'   \item{pop_raster}{Population raster or NULL (opt-in via `keep`).}
 #'   \item{osm_roads}{OSM road network `sf` object or NULL (opt-in via `keep`).}
 #' }

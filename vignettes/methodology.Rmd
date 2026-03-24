@@ -501,7 +501,7 @@ minutes, using the r5r routing engine on OpenStreetMap data.
 - **Origins**: representative points (from Section 8)
 - **Destinations**: voting location coordinates
 - **Mode**: AUTO (default) --- attempts walking first, then falls back
-  to car routing if more than 1% of pairs are unreachable by foot
+  to car routing if 1% or more of tracts are unreachable by foot
 - **Max trip duration**: 120 minutes (default); pairs beyond this threshold are `NA` (unreachable) and receive exactly zero weight
 
 The OSM data is downloaded via `download_r5r_data()`, which fetches
