@@ -790,26 +790,29 @@ column-normalized independently:
 
 **For each bracket $k$:**
 
-1. **Compute the IDW kernel**: $K^{(k)}_{ij} = (t_{ij} + 1)^{-\alpha_{i}}$
-   (same kernel for all brackets, since alpha is shared)
-2. **Column-normalize**: $W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_i K^{(k)}_{ij}$
+1. **Compute the IDW kernel**: $K^{(k)}_{ij} = (t_{ij} + 1)^{-\alpha_{ik}}$
+   (per-tract, per-bracket decay parameter)
+2. **Column-normalize**: $W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_{i'} K^{(k)}_{i'j}$
 
-**Aggregate:**
+**Aggregate (voter-weighted):**
 
-$$W_{\text{total}} = \frac{1}{K} \sum_{k=1}^{K} W^{(k)}$$
+$$W_{\text{agg},ij} = \frac{\sum_{k=1}^{K} W^{(k)}_{ij} \cdot c_{kj}}{\sum_{k=1}^{K} c_{kj}}$$
 
-followed by a final column normalization to enforce source conservation
-(each station distributes exactly 100% of its data).
+where $c_{kj}$ is the voter count for bracket $k$ at station $j$.
+Each bracket's contribution is weighted by the number of voters it
+represents at that station, so brackets with more voters have
+proportionally more influence on the aggregated weights.
 
 #### Why this works
 
 Each bracket's column-normalized weights distribute that bracket's
 station-level data across tracts proportionally to the IDW kernel. The
-alpha optimization (Section 13) adjusts the decay parameters so that
-the resulting interpolated demographics match the census demographics
-across all brackets simultaneously. The per-bracket structure allows the
-loss function to separately account for each age group's spatial
-pattern.
+alpha optimization (Section 13) adjusts the per-tract, per-bracket
+decay parameters so that the resulting interpolated demographics match
+the census demographics across all brackets simultaneously. The
+per-bracket structure allows different demographic groups to have
+different spatial reaches --- young voters may draw from more distant
+stations than elderly voters.
 
 ```{r per-bracket-demo}
 # Bracket 1 ("young"): concentrated near station 1
@@ -831,15 +834,15 @@ old_hat   <- as.numeric(W_col %*% src_old)
 cat("=== Young bracket ===\n")
 cat("Census truth:     ", pop_young, "\n")
 cat("Column-normalized:", round(young_hat), "\n")
-cat("SSE:             ", round(sum((young_hat - pop_young)^2)), "\n")
+cat("Deviance:        ", round(2 * sum(young_hat - pop_young * log(ifelse(pop_young > 0, young_hat, 1)) + ifelse(pop_young > 0, pop_young * log(pop_young), 0) - pop_young)), "\n")
 
 cat("\n=== Old bracket ===\n")
 cat("Census truth:     ", pop_old, "\n")
 cat("Column-normalized:", round(old_hat), "\n")
-cat("SSE:             ", round(sum((old_hat - pop_old)^2)), "\n")
+cat("Deviance:        ", round(2 * sum(old_hat - pop_old * log(ifelse(pop_old > 0, old_hat, 1)) + ifelse(pop_old > 0, pop_old * log(pop_old), 0) - pop_old)), "\n")
 ```
 
-The alpha optimization reduces this SSE by finding per-tract decay
+The alpha optimization reduces this deviance by finding per-tract decay
 parameters that best match both demographic distributions.
 
 ```{r per-bracket-comparison-plot, fig.height = 5}
@@ -927,25 +930,33 @@ knitr::include_graphics("figures/optimization-loop-diagram.png")
 
 In words:
 
-1. **Initialize**: set $\alpha_i = 1$ for all tracts (moderate decay)
+1. **Initialize**: set $\alpha_i = 2$ for all tracts (moderate decay)
 2. **Build the IDW kernel**: compute raw weights from travel times and
    current $\alpha$
 3. **Column-normalize**: enforce source conservation (column sums = 1)
 4. **Interpolate demographics**: multiply normalized weights by
    station-level age profiles
-5. **Compare with census**: compute the squared error between
+5. **Compare with census**: compute the Poisson deviance between
    interpolated and census age profiles
 6. **Adjust $\alpha$**: use the gradient (via automatic differentiation)
-   to nudge $\alpha$ in the direction that reduces error
-7. **Repeat** until the error stops decreasing
+   to nudge $\alpha$ in the direction that reduces the loss
+7. **Repeat** until the loss converges
 
 Each iteration of this loop evaluates the complete forward pass:
 $\alpha \to \text{kernel} \to \text{column-normalize} \to \text{interpolation}
-\to \text{error}$.
+\to \text{loss}$.
 
-### 13.3 The formal objective
+### 13.3 The data-fit term: Poisson deviance
 
-$$f(\alpha) = \sum_i \sum_k \left( \hat{V}_{ik} - P_{ik} \right)^2$$
+Voter counts are non-negative integers. The **Poisson deviance** is the
+natural goodness-of-fit measure for count data: it penalizes relative
+deviations rather than absolute ones. A tract with 10 predicted voters
+vs. 20 observed is penalized more heavily than a tract with 1,000
+predicted vs. 1,010 observed --- even though both differ by 10.
+
+$$D(\alpha) = 2 \sum_{i=1}^{N} \sum_{k=1}^{K}
+\left[\hat{V}_{ik} - P_{ik}\log\hat{V}_{ik}
++ P_{ik}\log P_{ik} - P_{ik}\right]$$
 
 where:
 
@@ -953,12 +964,69 @@ where:
   per tract, with $W$ built via per-bracket column normalization
   (Section 12.3)
 - $P$ --- census demographics per tract
-- $k$ = demographic bracket index ($K = 7$ for age-only calibration,
-  $K = 14$ for full gender × age calibration)
+- $k$ = demographic bracket index ($K = 14$ for full gender $\times$
+  age calibration)
 
-The weight matrix $W(\alpha)$ is the aggregation of per-bracket
-column-normalized matrices $W^{(k)}$, followed by a final column
-normalization pass.
+When $\hat{V}_{ik} = P_{ik}$ for all entries, $D = 0$. The constant
+terms $P_{ik}\log P_{ik} - P_{ik}$ are precomputed once and do not
+depend on $\alpha$.
+
+### 13.4 Regularization: barrier, entropy, and quadratic penalties
+
+Poisson deviance alone can produce degenerate solutions: some tracts
+might receive zero predicted voters (collapsed allocation), or weights
+might be too diffuse or too concentrated. Three penalty terms address
+these pathologies.
+
+**Log-barrier penalty** (prevents zero-voter tracts):
+
+$$B(\alpha) = -\mu_B \sum_{i=1}^{N}
+\log\hat{V}_{i,\text{total}}$$
+
+where $\hat{V}_{i,\text{total}} = \sum_k \hat{V}_{ik}$ is the total
+predicted population in tract $i$. The barrier diverges as any tract's
+total approaches zero, preventing collapsed allocations. Default
+strength $\mu_B = 1$.
+
+**Entropy penalty** (controls weight concentration):
+
+$$E(\alpha) = \mu_E \sum_{i=1}^{N} H_i, \quad
+H_i = -\sum_{j=1}^{M} p_{ij}\log p_{ij}$$
+
+where $p_{ij}$ are the row-normalized aggregated weights. $H_i$ is the
+Shannon entropy of tract $i$'s weight distribution --- higher values
+mean more stations contribute. The strength $\mu_E$ can be set manually
+or tuned automatically via dual ascent (Section 14.5).
+
+**Per-tract quadratic penalty** (augmented Lagrangian):
+
+$$Q(\alpha) = \frac{\rho}{2}\sum_{i=1}^{N}
+\left(H_i - h_i^*\right)^2$$
+
+where $h_i^*$ is the per-tract entropy target (Section 14.5). This
+quadratic term works alongside the linear entropy penalty in an
+augmented Lagrangian framework, driving each tract's entropy toward its
+individual target. Active only in adaptive mode (`target_eff_src` set).
+
+### 13.5 The total loss
+
+$$L(\alpha) = D(\alpha) + B(\alpha) + E(\alpha) + Q(\alpha)$$
+
+The Poisson deviance $D$ dominates in magnitude; the barrier $B$ is a
+safety net (typically small); and the entropy terms $E + Q$ implement
+entropy control. In the **default mode** (no `target_eff_src`),
+$E = Q = 0$ and the optimizer minimizes $D + B$ only.
+
+Figure \@ref(fig:fig-loss-decomposition) shows the relative contribution
+of each loss component at convergence across 26 Brazilian state capitals.
+Deviance dominates in all cities, but Norte/Centro-Oeste capitals with
+structural infeasibility (Macapá, Manaus, Brasília, Rio de Janeiro)
+show elevated entropy penalties as the dual ascent works harder to
+achieve the entropy targets.
+
+```{r fig-loss-decomposition, echo = FALSE, out.width = "100%", fig.cap = "Loss decomposition at convergence across 26 state capitals. Deviance dominates, but cities with sparse road networks (Norte) show elevated entropy penalties."}
+knitr::include_graphics("figures/loss-decomposition-capitals.png")
+```
 
 ```{r objective-landscape, fig.height = 4.5, warning = FALSE}
 # Simplified case: all tracts share the same alpha
@@ -967,47 +1035,53 @@ pop_matrix_toy <- matrix(pop_toy, ncol = 1)
 src_matrix_toy <- matrix(c(250, 400, 350), ncol = 1)
 
 alpha_range <- seq(0.1, 8, by = 0.1)
-sse_values <- sapply(alpha_range, function(a) {
-  # Compute column-normalized weights and SSE
+deviance_values <- sapply(alpha_range, function(a) {
+  # Compute column-normalized weights and Poisson deviance
   K <- tt_adj ^ (-a)
   K[!is.finite(K)] <- 0
   W <- t(t(K) / colSums(K))  # column-normalize
-  v_hat <- W %*% src_matrix_toy
-  sum((v_hat - pop_matrix_toy)^2)
+  v_hat <- as.numeric(W %*% src_matrix_toy)
+  p <- as.numeric(pop_matrix_toy)
+  # Poisson deviance: 2 * sum(v_hat - p*log(v_hat) + p*log(p) - p)
+  v_safe <- ifelse(v_hat > 0, v_hat, 1e-30)
+  2 * sum(v_safe - p * log(ifelse(p > 0, v_safe, 1))
+          + ifelse(p > 0, p * log(p), 0) - p)
 })
 
-ggplot(data.frame(alpha = alpha_range, sse = sse_values),
-       aes(x = alpha, y = sse)) +
+ggplot(data.frame(alpha = alpha_range, deviance = deviance_values),
+       aes(x = alpha, y = deviance)) +
   geom_line(color = "#4575b4", linewidth = 0.8) +
-  geom_vline(xintercept = alpha_range[which.min(sse_values)],
+  geom_vline(xintercept = alpha_range[which.min(deviance_values)],
              linetype = "dashed", color = "#d73027") +
   labs(title = "Objective Function Landscape",
        subtitle = sprintf(
          "Minimum at alpha = %.1f (shared across all tracts)",
-         alpha_range[which.min(sse_values)]),
-       x = expression(alpha), y = "SSE") +
+         alpha_range[which.min(deviance_values)]),
+       x = expression(alpha), y = "Poisson Deviance") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"))
 ```
 
 The landscape has a clear minimum. In practice, each tract has its own
-alpha, creating a high-dimensional optimization problem.
+alpha (per bracket), creating a high-dimensional optimization problem.
 
 ## 14. Optimization: Per-Bracket Gradient Descent with Column Normalization
 
 ### 14.1 Why automatic differentiation?
 
 The objective function involves column normalization of the IDW kernel,
-followed by matrix multiplication and a squared-error loss. Writing the
+followed by matrix multiplication and Poisson deviance loss. Writing the
 analytical gradient by hand is straightforward for simple column
-normalization, but becomes tedious when combined with the per-bracket
-structure and exponential reparameterization.
+normalization, but becomes involved when combined with the per-bracket
+structure, softplus reparameterization, and multiple penalty terms.
 
-Torch's **automatic differentiation** handles this: we define the
-forward pass (kernel -> column-normalize -> interpolation -> loss), and
-torch computes the gradient of the loss with respect to $\alpha$
-automatically by recording every operation and applying the chain rule
-backward.
+For small problems, torch's **automatic differentiation** handles this:
+we define the forward pass (kernel -> column-normalize -> interpolation
+-> loss), and torch computes the gradient of the loss with respect to
+$\theta$ automatically by recording every operation and applying the
+chain rule backward. For large problems, the package derives and uses
+**analytical gradients** that are mathematically equivalent but
+computationally faster (Section 14.8).
 
 ### 14.2 Log-domain computation for numerical stability
 
@@ -1045,62 +1119,193 @@ The tensor shapes involved:
 | Symbol | Shape | Meaning |
 |---|---|---|
 | `log_t` | $[n \times m]$ | Log travel times (precomputed once) |
-| `alpha` | $[n]$ | Decay parameters (what we're optimizing) |
+| `alpha` | $[n \times k_a]$ | Per-tract-per-bracket decay parameters |
 | `P` | $[n \times k_a]$ | Census population per tract and bracket |
 | `V` | $[m \times k_a]$ | Voter counts per station and bracket |
-| `log_K` | $[n \times m]$ | Log-kernel (broadcast to 3D) |
+| `log_K` | $[k_a \times n \times m]$ | Per-bracket log-kernels |
 | `W_all` | $[k_a \times n \times m]$ | Per-bracket weight tensors |
 
-The first dimension ($k_a$) indexes demographic brackets. All $k_a$
-brackets share the same kernel --- column normalization is applied
-independently to each bracket slice.
+The first dimension ($k_a$) indexes demographic brackets. Each bracket
+uses its own alpha values, producing bracket-specific kernels. Column
+normalization is applied independently to each bracket slice.
 
 ```
-Input: log_t[n,m], alpha[n], P[n,ka], V[m,ka]
+Input: log_t[n,m], alpha[n,ka], P[n,ka], V[m,ka]
 
-# Log-kernel (same for all brackets)
-log_K[i,j] = -alpha[i] * log_t[i, j]                  # [n x m]
+# Log-kernel (per bracket)
+log_K[b,i,j] = -alpha[i,b] * log_t[i,j]               # [ka x n x m]
 
 # Column normalization in log domain (per bracket)
-log_colsum[j] = logsumexp_i(log_K[i,j])               # [m]
-W[i,j] = exp(log_K[i,j] - log_colsum[j])              # [n x m]
+log_colsum[b,j] = logsumexp_i(log_K[b,i,j])            # [ka x m]
+W[b,i,j] = exp(log_K[b,i,j] - log_colsum[b,j])        # [ka x n x m]
 
-# Per-bracket: broadcast W to [ka x n x m], then interpolate
-V_hat = W @ V                                          # [n x ka]
-loss = sum((V_hat - P)^2)
+# Interpolate: per-bracket weighted voter counts
+V_hat[i,b] = sum_j W[b,i,j] * V[j,b]                  # [n x ka]
+loss = poisson_deviance(V_hat, P) + barrier(V_hat) + entropy(W)
 ```
 
-Every operation --- log, exp, logsumexp, matrix multiply, subtraction,
-squaring --- has a defined backward pass in torch. The gradient
-$\nabla_\alpha f$ flows backward through the column normalization
+Every operation --- log, exp, logsumexp, matrix multiply, Poisson
+deviance --- has a defined backward pass in torch. The gradient
+$\nabla_\theta L$ flows backward through the column normalization
 automatically.
 
-### 14.4 ADAM optimization with per-bracket weights
+### 14.4 Softplus reparameterization
 
-We use **ADAM** (Adaptive Moment Estimation) as the underlying optimizer,
-with **per-bracket column normalization**. At each gradient step:
+The decay parameters $\alpha$ must satisfy
+$\alpha_{ib} \geq \alpha_{\min}$ (default $\alpha_{\min} = 1$ for the
+power kernel). Rather than clamping or projecting, the optimizer works
+with **unconstrained** parameters $\theta$ and maps:
 
-1. **Build the IDW kernel** from current alpha values
-2. **Per-bracket column normalization**: each demographic column uses the
-   same column-normalized kernel
-3. **Compute loss**: SSE between interpolated and observed values
-4. **Backward + Adam step** on the unconstrained `theta` parameters
+$$\alpha_{ib} = \alpha_{\min} + \text{softplus}(\theta_{ib})
+= \alpha_{\min} + \log(1 + e^{\theta_{ib}})$$
 
-At the end of each epoch, the **true objective** is evaluated on the full
-dataset (no gradient) and used for convergence monitoring and logging.
+The softplus function $\log(1 + e^x)$ is a smooth approximation to
+$\max(0, x)$. Key properties:
 
-**Exponential reparameterization**: alpha is not optimized directly.
-Instead we optimize `theta` (unconstrained) where `alpha = exp(theta)`,
-initialized as `theta = log(alpha_init)`. This ensures:
-
-- Alpha is always strictly positive --- no clamping or projection needed
-- Gradient `d(alpha)/d(theta) = alpha` --- no saturation at any boundary
+- $\alpha$ is always strictly above $\alpha_{\min}$ (softplus $> 0$)
+- Gradient $\partial\alpha/\partial\theta = \sigma(\theta)$, always in
+  $(0, 1)$ --- no saturation at any boundary
+- No clamping, no projection --- smooth and differentiable everywhere
 - Corner solutions due to hard boundary constraints cannot occur
 
-The learning rate follows a cosine annealing schedule with warm restarts
-(SGDR), cycling between `lr_init` and `lr_init * 0.01`. This deterministic
-schedule is decoupled from loss values, which is critical for dual ascent
-mode where entropy_mu changes make the loss non-stationary.
+**Per-tract, per-bracket alpha**: the $\alpha$ matrix has shape
+$[n \times k_a]$, allowing different decay rates for different
+demographic groups within the same tract. A young-voter bracket might
+have a different spatial reach than an old-voter bracket.
+
+Initialization:
+$\theta_0 = \text{softplus}^{-1}(\alpha_{\text{init}} - \alpha_{\min})$,
+with a small random perturbation ($\sigma = 0.1$) to break symmetry
+across tracts.
+
+Figure \@ref(fig:fig-alpha-bracket) shows how the optimized $\alpha$
+values vary across the 14 demographic brackets in Belo Horizonte,
+illustrating that the per-bracket structure allows each age-gender
+group to learn its own spatial reach.
+
+```{r fig-alpha-bracket, echo = FALSE, out.width = "100%", fig.cap = "Distribution of optimized alpha by demographic bracket in Belo Horizonte (5,109 tracts). Each bracket learns a different decay rate, reflecting age- and gender-specific spatial mobility patterns."}
+knitr::include_graphics("figures/alpha-per-bracket.png")
+```
+
+### 14.5 Adaptive entropy targets and dual ascent
+
+When the user specifies `target_eff_src` (e.g., `target_eff_src = 5`)
+in `optim_control()`, the optimizer automatically adapts the entropy
+penalty strength $\mu_E$ to achieve approximately that many **effective
+sources** per tract.
+
+#### Per-tract targets
+
+A global entropy target is infeasible for tracts with sparse or uniform
+travel times. Consider a peripheral tract in the Amazon where all
+reachable stations are at similar distances: no value of $\alpha$ can
+produce a weight distribution with low entropy, because the kernel
+values are nearly equal regardless of the decay rate.
+
+The package computes **per-tract adaptive targets**:
+
+$$h_i^* = \max\!\left(
+  \log\min(k_i - 1,\; T),\;
+  H_i(\alpha_{\text{ref}}),\;
+  \log 2
+\right)$$
+
+where:
+
+- $k_i$ = number of reachable stations for tract $i$
+- $T$ = user's `target_eff_src`
+- $H_i(\alpha_{\text{ref}})$ = Shannon entropy of the weight
+  distribution at a reference decay ($\alpha_{\text{ref}} = 7$ for
+  power kernel, 50 for exponential). This captures the **minimum achievable entropy** given
+  the actual travel time structure. Tracts where all stations are at
+  similar distances get a higher floor.
+- $\log 2$ = absolute floor (at least 2 effective sources)
+
+**Why this matters**: without adaptive targets, 9 of 26 Brazilian state
+capitals (all in Norte or Centro-Oeste --- Amazonian and Cerrado
+regions) exhibit optimization instability. With per-tract adaptive
+targets, catastrophic optimization failure (crash-collapse) is prevented
+and all 26 Brazilian state capitals converge. However, cities with
+structurally infeasible constraints (sparse road networks with uniform
+travel times) achieve higher deviance than well-connected cities --- the
+per-tract targets mitigate but cannot eliminate this structural
+limitation.
+
+Figure \@ref(fig:fig-eff-sources) shows the distribution of effective
+sources across tracts for four contrasting capitals. Palmas (Norte) is
+concentrated near 1--2 effective sources due to its sparse road network,
+while larger cities achieve broader distributions.
+
+```{r fig-eff-sources, echo = FALSE, out.width = "100%", fig.cap = "Distribution of effective sources across census tracts in four capitals. Dashed red line indicates the target. Palmas (sparse Norte city) concentrates near 1--2 sources; larger Sudeste/Nordeste cities achieve broader distributions."}
+knitr::include_graphics("figures/eff-sources-distribution.png")
+```
+
+#### Effective sources
+
+The metric $\text{eff\_src}_i = \exp(H_i)$ measures how many stations
+effectively contribute to tract $i$. When $H_i = \log M$ (uniform
+weights), all $M$ stations contribute equally; when $H_i = 0$, a
+single station dominates.
+
+#### Log-reparameterized dual ascent
+
+The entropy multiplier is parameterized as $\mu_E = \exp(\log\mu)$,
+which structurally ensures $\mu_E > 0$ (prevents collapse to zero).
+The dual variable is updated once per epoch via the augmented Lagrangian
+method:
+
+$$\log\mu \leftarrow \log\mu
++ d(t) \cdot \frac{\eta_d}{T_d} \cdot (\bar{H} - \bar{h}^*)$$
+
+where:
+
+- $d(t) = 1/\sqrt{1 + t/5000}$ is a gentle decay schedule
+- $\eta_d$ = dual step scaling (`dual_eta`, default 1.0)
+- $T_d = 500$ is a dampening constant
+- $\bar{H}$ = current mean entropy across tracts
+- $\bar{h}^*$ = mean of per-tract targets
+
+An ALM bound caps $\log\mu \leq \log(3\rho)$ to prevent overshoot
+(Bertsekas, 1999). The quadratic penalty coefficient is initialized as
+$\rho = M / T$ where $M$ is the number of stations and $T$ is
+`target_eff_src`. The per-tract **quadratic penalty**
+$(\rho/2)\sum_i(H_i - h_i^*)^2$ does the heavy lifting of driving
+individual tracts toward their targets; the dual update ensures
+asymptotic exactness of the aggregate constraint.
+
+The effective sources are smoothed via an exponential moving average
+($\alpha_{\text{ema}} = 0.05$) to filter noise from dual updates.
+
+### 14.6 ADAM optimizer and learning rate schedule
+
+We use **ADAM** (Adaptive Moment Estimation) with betas $(0.9, 0.99)$
+as the underlying optimizer, with **per-bracket column normalization**.
+At each gradient step:
+
+1. **Build the IDW kernel** from current $\theta$ values (via softplus)
+2. **Per-bracket column normalization** on 3D tensors
+3. **Compute loss**: Poisson deviance + barrier + entropy + quadratic
+4. **Backward + Adam step** on unconstrained $\theta$
+
+At the end of each epoch, the true objective is evaluated on the full
+dataset (no gradient) for convergence monitoring.
+
+**Learning rate schedule** --- two modes:
+
+**Non-adaptive mode** (no `target_eff_src`): **SGDR cosine annealing
+with warm restarts** (Loshchilov & Hutter, 2017). The learning rate
+oscillates between `lr_init` and `lr_init * 0.01`, with the cycle
+length doubling after each restart ($T_0 = 500$, $T_{\text{mult}} = 2$).
+The maximum learning rate decays by a factor of 0.7 per restart. At
+warm restarts, ADAM's momentum buffers are cleared to allow fresh
+exploration. This deterministic schedule is decoupled from loss values.
+
+**Adaptive mode** (`target_eff_src` set): **constant learning rate**
+throughout. The dual ascent updates change the loss landscape every
+epoch, making LR decay counterproductive. ADAM's per-parameter adaptive
+second moment already handles oscillations.
+
+**Gradient clipping**: `max_norm = 1.0` prevents exploding gradients.
 
 ```{r optimize-call, eval = FALSE}
 optim_result <- optimize_alpha(
@@ -1109,9 +1314,9 @@ optim_result <- optimize_alpha(
   source_matrix = source_matrix,
   row_targets   = row_targets,
   optim = optim_control(
-    max_epochs = 200,      # maximum epochs
-    lr_init    = 0.05,     # initial learning rate (cosine annealing)
-    use_gpu    = FALSE     # CPU for small problems
+    lr_init        = 0.05,        # initial learning rate
+    target_eff_src = 5,           # enable dual ascent (5 effective sources)
+    use_gpu        = FALSE        # CPU for small problems
   )
 )
 ```
@@ -1120,21 +1325,112 @@ optim_result <- optimize_alpha(
 knitr::include_graphics("figures/optim-convergence.png")
 ```
 
-The epoch loss curve shows the **true objective** evaluated on all tracts
-at the end of each epoch. The package tracks the best epoch loss and
-returns the corresponding alpha values.
+The epoch loss curve shows the **total loss** (deviance + barrier +
+entropy + quadratic) evaluated at each epoch. The package tracks
+the best model and returns the corresponding alpha values.
 
-**Key tuning parameters**:
+Figure \@ref(fig:fig-convergence-trajectories) compares convergence
+behavior across four contrasting capitals: Aracaju converges in 2,687
+epochs, while Palmas (sparse Norte city) requires 19,383. The entropy
+multiplier $\mu_E$ panel reveals how the dual ascent adapts penalty
+strength --- healthy cities see $\mu_E$ rise and settle quickly, while
+structurally difficult cities show prolonged oscillations.
 
-Tuning parameters are grouped in `optim_control()`:
+```{r fig-convergence-trajectories, echo = FALSE, out.width = "100%", fig.cap = "Convergence trajectories for four contrasting capitals. Left: Poisson deviance (log scale). Right: entropy multiplier. Healthy cities (Aracaju, Belo Horizonte) converge quickly; sparse Norte cities (Palmas, Manaus) require many more epochs and show prolonged dual variable dynamics."}
+knitr::include_graphics("figures/convergence-trajectories.png")
+```
+
+**Key tuning parameters** (via `optim_control()`):
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `max_epochs` | 10000 | Maximum epochs. |
-| `lr_init` | 0.05 | Initial learning rate. Cosine annealing with warm restarts. |
-| `dtype` | `"float32"` | `"float64"` for more precision (2x memory). |
-| `alpha_min` | 1 | Lower bound for alpha (via softplus reparameterization). |
-| `use_gpu` | `FALSE` | Enable GPU acceleration (CUDA/MPS). |
+| `max_epochs` | 50000 | Maximum epochs (convergence usually earlier). |
+| `lr_init` | 0.05 | Initial learning rate. SGDR (non-adaptive) or constant (adaptive). |
+| `convergence_tol` | 1e-5 | Relative improvement threshold for convergence. |
+| `patience` | 100 | Lookback window (epochs) for convergence check. |
+| `barrier_mu` | 1 | Log-barrier strength. 0 to disable. |
+| `entropy_mu` | 0 | Manual entropy penalty strength. Superseded by `target_eff_src`. |
+| `target_eff_src` | NULL | Target effective sources per tract. Enables dual ascent. |
+| `dual_eta` | 1.0 | Dual step scaling factor. |
+| `alpha_init` | 2 | Initial guess for alpha (scalar, vector, or matrix). |
+| `alpha_min` | 1 (power) | Lower bound via softplus reparameterization. |
+| `kernel` | "power" | "power" or "exponential". |
+| `dtype` | "float32" | "float64" for more precision (2x memory). |
+| `use_gpu` | NULL | GPU acceleration (auto-detected when NULL). |
+
+### 14.7 Convergence criteria
+
+The optimizer uses a **two-tier convergence system**, never declaring
+convergence before $\max(3 \times \text{patience}, 500)$ epochs:
+
+**Tier 1 --- Gradient-based** (true stationarity). Requires **10
+consecutive epochs** satisfying all of:
+
+- Relative gradient norm:
+  $\|\nabla_\theta L\| / (1 + \|\theta\|) < 10^{-4}$
+- Effective sources within 5% of adjusted target (adaptive mode)
+- Dual variable $\mu_E$ stable over `patience` epochs
+- Total loss stable over `patience` epochs
+- Deviance not rising: mean deviance over the last 100 epochs must not
+  exceed mean deviance from 400--500 epochs ago by more than 1%
+
+**Tier 2 --- Window-based** (diminishing returns). Triggered when the
+loss metric improves by less than `convergence_tol` over the last
+`patience` epochs, provided:
+
+- Effective sources within 20% of target (coarser than Tier 1)
+- Dual variable and total loss both stable
+- In refinement phase: adaptive mode (always), or non-adaptive mode
+  with LR below 10% of initial
+
+In adaptive mode, the convergence metric is Poisson deviance alone; in
+non-adaptive mode, total loss (deviance + barrier) is used.
+
+**Best model tracking**: in adaptive mode, the optimizer tracks the
+model with the **lowest Poisson deviance** among epochs where effective
+sources are within 20% of the adjusted target. This ensures the
+returned weights satisfy the entropy constraint while maximizing fit.
+
+### 14.8 Station-chunked computation
+
+For large problems where $k_a \times n \times m > 25 \times 10^6$, the
+optimizer automatically switches to a **station-chunked** computation
+path. Instead of building the full $[k_a \times n \times m]$ tensor,
+the forward pass iterates over station chunks of size:
+
+$$m_{\text{chunk}} = \left\lceil
+\frac{25 \times 10^6}{k_a \times n}\right\rceil$$
+
+capped by available GPU memory (60% of VRAM).
+
+**Two-pass structure**:
+
+- **Pass 1** (no gradient): loops over station chunks, accumulating the
+  predicted values $\hat{V}$ ($n \times k_a$) and the aggregated weight
+  matrix $W_{\text{agg}}$ ($n \times m$). Computes the loss value and
+  entropy/barrier gradient signals.
+
+- **Pass 2** (analytical gradient): computes
+  $\partial L / \partial\alpha$ directly using the derived softmax
+  Jacobian formula, without autograd backward:
+
+$$\frac{\partial L}{\partial \alpha_{ib}}
+= \sum_j c_{bj}\, W^{(b)}_{ij}\, \phi(t_{ij})
+\left(\overline{dL}_{bj} - dL_{ib}\right)$$
+
+where $\overline{dL}_{bj} = \sum_{i'} W^{(b)}_{i'j}\, dL_{i'b}$ is
+the weight-averaged loss gradient at station $j$ (see Section 20 for
+the full derivation).
+
+The entropy gradient uses a **one-epoch-delayed signal**: the gradient
+$\partial(E+Q)/\partial W_{\text{agg}}$ from the previous epoch is
+propagated through the same softmax Jacobian, adding the corresponding
+terms. This avoids rebuilding the computational graph while introducing
+negligible lag.
+
+**Speedup**: the analytical path achieves 2--3x speedup over autograd
+backward for large cities (e.g., 2.62 s/epoch vs. 7.77 s/epoch for
+S\u00e3o Paulo with 26,611 tracts and 2,028 stations).
 
 
 # Part VI: Results and Validation
@@ -1394,21 +1690,45 @@ influence of extreme values and improve linearity.
 ## 18. Performance and Tuning
 
 All timings below assume default optimization parameters:
-`max_epochs = 200`, `dtype = "float32"`.
+`max_epochs = 50000`, `dtype = "float32"`. The optimizer typically
+converges well before `max_epochs` due to the two-tier convergence
+system (Section 14.7).
 
 | Problem size (tracts) | Recommendation | Typical optimization time |
 |---|---|---|
 | < 200 | CPU | 10--30 seconds |
 | 200--1,000 | CPU or GPU | 30s -- 2 min |
-| 1,000--5,000 | GPU recommended | 15s -- 2 min |
-| > 5,000 | GPU strongly recommended | 2--10 min |
+| 1,000--5,000 | GPU recommended | 1 -- 5 min |
+| > 5,000 | GPU strongly recommended | 5--15 min |
 
-**Practical runtimes** (optimization step only, from actual runs):
+### 18.1 Automatic station chunking
+
+For large problems where $k_a \times n \times m > 25 \times 10^6$, the
+optimizer automatically switches to the station-chunked computation path
+(Section 14.8). This reduces both per-epoch time and peak GPU memory:
+
+| Municipality | Tracts | Stations | Auto-chunks | ~s/epoch (GPU) |
+|---|---|---|---|---|
+| Varginha | 279 | 37 | 1 (monolithic) | ~0.05 |
+| Belo Horizonte | 5,109 | 407 | 2 | ~0.085 |
+| Rio de Janeiro | 13,354 | 1,392 | 11 | ~0.52 |
+| S\u00e3o Paulo | 26,611 | 2,028 | 30 | ~0.96 |
+
+The chunk size is computed as
+$m_{\text{chunk}} = \lceil 25\text{M} / (k_a \times n) \rceil$,
+capped by available GPU memory. Users can override via `force_chunked`
+and `chunk_size` in `optim_control()`, but the defaults work well for
+the tested range.
+
+### 18.2 Practical runtimes
+
+Runtimes for the optimization step only (GPU, RTX 3060 8GB, convergence
+or max_epochs):
 
 - Igrejinha (85 tracts, 17 stations): ~24s CPU
 - Varginha (279 tracts, 37 stations): ~52s CPU
 - Palmas (660 tracts, 71 stations): ~135s CPU
-- Niterói (1,169 tracts, 135 stations): ~17s GPU
+- Niter\u00f3i (1,169 tracts, 135 stations): ~17s GPU
 - Belo Horizonte (5,113 tracts, 407 stations): ~105s GPU
 - Rio de Janeiro (13,370 tracts, 1,392 stations): ~10 min GPU
 
@@ -1416,29 +1736,30 @@ Note that total wall-clock time for `interpolate_election_br()` also
 includes data downloads, travel time computation (via r5r), and weight
 matrix construction, which can dominate for larger cities.
 
-**Memory estimation.** GPU memory during optimization has two main
-components:
+### 18.3 Memory estimation
 
-1. **Full kernel matrix** (always in memory): $n \times m \times
-   \text{bytes}$ --- e.g., 5,100 x 407 x 4 = 8 MB for Belo
-   Horizonte in float32.
-2. **Per-bracket weight tensors**: $k_a \times n \times m \times
-   \text{bytes}$ --- torch must store intermediate tensors for
-   backpropagation through the column normalization.
+GPU memory during optimization depends on the computation path:
 
-where $k_a = 14$ (gender × 7 age brackets) and `bytes` is
-4 (float32) or 8 (float64).
+**Monolithic path** ($k_a \times n \times m \leq 25\text{M}$): the full
+3D tensor $[k_a \times n \times m]$ is held in memory, plus autograd
+intermediate tensors. Peak usage $\approx 6 \times k_a \times n \times
+m \times \text{bytes}$.
 
-| Municipality | Tracts | Stations | $k_a$ | Estimated GPU memory |
-|---|---|---|---|---|
-| Varginha | 279 | 37 | 14 | ~28 MB |
-| Niteroi | 1,169 | 135 | 14 | ~242 MB |
-| Belo Horizonte | 5,113 | 407 | 14 | ~729 MB |
-| Rio de Janeiro | 13,370 | 1,392 | 14 | ~2.5 GB |
+**Station-chunked path** ($k_a \times n \times m > 25\text{M}$): only one
+chunk $[k_a \times n \times m_{\text{chunk}}]$ is in memory at a time,
+reducing peak usage to
+$O(k_a \times n \times m_{\text{chunk}})$. No autograd graph is built
+(analytical gradients).
 
-These are actual values reported by the optimizer during precomputation.
-For very large cities on GPU, consider using `dtype = "float32"`
-(the default) rather than `"float64"` to halve memory usage.
+| Municipality | Tracts | Stations | $k_a$ | Path | Estimated GPU memory |
+|---|---|---|---|---|---|
+| Varginha | 279 | 37 | 14 | Monolithic | ~28 MB |
+| Niteroi | 1,169 | 135 | 14 | Monolithic | ~242 MB |
+| Belo Horizonte | 5,113 | 407 | 14 | Chunked (2) | ~400 MB |
+| Rio de Janeiro | 13,370 | 1,392 | 14 | Chunked (11) | ~1.5 GB |
+
+For very large cities, `dtype = "float32"` (the default) halves memory
+compared to `"float64"`.
 
 **RStudio**: torch inside RStudio IDE requires subprocess execution via
 `callr` (automatic and transparent to the user). Standalone R scripts
@@ -1480,27 +1801,35 @@ interpElections_cache("clean", category = "votes")  # clear by category
 ### Notation
 
 - $N$ = number of census tracts, $M$ = number of polling stations
-- $K$ = number of calibration brackets (7 for age-only, 14 for full)
+- $K$ = number of calibration brackets (14 for full gender $\times$ age)
+- $k_a$ = number of active brackets (those with nonzero population and voters)
 - $t \in \mathbb{R}^{N \times M}$: travel time matrix (minutes)
-- $\alpha \in \mathbb{R}^N$: per-tract decay parameters
-- $P \in \mathbb{R}^{N \times K}$: census population by age bracket
-- $S \in \mathbb{R}^{M \times K}$: voter counts by age bracket at
-  stations
-- $c \in \mathbb{R}^M$: column targets ($c_j = 1$, enforced by column
-  normalization)
+- $\alpha \in \mathbb{R}^{N \times k_a}$: per-tract-per-bracket decay parameters
+- $\theta \in \mathbb{R}^{N \times k_a}$: unconstrained optimizer variables
+- $P \in \mathbb{R}^{N \times k_a}$: census population by bracket
+- $S \in \mathbb{R}^{M \times k_a}$: voter counts by bracket at stations
+- $c_{kj} = S_{jk}$: voter count for bracket $k$ at station $j$
+- $\hat{V}_{ik}$: predicted population for tract $i$, bracket $k$
+- $W^{(k)}_{ij}$: per-bracket column-normalized weight
+- $W_{\text{agg},ij}$: voter-weighted aggregated weight
+- $H_i$: Shannon entropy of tract $i$'s weight distribution
+- $h_i^*$: per-tract entropy target
+- $\mu_B$: barrier penalty strength (default 1)
+- $\mu_E$: entropy penalty multiplier (dual variable in adaptive mode)
+- $\rho$: quadratic penalty coefficient
 
 ### IDW kernel
 
-Both kernels share the form $\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})$:
+Both kernels share the form $\log K_{ij} = -\alpha_{ib} \cdot \phi(t_{ij})$:
 
 | Kernel | $K_{ij}$ | $\phi(t)$ | Tail |
 |:------:|:---------:|:---------:|:----:|
-| Power (default) | $(t_{ij} + 1)^{-\alpha_i}$ | $\log(t_{ij} + 1)$ | Heavy |
-| Exponential | $\exp(-\alpha_i \cdot t_{ij})$ | $t_{ij}$ | Light |
+| Power (default) | $(t_{ij} + 1)^{-\alpha_{ib}}$ | $\log(t_{ij} + 1)$ | Heavy |
+| Exponential | $\exp(-\alpha_{ib} \cdot t_{ij})$ | $t_{ij}$ | Light |
 
 ### Log-domain kernel
 
-$$\log K_{ij} = -\alpha_i \cdot \phi(t_{ij})$$
+$$\log K_{ij} = -\alpha_{ib} \cdot \phi(t_{ij})$$
 
 ### Column normalization
 
@@ -1512,26 +1841,217 @@ $$W_{ij} = \exp\!\left(\log K_{ij} - \text{logsumexp}_i(\log K_{ij})\right)$$
 
 ### Per-bracket column normalization
 
-For each demographic bracket $k = 1, \ldots, K$:
+For each demographic bracket $k = 1, \ldots, k_a$:
 
-1. Compute kernel: $K_{ij} = (t_{ij} + 1)^{-\alpha_i}$
-2. Column-normalize: $W^{(k)}_{ij} = K_{ij} / \sum_{i'} K_{i'j}$
+1. Compute kernel: $K^{(k)}_{ij} = \exp(-\alpha_{ik} \cdot \phi(t_{ij}))$
+2. Column-normalize: $W^{(k)}_{ij} = K^{(k)}_{ij} / \sum_{i'} K^{(k)}_{i'j}$
 
-Aggregate and column-normalize:
-$$W_{\text{total}} = \sum_{k=1}^{K} W^{(k)}$$
-$$W_{ij} = W_{\text{total},ij} \bigg/ \sum_{i'} W_{\text{total},i'j}$$
+### Aggregated weight matrix
 
-### Objective function (full data)
+The voter-weighted aggregation across brackets:
 
-$$f(\alpha) = \| W(\alpha) \cdot S - P \|_F^2 = \sum_{i=1}^N \sum_{k=1}^K \left( \sum_{j=1}^M W_{ij} S_{jk} - P_{ik} \right)^2$$
+$$W_{\text{agg},ij} = \frac{\sum_{k=1}^{k_a} W^{(k)}_{ij} \cdot c_{kj}}{\sum_{k=1}^{k_a} c_{kj}}$$
 
-where $W(\alpha) \in \mathbb{R}^{N \times M}$ is the per-bracket
-column-normalized weight matrix.
+This is the weight matrix used for entropy computation and for
+interpolating non-demographic variables after optimization.
 
-### Gradient
+### Interpolation
 
-Computed by torch autograd through the column normalization. Each
-operation (log, exp, logsumexp, matrix multiply, subtraction, squaring)
-has a defined backward pass in torch:
+$$\hat{V}_{ik} = \sum_{j=1}^{M} W^{(k)}_{ij} \cdot c_{kj}$$
 
-$$\nabla_\alpha f = \frac{\partial}{\partial \alpha} \| \text{colnorm}(\text{kernel}(\alpha)) \cdot S - P \|_F^2$$
+### Softplus reparameterization
+
+The decay parameters $\alpha$ must satisfy
+$\alpha_{ib} \geq \alpha_{\min}$ (default $\alpha_{\min} = 1$ for the
+power kernel). Rather than clamping, the optimizer works with
+unconstrained $\theta$ and maps:
+
+$$\alpha_{ib} = \alpha_{\min} + \text{softplus}(\theta_{ib})
+= \alpha_{\min} + \log(1 + e^{\theta_{ib}})$$
+
+Gradient through softplus:
+
+$$\frac{\partial \alpha}{\partial \theta} = \sigma(\theta)
+= \frac{1}{1 + e^{-\theta}}$$
+
+Inverse (for initialization):
+
+$$\theta = \log\!\left(e^{\alpha - \alpha_{\min}} - 1\right)$$
+
+### Poisson deviance (data loss)
+
+$$D(\alpha) = 2 \sum_{i=1}^{N} \sum_{k=1}^{k_a}
+\left[\hat{V}_{ik} - P_{ik}\log\hat{V}_{ik}
++ P_{ik}\log P_{ik} - P_{ik}\right]$$
+
+When $\hat{V}_{ik} = P_{ik}$ for all entries, $D = 0$. The constant
+terms $P_{ik}\log P_{ik} - P_{ik}$ are precomputed once.
+
+Gradient with respect to predicted values:
+
+$$\frac{\partial D}{\partial \hat{V}_{ik}}
+= 2\!\left(1 - \frac{P_{ik}}{\hat{V}_{ik}}\right)$$
+
+Safe-log convention: where $P_{ik} = 0$, the term $P_{ik}\log\hat{V}_{ik}$
+is treated as zero (the contribution vanishes regardless of $\hat{V}$).
+
+### Log-barrier penalty
+
+Prevents any census tract from receiving zero total predicted voters:
+
+$$B(\alpha) = -\mu_B \sum_{i=1}^{N}
+\log\hat{V}_{i,\text{total}}, \quad
+\hat{V}_{i,\text{total}} = \sum_{k=1}^{k_a} \hat{V}_{ik}$$
+
+Gradient:
+
+$$\frac{\partial B}{\partial \hat{V}_{ik}}
+= -\frac{\mu_B}{\hat{V}_{i,\text{total}}}$$
+
+This signal is the same for all brackets $k$ within a tract, gently
+pushing all brackets away from zero.
+
+### Entropy penalty
+
+Operates on the row-normalized aggregated weights:
+
+$$p_{ij} = \frac{W_{\text{agg},ij}}{\sum_{j'} W_{\text{agg},ij'}},
+\quad H_i = -\sum_{j=1}^{M} p_{ij}\log p_{ij}$$
+
+$$E(\alpha) = \mu_E \sum_{i=1}^{N} H_i$$
+
+The **effective number of sources** for tract $i$ is $\exp(H_i)$. When
+$H_i = \log M$ (uniform weights), all stations contribute equally; when
+$H_i = 0$, a single station dominates.
+
+### Quadratic penalty (augmented Lagrangian)
+
+Active only in adaptive mode (`target_eff_src` set):
+
+$$Q(\alpha) = \frac{\rho}{2}\sum_{i=1}^{N}\left(H_i - h_i^*\right)^2$$
+
+The quadratic term drives each tract's entropy toward its individual
+target. Together with the linear entropy penalty $E$, this forms the
+augmented Lagrangian:
+
+$$\mathcal{L}_{\text{aug}} = D + B + \mu_E\sum_i H_i
++ \frac{\rho}{2}\sum_i(H_i - h_i^*)^2$$
+
+### Per-tract adaptive entropy targets
+
+A global entropy target is infeasible for tracts with sparse or uniform
+travel times. Per-tract targets account for local geography:
+
+$$h_i^* = \max\!\left(
+  \log\min(k_i - 1,\; T),\;
+  H_i(\alpha_{\text{ref}}),\;
+  \log 2
+\right)$$
+
+where:
+
+- $k_i$ = number of reachable stations for tract $i$
+- $T$ = user-specified `target_eff_src`
+- $H_i(\alpha_{\text{ref}})$ = Shannon entropy of the softmax weights
+  at a reference decay ($\alpha_{\text{ref}} = 7$ for power kernel,
+  50 for exponential),
+  capturing the minimum achievable entropy given the actual travel time
+  distribution
+- $\log 2$ = absolute floor (at least 2 effective sources)
+
+The aggregate target used for the dual update is
+$\bar{h}^* = \frac{1}{N}\sum_i h_i^*$.
+
+### Total loss
+
+$$L(\alpha) = D(\alpha) + B(\alpha) + E(\alpha) + Q(\alpha)$$
+
+In the default mode (no `target_eff_src`), $E = Q = 0$ and the
+optimizer minimizes $D + B$.
+
+### Dual ascent update
+
+The entropy multiplier $\mu_E$ is reparameterized as
+$\mu_E = \exp(\log\mu)$, ensuring strict positivity. The dual variable
+is updated once per epoch:
+
+$$\log\mu \leftarrow \log\mu
++ d(t) \cdot \frac{\eta_d}{T_d} \cdot (\bar{H} - \bar{h}^*)$$
+
+where:
+
+- $d(t) = 1/\sqrt{1 + t/5000}$ is a gentle decay schedule
+- $\eta_d$ = dual step scaling (`dual_eta`, default 1.0)
+- $T_d = 500$ is a dampening constant
+- $\bar{H} = \frac{1}{N}\sum_i H_i$ = current mean entropy
+
+ALM bound: $\log\mu \leq \log(3\rho)$ prevents overshoot (Bertsekas,
+1999).
+
+### SGDR cosine annealing with warm restarts
+
+The primal learning rate (non-adaptive mode) follows Loshchilov &
+Hutter (2017):
+
+$$\eta_t = \eta_{\min} + \frac{1}{2}(\eta_{\max} - \eta_{\min})
+\left(1 + \cos\!\left(\frac{T_{\text{cur}}}{T_i}\pi\right)\right)$$
+
+where $T_0 = 500$, $T_{\text{mult}} = 2$ (cycle length doubles after
+each restart), $\eta_{\min} = 0.01 \cdot \eta_{\max}$, and
+$\eta_{\max}$ decays by a factor of 0.7 per restart. In adaptive mode,
+the learning rate is held constant (dual updates make the loss
+landscape non-stationary).
+
+### Analytical gradient (station-chunked path)
+
+For large problems ($k_a \times N \times M > 25 \times 10^6$), the
+gradient is computed analytically instead of via autograd. The
+derivative of the total loss with respect to $\alpha_{ib}$, through
+the softmax column normalization, is:
+
+$$\frac{\partial L}{\partial \alpha_{ib}}
+= \sum_{j=1}^{M} c_{kj}\, W^{(b)}_{ij}\, \phi(t_{ij})
+\left(\overline{dL}_{bj} - dL_{ib}\right)$$
+
+where:
+
+- $dL_{ib} = \partial L / \partial\hat{V}_{ib}$ is the loss gradient
+  with respect to predicted values (deviance + barrier contributions)
+- $\overline{dL}_{bj} = \sum_{i'} W^{(b)}_{i'j}\, dL_{i'b}$ is the
+  weight-averaged gradient signal at station $j$
+- $\phi(t_{ij})$ is the kernel basis function ($\log(t_{ij}+1)$ for
+  power, $t_{ij}$ for exponential)
+
+This formula arises from the Jacobian of the softmax (column
+normalization) and avoids building the full $k_a \times N \times M$
+computational graph. The chain rule through softplus gives the final
+parameter gradient:
+
+$$\frac{\partial L}{\partial \theta_{ib}}
+= \frac{\partial L}{\partial \alpha_{ib}} \cdot \sigma(\theta_{ib})$$
+
+The entropy gradient on $W_{\text{agg}}$ is incorporated via a
+one-epoch-delayed signal: the gradient $\partial(E + Q)/\partial W_{\text{agg}}$
+from the previous epoch is propagated through the same softmax Jacobian
+formula, adding the corresponding terms to $\partial L / \partial\alpha_{ib}$.
+
+### Convergence criteria
+
+**Tier 1 --- Gradient-based** (true stationarity). Requires 10
+consecutive epochs satisfying all of:
+
+- Relative gradient: $\|\nabla_\theta L\| / (1 + \|\theta\|) < 10^{-4}$
+- Effective sources within 5% of adjusted target (adaptive mode)
+- Dual variable $\mu_E$ stable over `patience` epochs
+- Total loss stable over `patience` epochs
+- Deviance not rising (mean of last 100 epochs $\leq 1.01 \times$ mean
+  of epochs 400--500 ago)
+
+**Tier 2 --- Window-based** (diminishing returns). Triggered when the
+loss metric improves by less than `convergence_tol` over the last
+`patience` epochs, provided effective sources are within 20% of target.
+In adaptive mode the metric is Poisson deviance; in non-adaptive mode it
+is total loss (deviance + barrier).
+
+Both tiers require a minimum of $\max(3 \times \text{patience}, 500)$
+epochs before declaring convergence.

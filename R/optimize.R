@@ -628,14 +628,64 @@ print.interpElections_optim <- function(x, ...) {
   adaptive <- !is.null(target_eff_src)
   if (adaptive && entropy_mu <= 0) entropy_mu <- m / target_eff_src
 
-  # Augmented Lagrangian: quadratic penalty (rho/2)*n*(mean_H - h_target)^2.
-  # rho = m: the crossover (where quadratic restoring force balances the linear
-  # entropy penalty) occurs at delta = entropy_mu_init / m = 1/target nats,
-  # i.e., eff_src ≈ target * exp(-1/target). For target=5, crossover at eff_src≈4.1.
-  # This prevents overshoot while allowing the dual update to fine-tune.
-  h_target <- if (adaptive) log(target_eff_src) else NULL
-  entropy_mu_init <- entropy_mu
-  rho_quad <- if (adaptive) m else 0
+  # Augmented Lagrangian: linear (entropy_mu) + quadratic (rho_quad/2) penalty.
+  # entropy_mu starts at m/target — MUST be active from epoch 0 to prevent
+  # the optimizer from entering the scatter basin (irrecoverable attractor;
+  # see literature_review §2.1). Log-reparameterization prevents Pattern A collapse.
+  entropy_mu_init <- entropy_mu          # = m/target
+  rho_quad <- if (adaptive) entropy_mu_init else 0
+  if (adaptive) log_mu <- log(entropy_mu)  # log-reparam: exp(log_mu) > 0 always
+
+  if (adaptive) {
+    h_target_scalar <- log(target_eff_src)
+    # Log-reparameterization: update log_mu in dual ascent, entropy_mu = exp(log_mu).
+
+    # Step 1: Reachability-adjusted base target
+    k_i <- rowSums(!is.na(time_matrix))
+    base_target_i <- log(pmin(pmax(k_i - 1L, 2L), target_eff_src))
+
+    # Step 2: Feasibility floor from distance structure at reference alpha.
+    # H_i(alpha_ref) = minimum achievable entropy given travel time distribution.
+    # Tracts with similar distances cannot reduce entropy below this floor.
+    # Reference alpha for feasibility floor: upper-middle of practical range.
+    # Power kernel alpha~2-12 in practice; alpha_ref=7 balances correctly
+    # identifying infeasible tracts (uniform travel times) without over-
+    # relaxing feasible ones. Exponential kernel uses alpha_ref=50.
+    alpha_ref <- if (kernel == "power") 7 else 50
+    t_for_floor <- time_matrix
+    t_for_floor[is.na(t_for_floor)] <- Inf  # NA -> Inf -> exp(-alpha*Inf) = 0
+    # Kernel-aware log-weight: power kernel uses log(t), exponential uses t
+    if (kernel == "power") {
+      log_t <- log(t_for_floor)                    # log(Inf) = Inf, fine
+      log_w_ref <- -alpha_ref * log_t              # power: K = t^(-alpha)
+    } else {
+      log_w_ref <- -alpha_ref * t_for_floor        # exponential: K = exp(-alpha*t)
+    }
+    log_w_ref <- log_w_ref - apply(log_w_ref, 1, max)  # log-sum-exp stability
+    w_ref <- exp(log_w_ref)
+    w_ref <- w_ref / rowSums(w_ref)
+    w_ref_safe <- ifelse(w_ref > 0, w_ref, 1)
+    h_floor_i <- -rowSums(w_ref * log(w_ref_safe))
+    # Guard: tracts with all-NA travel times get NaN from log-sum-exp (-Inf - (-Inf)).
+    h_floor_i[!is.finite(h_floor_i)] <- 0
+
+    # Step 3: Per-tract target = max of base target and feasibility floor
+    h_target_vec <- pmax(base_target_i, h_floor_i, log(2))
+    h_target_mean <- mean(h_target_vec)
+
+    if (verbose) {
+      n_relaxed <- sum(h_target_vec > h_target_scalar + 0.01)
+      if (n_relaxed > 0) {
+        message(sprintf("  Adaptive targets: %d/%d tracts (%.0f%%) relaxed",
+                        n_relaxed, n, 100 * n_relaxed / n))
+        message(sprintf("  Aggregate target: eff_src=%.1f (user=%.1f)",
+                        exp(h_target_mean), target_eff_src))
+      }
+    }
+  } else {
+    h_target_vec <- NULL
+    h_target_mean <- NULL
+  }
 
   if (adaptive && target_eff_src > m * 0.8) {
     warning(sprintf(paste0(
@@ -647,7 +697,7 @@ print.interpElections_optim <- function(x, ...) {
 
   if (verbose) {
     if (adaptive) {
-      entropy_msg <- sprintf(", target_eff_src=%.1f (dual ascent, rho=%.1f)", target_eff_src, rho_quad)
+      entropy_msg <- sprintf(", target_eff_src=%.1f (dual ascent, rho=%.2f, log-mu)", target_eff_src, rho_quad)
     } else if (entropy_mu > 0) {
       entropy_msg <- sprintf(", entropy_mu=%.2f", entropy_mu)
     } else {
@@ -737,6 +787,12 @@ print.interpElections_optim <- function(x, ...) {
     # Pre-allocate ones tensor for torch_where safe-log (entropy path).
     # Shape (n, m) matches W_agg; avoids allocation inside the epoch loop.
     W_ones_nm <- torch::torch_ones(n, m, device = device, dtype = torch_dtype)
+
+    # Per-tract entropy target tensor for adaptive mode
+    if (adaptive) {
+      h_target_torch <- torch::torch_tensor(
+        h_target_vec, device = device, dtype = torch_dtype)  # (n,)
+    }
 
     # --- Softplus reparameterization — per-tract-per-bracket ---
     # alpha[i,b] = alpha_min + softplus(theta[i,b]), theta unconstrained.
@@ -1026,7 +1082,7 @@ print.interpElections_optim <- function(x, ...) {
           mean_H_torch      <- H_g$mean()
           entropy_penalty_g <- entropy_mu * H_g$sum()
           quad_penalty_g    <- if (adaptive) {
-            (rho_quad / 2) * n * (mean_H_torch - h_target)^2
+            (rho_quad / 2) * ((H_g - h_target_torch)^2)$sum()
           } else {
             0
           }
@@ -1150,12 +1206,12 @@ print.interpElections_optim <- function(x, ...) {
             entropy_penalty <- 0
           }
 
-          # Augmented Lagrangian quadratic penalty: (rho/2)*n*(mean_H - h_target)^2
+          # Augmented Lagrangian per-tract quadratic penalty: (rho/2)*sum((H_i - h_target_i)^2)
           # Compute mean_H once — reused for both quad_penalty and mean_eff_src.
           mean_H_torch <- H_agg_torch$mean()
           quad_penalty <- 0
           if (adaptive) {
-            quad_penalty <- (rho_quad / 2) * n * (mean_H_torch - h_target)^2
+            quad_penalty <- (rho_quad / 2) * ((H_agg_torch - h_target_torch)^2)$sum()
           }
 
         } else {
@@ -1267,27 +1323,25 @@ print.interpElections_optim <- function(x, ...) {
       # W and alpha extraction deferred to best-model tracking to avoid
       # per-epoch GPU->CPU transfers.
 
-      # --- Dual ascent: per-epoch additive update (augmented Lagrangian) ---
-      # Standard ALM dual step: lambda += rho * g(x) per "inner solve."
-      # Dampened by T_cycle so per-cycle cumulative is dual_eta * rho * mean_error
-      # (one full ALM step per cosine cycle).
+      # --- Dual ascent: log-space update (augmented Lagrangian) ---
+      # Log-reparameterization: entropy_mu = exp(log_mu) > 0 always.
+      # Prevents Pattern A crash-collapse (entropy_mu can never reach 0).
+      # Ceiling at 3*rho: ALM bound (Bertsekas 1999 §2.2) limits overshoot.
       if (adaptive && isTRUE(is.finite(mean_eff_src)) && mean_eff_src > 0) {
-        mean_H_val <- log(mean_eff_src)  # = mean(H), recovered from exp(mean(H))
+        mean_H_val <- log(mean_eff_src)
         if (is.na(eff_src_ema)) {
           eff_src_ema <- mean_eff_src
         } else {
           eff_src_ema <- 0.95 * eff_src_ema + 0.05 * mean_eff_src
         }
-        # Diminishing step: mirrors the warm-restart dampening in non-adaptive
-        # mode (dual_cycle_T doubles each restart).  In adaptive mode there is
-        # no scheduler, so we decay as 1/sqrt(cycle_count) — the standard
-        # Robbins-Monro rate for primal-dual convergence.
-        dual_decay <- 1 / sqrt(max(1, epoch / dual_cycle_T))
-        entropy_mu <- entropy_mu +
-          dual_decay * (dual_eta * rho_quad / dual_cycle_T) *
-          (mean_H_val - h_target)
-        entropy_mu <- max(entropy_mu, 0)    # was 0.01; floor→0 prevents
-        entropy_mu <- min(entropy_mu, 1e3)  # dead-zone oscillations
+        # Fix 4: gentle decay (replaces flat-then-sudden Robbins-Monro)
+        dual_decay <- 1 / sqrt(1 + epoch / 5000)
+        # Fix 2 + 2.5: log-space dual update, m-independent
+        log_mu <- log_mu +
+          dual_decay * (dual_eta / dual_cycle_T) *
+          (mean_H_val - h_target_mean)
+        log_mu <- min(log_mu, log(3 * entropy_mu_init))  # ALM bound: mu ≤ 3*rho
+        entropy_mu <- exp(log_mu)            # always > 0
       }
       entropy_mu_history[epoch] <- entropy_mu
 
@@ -1330,13 +1384,19 @@ print.interpElections_optim <- function(x, ...) {
 
       # eff_near_target: 20% tolerance (patience tier), 5% (gradient tier)
       # Use EMA (smoother) to avoid epoch-to-epoch noise blocking convergence.
+      # Use adjusted target (mean of per-tract targets) instead of user target.
+      adjusted_target_eff <- if (adaptive && !is.null(h_target_mean)) {
+        exp(h_target_mean)
+      } else {
+        target_eff_src
+      }
       eff_near_target <- if (adaptive && isTRUE(is.finite(eff_src_ema))) {
-        abs(eff_src_ema - target_eff_src) / target_eff_src < 0.2
+        abs(eff_src_ema - adjusted_target_eff) / adjusted_target_eff < 0.2
       } else {
         TRUE
       }
       eff_near_target_tight <- if (adaptive && isTRUE(is.finite(eff_src_ema))) {
-        abs(eff_src_ema - target_eff_src) / target_eff_src < 0.05
+        abs(eff_src_ema - adjusted_target_eff) / adjusted_target_eff < 0.05
       } else {
         TRUE
       }
@@ -1553,7 +1613,7 @@ print.interpElections_optim <- function(x, ...) {
       # on every epoch.
       if (adaptive) {
         eff_ok <- isTRUE(!is.na(median_eff_src) &&
-          abs(median_eff_src - target_eff_src) / target_eff_src < 0.2)
+          abs(median_eff_src - adjusted_target_eff) / adjusted_target_eff < 0.2)
         if (eff_ok && isTRUE(is.finite(data_loss_val)) &&
             isTRUE(data_loss_val < best_data_loss)) {
           best_loss       <- total_loss_val

@@ -168,3 +168,56 @@ test_that("optimize_alpha with entropy_mu = 0 (no entropy) returns NULL target_e
     verbose = FALSE)
   expect_null(r$target_eff_src)
 })
+
+# --- Tests for per-tract adaptive targets and log-reparameterization ---
+
+test_that("per-tract targets relax for tracts with NA travel times", {
+  skip_if_not_installed("torch")
+  set.seed(42)
+  n <- 6; m <- 5; k <- 2
+  tt <- matrix(abs(rnorm(n * m, 10, 5)), n, m)
+  # Make some stations unreachable for first two tracts
+  tt[1, 3:5] <- NA
+  tt[2, 4:5] <- NA
+  pop <- matrix(rpois(n * k, 100), n, k)
+  src <- matrix(rpois(m * k, 80), m, k)
+
+  r <- optimize_alpha(tt, pop, src,
+    optim = optim_control(max_epochs = 50L, target_eff_src = 3),
+    verbose = FALSE)
+  expect_true(is.finite(r$value))
+  expect_true(r$entropy_mu_final > 0)
+})
+
+test_that("entropy_mu stays positive (log-reparameterization guarantee)", {
+  skip_if_not_installed("torch")
+  set.seed(42)
+  n <- 5; m <- 4; k <- 2
+  tt <- matrix(abs(rnorm(n * m, 10, 5)), n, m)
+  pop <- matrix(rpois(n * k, 100), n, k)
+  src <- matrix(rpois(m * k, 80), m, k)
+
+  # Run many epochs — entropy_mu should never reach 0 (exp(log_mu) > 0 always)
+  r <- optimize_alpha(tt, pop, src,
+    optim = optim_control(max_epochs = 1600L, target_eff_src = 2, dual_eta = 1.0),
+    verbose = FALSE)
+  expect_true(all(r$entropy_mu_history > 0))
+  expect_true(r$entropy_mu_final > 0)
+})
+
+test_that("per-tract targets handle all-NA tract gracefully", {
+  skip_if_not_installed("torch")
+  set.seed(42)
+  n <- 6; m <- 5; k <- 2
+  tt <- matrix(abs(rnorm(n * m, 10, 5)), n, m)
+  tt[1, ] <- NA  # Tract 1 has no reachable stations
+  pop <- matrix(rpois(n * k, 100), n, k)
+  src <- matrix(rpois(m * k, 80), m, k)
+
+  r <- optimize_alpha(tt, pop, src,
+    optim = optim_control(max_epochs = 50L, target_eff_src = 3),
+    verbose = FALSE)
+  expect_true(is.finite(r$value))
+  expect_true(is.finite(r$entropy_mu_final))
+  expect_true(all(r$entropy_mu_history > 0))
+})

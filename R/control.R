@@ -40,14 +40,15 @@
 #'   automatically adapts `entropy_mu` during training to reach this target.
 #'   Must be > 1. Mutually exclusive with manual `entropy_mu` tuning.
 #'   Default: NULL (disabled).
-#' @param dual_eta Numeric. Scaling factor for the per-epoch additive dual
+#' @param dual_eta Numeric. Scaling factor for the per-epoch log-space dual
 #'   update of `entropy_mu` (augmented Lagrangian). Each epoch:
-#'   `entropy_mu += decay * dual_eta * rho / T_damp * (mean_H - log(target))`,
-#'   where `rho = m` (number of source stations), `T_damp = 500` is a
-#'   dampening constant, and `decay = 1/sqrt(max(1, epoch/T_damp))` is a
-#'   diminishing factor that stabilizes the dual variable over time (Robbins-
-#'   Monro rate). The quadratic penalty `(m/2) * n * (mean_H - log(target))^2`
-#'   in the loss does the heavy lifting; this dual update ensures exactness.
+#'   `log_mu += decay * dual_eta / T_damp * (mean_H - h_target_mean)`,
+#'   then `entropy_mu = exp(log_mu)` (always positive). `T_damp = 500` is a
+#'   dampening constant and `decay = 1/sqrt(1 + epoch/5000)` is a gentle
+#'   schedule. The per-tract quadratic penalty `(rho/2)*sum((H_i - h_target_i)^2)`
+#'   does the heavy lifting; this dual update ensures exactness. Per-tract
+#'   targets are adaptively set using a feasibility floor from the travel time
+#'   structure at alpha_ref=7 (power) or 50 (exponential).
 #'   Default: 1.0.
 #' @param alpha_init Numeric scalar, vector of length n, or matrix \[n x k\].
 #'   Initial guess for alpha. A scalar is recycled to all tracts and
