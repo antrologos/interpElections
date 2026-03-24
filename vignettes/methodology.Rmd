@@ -246,12 +246,13 @@ variables** bridge census tracts and polling stations.
 | 60--69 | `pop_hom_60_69`, `pop_mul_60_69` | `vot_hom_60_69`, `vot_mul_60_69` |
 
 **How the 7 brackets are built.** The TSE voter profile data records
-voters in 12 finer age bins (18, 19, 20, 21--24, 25--29, 30--34,
+voters in 13 finer age bins (18, 19, 20, 21--24, 25--29, 30--34,
 35--39, 40--44, 45--49, 50--54, 55--59, 60--64, 65--69).
 `br_prepare_electoral()` aggregates these into the 7 groups above so
 they align with the census age brackets. For the 2022 Census --- which
-reports a 15--19 group instead of 18--20 --- the package applies a
-$2/5$ proxy to approximate the 18--19 voting-age share.
+reports a 15--19 group instead of 18--20 --- the calibration matching
+step applies a $2/5$ proxy to approximate the 18--19 voting-age share
+from the census tract population data.
 
 These 7 matched brackets are the key insight: they are observed at
 **both** levels (census tracts and polling stations), enabling
@@ -268,13 +269,13 @@ knitr::include_graphics("figures/pop-pyramid.png")
 ## 5. Census Tract Geometries
 
 ```{r tracts-call, eval = FALSE}
-tracts_sf <- br_prepare_tracts(3170701, pop_data)
+tracts_sf <- br_prepare_tracts(3170701, pop_data, year = 2022)
 ```
 
-This downloads tract geometries from `geobr`, removes green areas
-(parks, water bodies with zero population), transforms to EPSG:5880
+This downloads tract geometries from `geobr`, transforms to EPSG:5880
 (equal-area projection for accurate spatial operations), and joins the
-population columns.
+population columns. Tracts with very low population can be filtered
+later via the `min_tract_pop` parameter in `interpolate_election()`.
 
 ```{r fig-tracts-pop, echo = FALSE, out.width = "100%"}
 knitr::include_graphics("figures/tracts-pop-map.png")
@@ -296,12 +297,12 @@ electoral <- br_prepare_electoral(
 )
 ```
 
-The result contains one row per polling station with:
+The result contains one row per voting location with:
 
 - **Vote columns** (`CAND_13`, `CAND_22`, ...): votes per candidate
   (ballot number as suffix; 95 = blank, 96 = null)
 - **Turnout** (`QT_COMPARECIMENTO`): total voters who showed up
-- **Voter age profiles** (`votantes_18_20`, ..., `votantes_65_69`):
+- **Voter age profiles** (`votantes_18_19`, ..., `votantes_65_69`):
   TSE's fine-grained age registration brackets, aggregated to match the
   7 census brackets
 - **Coordinates** (`lat`, `long`): geocoded polling station locations
@@ -325,10 +326,10 @@ knitr::include_graphics("figures/electoral-stations-map.png")
 The calibration variables are the bridge between census tracts and
 polling stations. The same age brackets are observed at both levels:
 
-- **Census**: "How many people aged 18--20 live in this tract?" (from
+- **Census**: "How many people aged 18--19 live in this tract?" (from
   IBGE)
-- **Electoral**: "How many registered voters aged 18--20 voted at this
-  station?" (from TSE)
+- **Electoral**: "How many registered voters aged 18--19 voted at this
+  location?" (from TSE)
 
 These are the same age brackets we saw distinguishing Rocinha from
 Copacabana in Section 1. The demographic signature that varies across
@@ -360,7 +361,7 @@ are available:
 |---|---|---|
 | `"centroid"` | `sf::st_centroid()` | Fast. May fall outside concave polygons. |
 | `"point_on_surface"` | `sf::st_point_on_surface()` | Guaranteed inside. Default. |
-| `"pop_weighted"` | WorldPop raster lookup | Most populated cell. Best for large tracts. |
+| `"pop_weighted"` | WorldPop raster + `terra::patches()` | Cluster-based: largest population cluster with road-proximity refinement. Best for large tracts. |
 
 The choice of representative point matters most for **large, irregularly
 shaped tracts** in rural and peri-urban areas. Consider the southern
@@ -390,14 +391,20 @@ difference can affect travel time calculations by tens of minutes.
 
 ```{r rep-points, eval = FALSE}
 pts_pos <- compute_representative_points(tracts_sf,
-  method = "point_on_surface")
+  tract_id = "code_tract", method = "point_on_surface")
 pts_pop <- compute_representative_points(tracts_sf,
-  method = "pop_weighted")
+  tract_id = "code_tract", method = "pop_weighted")
 ```
 
 The `pop_weighted` method downloads the WorldPop Brazil Constrained 2020
-raster (~48 MB, cached) and finds the raster cell with the highest
-population density within each tract.
+raster (~48 MB, cached) and uses a multi-step algorithm:
+
+1. Identify connected clusters of populated cells via `terra::patches()`
+2. Select the largest cluster by total population
+3. If OSM road data is available, apply tiered road proximity refinement
+   (cells within 200 m of roads are preferred)
+4. Within the selected cluster (and road-proximate subset), choose the
+   cell with the highest population density
 
 The `min_area_for_pop_weight` parameter (default: 1 km²) controls the threshold:
 tracts smaller than this use `point_on_surface` regardless of the chosen
@@ -407,7 +414,7 @@ point is a reasonable proxy.
 
 ## 9. Travel Times: Building the Distance Matrix
 
-### 9.1 Why walking travel time?
+### 9.1 Why travel time?
 
 In Brazil, voters are assigned to polling stations near their registered
 address. On election day, most voters **walk** to their polling station.
@@ -422,10 +429,11 @@ the polls** --- primarily walking distance --- is a real barrier that
 affects participation. If distance matters for whether people vote at
 all, it certainly matters for *where* they vote.
 
-We therefore use **realistic walking travel times** computed on the
+We therefore use **realistic travel times** computed on the
 OpenStreetMap road network, not Euclidean (straight-line) distances. The
 routing engine (r5r) accounts for the actual street layout, elevation,
-one-way streets, pedestrian paths, and physical barriers.
+one-way streets, pedestrian paths, and physical barriers. The default
+AUTO mode attempts walking first and falls back to car routing if needed.
 
 ### 9.2 Euclidean distance vs. walking routes
 
@@ -481,18 +489,20 @@ time_matrix <- compute_travel_times(
   tracts_sf = tracts_sf,
   points_sf = electoral_sf,
   network_path = network_path,
-  tract_id = "id",
-  point_id = "id"
+  tract_id = "code_tract",
+  point_id = "id",
+  routing = routing_control()
 )
 ```
 
-This builds an **[N tracts × M stations] matrix** of walking travel
-times in minutes, using the r5r routing engine on OpenStreetMap data.
+This builds an **[N tracts × M stations] matrix** of travel times in
+minutes, using the r5r routing engine on OpenStreetMap data.
 
 - **Origins**: representative points (from Section 8)
-- **Destinations**: polling station coordinates
-- **Mode**: walking (default), configurable
-- **Max trip duration**: 180 minutes (default); pairs beyond this threshold are `NA` (unreachable) and receive exactly zero weight
+- **Destinations**: voting location coordinates
+- **Mode**: AUTO (default) --- attempts walking first, then falls back
+  to car routing if more than 1% of pairs are unreachable by foot
+- **Max trip duration**: 120 minutes (default); pairs beyond this threshold are `NA` (unreachable) and receive exactly zero weight
 
 The OSM data is downloaded via `download_r5r_data()`, which fetches
 state-level `.pbf` files and clips them to the municipality bounding box
@@ -823,38 +833,57 @@ pop_old   <- c(40, 200, 100, 170, 230) # old pop per tract
 src_young <- c(150, 70, 40)  # young voters per station
 src_old   <- c(100, 330, 310) # old voters per station
 
-# Per-bracket column normalization: each bracket uses the same
-# column-normalized kernel
-W_col <- t(t(W_raw) / colSums(W_raw))
+# --- Per-bracket alpha values (different spatial reach) ---
+alpha_young <- 1.5  # young voters: broader reach
+alpha_old   <- 3.0  # old voters: more localized
 
-# Interpolate both brackets
-young_hat <- as.numeric(W_col %*% src_young)
-old_hat   <- as.numeric(W_col %*% src_old)
+# Build separate IDW kernels with different decay
+K_young <- (tt_toy + 1)^(-alpha_young)
+K_old   <- (tt_toy + 1)^(-alpha_old)
 
-cat("=== Young bracket ===\n")
-cat("Census truth:     ", pop_young, "\n")
-cat("Column-normalized:", round(young_hat), "\n")
-cat("Deviance:        ", round(2 * sum(young_hat - pop_young * log(ifelse(pop_young > 0, young_hat, 1)) + ifelse(pop_young > 0, pop_young * log(pop_young), 0) - pop_young)), "\n")
+# Column-normalize each bracket independently
+W_young <- t(t(K_young) / colSums(K_young))
+W_old   <- t(t(K_old)   / colSums(K_old))
 
-cat("\n=== Old bracket ===\n")
-cat("Census truth:     ", pop_old, "\n")
-cat("Column-normalized:", round(old_hat), "\n")
-cat("Deviance:        ", round(2 * sum(old_hat - pop_old * log(ifelse(pop_old > 0, old_hat, 1)) + ifelse(pop_old > 0, pop_old * log(pop_old), 0) - pop_old)), "\n")
+# Interpolate each bracket with its own weight matrix
+young_hat <- as.numeric(W_young %*% src_young)
+old_hat   <- as.numeric(W_old   %*% src_old)
+
+# Voter-weighted aggregation: W_agg = sum(W_k * c_k) / sum(c_k)
+c_total <- src_young + src_old
+W_agg <- (W_young * rep(src_young, each = nrow(W_young)) +
+           W_old * rep(src_old, each = nrow(W_old))) /
+          rep(c_total, each = nrow(W_young))
+
+poisson_dev <- function(obs, fit) {
+  2 * sum(fit - obs * log(ifelse(obs > 0, fit, 1)) +
+          ifelse(obs > 0, obs * log(obs), 0) - obs)
+}
+
+cat("=== Young bracket (alpha = 1.5, broader reach) ===\n")
+cat("Census truth:      ", pop_young, "\n")
+cat("Per-bracket interp:", round(young_hat), "\n")
+cat("Deviance:          ", round(poisson_dev(pop_young, young_hat)), "\n")
+
+cat("\n=== Old bracket (alpha = 3.0, more localized) ===\n")
+cat("Census truth:      ", pop_old, "\n")
+cat("Per-bracket interp:", round(old_hat), "\n")
+cat("Deviance:          ", round(poisson_dev(pop_old, old_hat)), "\n")
 ```
 
-The alpha optimization reduces this deviance by finding per-tract decay
-parameters that best match both demographic distributions.
+Different alpha values give each demographic group a different spatial
+reach. The optimizer finds per-tract, per-bracket decay parameters that
+minimize the total Poisson deviance across all brackets simultaneously.
 
 ```{r per-bracket-comparison-plot, fig.height = 5}
-# Visual comparison: census truth vs column-normalized estimate
-pop_mat_toy <- cbind(young = pop_young, old = pop_old)
+# Visual comparison: census truth vs per-bracket estimate
 comparison_df <- data.frame(
   tract = rep(1:5, 4),
   value = c(pop_young, pop_old, young_hat, old_hat),
   bracket = rep(c("Young", "Old", "Young", "Old"), each = 5),
   source = rep(c("Census truth", "Census truth",
-                  "Column-normalized estimate",
-                  "Column-normalized estimate"),
+                  "Per-bracket estimate",
+                  "Per-bracket estimate"),
                each = 5)
 )
 
@@ -863,8 +892,9 @@ ggplot(comparison_df,
   geom_col(position = "dodge", width = 0.7) +
   facet_wrap(~bracket, scales = "free_y") +
   scale_fill_manual(values = c("Census truth" = "#4575b4",
-                                "Column-normalized estimate" = "#fdae61")) +
+                                "Per-bracket estimate" = "#fdae61")) +
   labs(title = "Per-Bracket Column Normalization: Recovery of Age-Group Profiles",
+       subtitle = "Each bracket has its own alpha and weight matrix",
        x = "Tract", y = "Population", fill = "") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
@@ -1149,6 +1179,11 @@ deviance --- has a defined backward pass in torch. The gradient
 $\nabla_\theta L$ flows backward through the column normalization
 automatically.
 
+In practice, the optimizer implements the column normalization via
+`nnf_softmax()` (which uses logsumexp internally), while
+`compute_weight_matrix()` uses linear-space normalization with a clamp
+guard for safety.
+
 ### 14.4 Softplus reparameterization
 
 The decay parameters $\alpha$ must satisfy
@@ -1388,8 +1423,10 @@ non-adaptive mode, total loss (deviance + barrier) is used.
 
 **Best model tracking**: in adaptive mode, the optimizer tracks the
 model with the **lowest Poisson deviance** among epochs where effective
-sources are within 20% of the adjusted target. This ensures the
-returned weights satisfy the entropy constraint while maximizing fit.
+sources are within 20% of the adjusted target. At convergence (Tier 1
+or 2), the final-epoch model (the ALM saddle point) is returned; when
+`max_epochs` is hit without convergence, the best tracked near-target
+model is used instead.
 
 ### 14.8 Station-chunked computation
 
@@ -1729,7 +1766,7 @@ or max_epochs):
 - Varginha (279 tracts, 37 stations): ~52s CPU
 - Palmas (660 tracts, 71 stations): ~135s CPU
 - Niter\u00f3i (1,169 tracts, 135 stations): ~17s GPU
-- Belo Horizonte (5,113 tracts, 407 stations): ~105s GPU
+- Belo Horizonte (5,109 tracts, 407 stations): ~105s GPU
 - Rio de Janeiro (13,370 tracts, 1,392 stations): ~10 min GPU
 
 Note that total wall-clock time for `interpolate_election_br()` also
@@ -1755,7 +1792,7 @@ $O(k_a \times n \times m_{\text{chunk}})$. No autograd graph is built
 |---|---|---|---|---|---|
 | Varginha | 279 | 37 | 14 | Monolithic | ~28 MB |
 | Niteroi | 1,169 | 135 | 14 | Monolithic | ~242 MB |
-| Belo Horizonte | 5,113 | 407 | 14 | Chunked (2) | ~400 MB |
+| Belo Horizonte | 5,109 | 407 | 14 | Chunked (2) | ~400 MB |
 | Rio de Janeiro | 13,370 | 1,392 | 14 | Chunked (11) | ~1.5 GB |
 
 For very large cities, `dtype = "float32"` (the default) halves memory
